@@ -41,39 +41,30 @@ namespace FurnitureAnimationsMod
         [HarmonyPostfix]
         public static void Postfix(Furniture __instance, global::Pose code)
         {
-            if (code == null || code.controller == null)
-            {
-                Plugin.Log.LogWarning("[AnimInspector] Персонаж взаимодействует с мебелью, но у позы нет контроллера анимаций.");
-                return;
-            }
+            if (code == null || code.controller == null) return;
+
+            // Нам нужен сам компонент Animator персонажа, чтобы увидеть слои в рантайме
+            Animator animator = __instance.user.anim;
+            if (animator == null) return;
 
             StringBuilder sb = new StringBuilder();
             sb.AppendLine($"\n==================================================");
-            sb.AppendLine($"[AnimInspector] ДИАГНОСТИКА АНИМАЦИИ МЕБЕЛИ: {__instance.name}");
-            sb.AppendLine($"Название позы (GameObject): {code.name}");
-            sb.AppendLine($"Имя контроллера: {code.controller.name}");
-            sb.AppendLine($"Категория в UI игры: {code.categoryName}");
-            sb.AppendLine($"--------------------------------------------------");
+            sb.AppendLine($"[AnimInspector] СТРУКТУРА СЛОЕВ ДЛЯ: {code.controller.name}");
+            sb.AppendLine($"Всего слоев в Аниматоре: {animator.layerCount}");
 
-            // Извлекаем все анимационные клипы из контроллера в памяти
-            AnimationClip[] clips = code.controller.animationClips;
-            sb.AppendLine($"Всего клипов в контроллере: {clips.Length}");
-
-            for (int i = 0; i < clips.Length; i++)
+            for (int i = 0; i < animator.layerCount; i++)
             {
-                AnimationClip clip = clips[i];
-                if (clip != null)
-                {
-                    sb.AppendLine($"  [{i + 1}] Название клипа: \"{clip.name}\"");
-                    sb.AppendLine($"      Длительность: {clip.length:F2} сек.");
-                    sb.AppendLine($"      Зациклен (Loop): {clip.isLooping}");
-                    sb.AppendLine($"      Частота кадров (FPS): {clip.frameRate}");
-                    sb.AppendLine($"      Тип анимации (Humanoid): {clip.isHumanMotion}");
-                }
+                string layerName = animator.GetLayerName(i);
+                float layerWeight = animator.GetLayerWeight(i);
+                sb.AppendLine($"  Слой [{i}]: \"{layerName}\" | Вес (Weight): {layerWeight:F2}");
+
+                // Проверим текущее состояние слоя
+                AnimatorStateInfo stateInfo = animator.GetCurrentAnimatorStateInfo(i);
+                sb.AppendLine($"      Текущий стейт (Хэш): {stateInfo.fullPathHash}");
+                sb.AppendLine($"      Скорость стейта: {stateInfo.speed}");
             }
             sb.AppendLine($"==================================================");
 
-            // Пишем в лог BepInEx
             Plugin.Log.LogWarning(sb.ToString());
         }
     }
