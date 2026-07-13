@@ -11,7 +11,7 @@ namespace FurnitureAnimationsMod
     {
         public const string PluginGuid = "com.lorifel007.furnitureposefix";
         public const string PluginName = "Furniture Animations Mod";
-        public const string PluginVersion = "0.1.0";
+        public const string PluginVersion = "0.0.2";
 
         public static ManualLogSource Log;
         private Harmony harmony;
