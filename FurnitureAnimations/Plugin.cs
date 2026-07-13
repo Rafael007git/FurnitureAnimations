@@ -41,30 +41,46 @@ namespace FurnitureAnimationsMod
         [HarmonyPostfix]
         public static void Postfix(Furniture __instance, global::Pose code)
         {
-            if (code == null || code.controller == null) return;
-
-            // Нам нужен сам компонент Animator персонажа, чтобы увидеть слои в рантайме
-            Animator animator = __instance.user.anim;
-            if (animator == null) return;
+            if (code == null) return;
 
             StringBuilder sb = new StringBuilder();
             sb.AppendLine($"\n==================================================");
-            sb.AppendLine($"[AnimInspector] СТРУКТУРА СЛОЕВ ДЛЯ: {code.controller.name}");
-            sb.AppendLine($"Всего слоев в Аниматоре: {animator.layerCount}");
+            sb.AppendLine($"[PoleInspector] ДАННЫЕ ИНТЕРАКТИВА: {__instance.name}");
+            sb.AppendLine($"Имя контроллера анимации: {code.controller?.name ?? "NULL"}");
 
-            for (int i = 0; i < animator.layerCount; i++)
+            // 1. Вычисляем эталонное смещение (координаты точки loc)
+            if (code.loc != null)
             {
-                string layerName = animator.GetLayerName(i);
-                float layerWeight = animator.GetLayerWeight(i);
-                sb.AppendLine($"  Слой [{i}]: \"{layerName}\" | Вес (Weight): {layerWeight:F2}");
+                Vector3 pos = code.loc.localPosition;
+                Vector3 rot = code.loc.localEulerAngles;
+                sb.AppendLine($"--------------------------------------------------");
+                sb.AppendLine($"ЭТАЛОННОЕ СМЕЩЕНИЕ (loc):");
+                sb.AppendLine($"  localPosition: new Vector3({pos.x}f, {pos.y}f, {pos.z}f)");
+                sb.AppendLine($"  localRotation (Euler): new Vector3({rot.x}f, {rot.y}f, {rot.z}f)");
+            }
 
-                // Проверим текущее состояние слоя
-                AnimatorStateInfo stateInfo = animator.GetCurrentAnimatorStateInfo(i);
-                sb.AppendLine($"      Текущий стейт (Хэш): {stateInfo.fullPathHash}");
-                sb.AppendLine($"      Скорость стейта: {stateInfo.speed}");
+            // 2. Собираем данные обо всех камерах
+            sb.AppendLine($"--------------------------------------------------");
+            if (__instance.camerasGroup != null)
+            {
+                sb.AppendLine($"Найдено камер в карусели: {__instance.camerasGroup.childCount}");
+                for (int i = 0; i < __instance.camerasGroup.childCount; i++)
+                {
+                    Transform cam = __instance.camerasGroup.GetChild(i);
+                    Vector3 cPos = cam.localPosition;
+                    Vector3 cRot = cam.localEulerAngles;
+                    sb.AppendLine($"  Камера [{i}] Название: \"{cam.name}\"");
+                    sb.AppendLine($"    pos: new Vector3({cPos.x}f, {cPos.y}f, {cPos.z}f)");
+                    sb.AppendLine($"    rot: new Vector3({cRot.x}f, {cRot.y}f, {cRot.z}f)");
+                }
+            }
+            else
+            {
+                sb.AppendLine($"[Предупреждение] В объекте {__instance.name} отсутствует camerasGroup!");
             }
             sb.AppendLine($"==================================================");
 
+            // Выводим в лог BepInEx
             Plugin.Log.LogWarning(sb.ToString());
         }
     }
