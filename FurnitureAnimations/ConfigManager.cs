@@ -18,13 +18,15 @@ namespace FurnitureAnimationsMod
 
         public static void Initialize()
         {
-            // Инициализируем пути в соответствии со стандартами BepInEx
-            BaseDataPath = Path.Combine(Paths.ConfigPath, "FurnitureAnimationsData");
-            PrefabsConfigPath = Path.Combine(BaseDataPath, "FurnitureConfigs");
-            CustomAnimsPath = Path.Combine(BaseDataPath, "CustomAnimations");
-
             try
             {
+                // Безопасный способ получить путь к папке BepInEx\config без использования класса Paths
+                string gameDir = AppDomain.CurrentDomain.BaseDirectory;
+                BaseDataPath = Path.GetFullPath(Path.Combine(gameDir, "BepInEx", "config", "FurnitureAnimationsData"));
+
+                PrefabsConfigPath = Path.Combine(BaseDataPath, "FurnitureConfigs");
+                CustomAnimsPath = Path.Combine(BaseDataPath, "CustomAnimations");
+
                 // Проверяем и создаем структуру папок, если её нет
                 if (!Directory.Exists(BaseDataPath)) Directory.CreateDirectory(BaseDataPath);
                 if (!Directory.Exists(PrefabsConfigPath)) Directory.CreateDirectory(PrefabsConfigPath);
@@ -37,7 +39,8 @@ namespace FurnitureAnimationsMod
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogError($"[ConfigManager] Ошибка при инициализации папок: {ex.Message}");
+                // Используем стандартный вывод Unity, если логгер BepInEx еще не готов
+                UnityEngine.Debug.LogError($"[ConfigManager] Критическая ошибка инициализации: {ex.Message}");
             }
         }
 
