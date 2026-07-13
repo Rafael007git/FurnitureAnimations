@@ -63,6 +63,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="ConfigManager.cs" />
+    <Compile Include="FurnitureInjectorPatch.cs" />
     <Compile Include="Models.cs" />
     <Compile Include="Plugin.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
