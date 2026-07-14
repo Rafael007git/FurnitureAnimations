@@ -67,6 +67,7 @@
     <Compile Include="FurnitureInjectorPatch.cs" />
     <Compile Include="Models.cs" />
     <Compile Include="Plugin.cs" />
+    <Compile Include="PoseExporter.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
