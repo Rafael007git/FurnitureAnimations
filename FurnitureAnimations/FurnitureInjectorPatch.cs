@@ -1,10 +1,11 @@
 ﻿using HarmonyLib;
-using UnityEngine;
 using System.Collections.Generic;
+using UnityEngine;
+using UnityStandardAssets.Cameras;
 
 namespace FurnitureAnimationsMod
 {
-    // === ПАТЧ 1: ОСНОВНАЯ ИНЖЕКЦИЯ СТРУКТУРЫ МЕБЕЛИ ===
+    // === ПАТЧ 1: ИНЖЕКЦИЯ СТРУКТУРЫ ПОЗ ПРИ СТАРТЕ МЕБЕЛИ ===
     [HarmonyPatch(typeof(Furniture), "Start")]
     public class FurnitureInjectorPatch
     {
@@ -26,6 +27,11 @@ namespace FurnitureAnimationsMod
                 poseGroupObj.transform.SetParent(__instance.transform, false);
                 __instance.posesGroup = poseGroupObj.transform;
 
+                // Очищаем списки через РОДНЫЕ методы игры из dnSpy
+                if (__instance.cameras != null) __instance.cameras.ClearItems();
+                if (__instance.poses != null) __instance.poses.ClearItems();
+                __instance.camerasGroup = null;
+
                 Pose[] allGamePoses = Resources.FindObjectsOfTypeAll<Pose>();
 
                 foreach (PoseData poseConfig in config.InteractionPoses)
@@ -36,11 +42,7 @@ namespace FurnitureAnimationsMod
                     RuntimeAnimatorController[] allControllers = Resources.FindObjectsOfTypeAll<RuntimeAnimatorController>();
                     foreach (var rc in allControllers)
                     {
-                        if (rc.name == poseConfig.ControllerName)
-                        {
-                            targetController = rc;
-                            break;
-                        }
+                        if (rc.name == poseConfig.ControllerName) { targetController = rc; break; }
                     }
 
                     if (targetController == null) continue;
@@ -59,8 +61,7 @@ namespace FurnitureAnimationsMod
                     {
                         if (p.controller != null && p.controller.name == poseConfig.ControllerName && p.icon != null)
                         {
-                            exactVanillaPose = p;
-                            break;
+                            exactVanillaPose = p; break;
                         }
                     }
 
@@ -82,20 +83,13 @@ namespace FurnitureAnimationsMod
                     newPose.loc = locObj.transform;
 
                     newPoseObj.SetActive(false);
-                    __instance.poses.AddItem(newPoseObj.transform);
+                    __instance.poses.AddItem(newPoseObj.transform); // Родной метод AddItem из dnSpy
                 }
 
-                // Полностью очищаем списки камер, чтобы игра отдала приоритет Free Camera
-                __instance.camerasGroup = null;
-
-                if (Global.code != null && Global.code.interactableFurnitures != null && Global.code.interactableFurnitures.items != null)
+                // Безопасная регистрация в глобальном списке интерактива игры
+                if (Global.code != null && Global.code.interactableFurnitures != null)
                 {
-                    bool alreadyExists = false;
-                    foreach (var item in Global.code.interactableFurnitures.items)
-                    {
-                        if (item == __instance.transform) { alreadyExists = true; break; }
-                    }
-                    if (!alreadyExists) Global.code.interactableFurnitures.AddItemDifferentObject(__instance.transform);
+                    Global.code.interactableFurnitures.AddItemDifferentObject(__instance.transform);
                 }
 
                 Plugin.Log.LogWarning($"[Injector] {furnitureName} успешно оживлен! Загружено поз: {__instance.poses.items.Count}");
@@ -103,75 +97,57 @@ namespace FurnitureAnimationsMod
         }
     }
 
-    // === ПАТЧ 2: БЕЗОПАСНЫЙ СИНХРОНИЗАТОР И ПОДГОНКА FREE CAMERA ===
-    [HarmonyPatch(typeof(Furniture), "Interact")]
-    public class FurnitureInteractCameraPatch
-    {
-        [HarmonyPrefix]
-        public static void Prefix(Furniture __instance)
-        {
-            if (__instance == null) return;
-
-            string furnitureName = __instance.name.Replace("(Clone)", "").Trim();
-
-            // Если игрок садится на нашу кастомную мебель из справочника
-            if (ConfigManager.LoadedConfigs.ContainsKey(furnitureName))
-            {
-                Plugin.Log.LogInfo($"[CameraPatch] Перехват входа в интерактив {furnitureName}. Выравниваем Free Camera...");
-
-                // 1. Находим текущую активную главную камеру сцены
-                Camera mainCam = Camera.main;
-                if (mainCam == null) mainCam = Object.FindObjectOfType<Camera>();
-
-                if (mainCam != null)
-                {
-                    // 2. Ищем в сцене системный объект Free Camera игры по имени
-                    GameObject freeCamObj = GameObject.Find("Free Camera");
-                    if (freeCamObj == null) freeCamObj = GameObject.Find("FreeCamera");
-
-                    if (freeCamObj != null)
-                    {
-                        // 3. Мгновенно копируем мировые координаты основной камеры на Free Camera
-                        freeCamObj.transform.position = mainCam.transform.position;
-                        freeCamObj.transform.rotation = mainCam.transform.rotation;
-                        Plugin.Log.LogInfo("[CameraPatch] Позиция Free Camera успешно синхронизирована с видом игрока!");
-                    }
-                }
-            }
-        }
-    }
-
-    // === ПАТЧ 3: АВТОМАТИЧЕСКИЙ ЗАПУСК ПЕРВОЙ ПОЗЫ ИЗ СПИСКА ===
-    [HarmonyPatch(typeof(Furniture), "Interact")]
+    // === ПАТЧ 2: АВТО-ПОЗА И ФИКСАЦИЯ КАМЕРЫ ПРИ ВХОДЕ ИНТЕРАКТИВА ===
+    [HarmonyPatch(typeof(Furniture), "InitiateInteract")] // Точное имя метода по dnSpy!
     public class FurnitureAutoPosePatch
     {
         [HarmonyPostfix]
-        public static void Postfix(Furniture __instance)
+        public static void Postfix(Furniture __instance, CharacterCustomization customization)
         {
-            if (__instance == null) return;
+            if (__instance == null || customization == null) return;
 
             string furnitureName = __instance.name.Replace("(Clone)", "").Trim();
 
-            // Если это наша кастомная мебель и у неё успешно сгенерировались позы
-            if (ConfigManager.LoadedConfigs.ContainsKey(furnitureName) && __instance.poses != null && __instance.poses.items.Count > 0)
+            // Если это наша кастомная мебель из справочника
+            if (ConfigManager.LoadedConfigs.ContainsKey(furnitureName))
             {
-                Transform firstPoseTransform = __instance.poses.items[0];
-                if (firstPoseTransform != null)
-                {
-                    Pose firstPose = firstPoseTransform.GetComponent<Pose>();
-                    if (firstPose != null)
-                    {
-                        Plugin.Log.LogWarning($"[AutoPose] Принудительно активируем первую позу: {firstPose.name}");
+                Plugin.Log.LogWarning($"[AutoInteract] Настройка бесшовного входа для: {furnitureName}");
 
-                        // Заставляем мебель мгновенно применить эту позу к персонажу
-                        __instance.DoPose(firstPose);
+                // 1. СИНХРОНИЗАЦИЯ СВОБОДНОЙ КАМЕРЫ (Снимаем координаты ДО отключения FreeLookCam)
+                if (FreeLookCam.code != null && Global.code != null)
+                {
+                    // В игре объект системной свободной камеры лежит в Global.code.freeCamera
+                    GameObject freeCamObj = Global.code.freeCamera;
+
+                    if (freeCamObj != null)
+                    {
+                        // Принудительно включаем её и копируем ракурс, в котором стоял игрок
+                        freeCamObj.SetActive(true);
+                        freeCamObj.transform.position = FreeLookCam.code.transform.position;
+                        freeCamObj.transform.rotation = FreeLookCam.code.transform.rotation;
+                        Plugin.Log.LogInfo("[AutoInteract] Free Camera успешно зафиксирована в ракурсе игрока!");
+                    }
+                }
+
+                // 2. МГНОВЕННЫЙ ЗАПУСК ПЕРВОЙ ПОЗЫ
+                if (__instance.poses != null && __instance.poses.items.Count > 0)
+                {
+                    Transform firstPoseTransform = __instance.poses.items[0];
+                    if (firstPoseTransform != null)
+                    {
+                        Pose firstPose = firstPoseTransform.GetComponent<Pose>();
+                        if (firstPose != null)
+                        {
+                            Plugin.Log.LogWarning($"[AutoInteract] Авто-вызов позы: {firstPose.name}");
+                            __instance.DoPose(firstPose); // Запускаем родной DoPose из dnSpy!
+                        }
                     }
                 }
             }
         }
     }
 
-    // === ПАТЧ 4: БЕЗОПАСНЫЙ ВЫХОД ИЗ ИНТЕРАКТИВА ===
+    // === ПАТЧ 3: БЕЗОПАСНЫЙ ВЫХОД ИЗ ИНТЕРАКТИВА ===
     [HarmonyPatch(typeof(Furniture), "DoQuitInteraction")]
     public class FurnitureQuitSafetyPatch
     {
@@ -181,12 +157,12 @@ namespace FurnitureAnimationsMod
             if (__instance.user == null)
             {
                 Plugin.Log.LogWarning("[SafetyPatch] Безопасный выход из пустого интерактива.");
-                GameObject playerObj = GameObject.FindWithTag("Player");
-                if (playerObj != null) playerObj.SetActive(true);
-                else
+
+                // Используем правильный тип CharacterCustomization из dnSpy для поиска игрока
+                var playerComp = Object.FindObjectOfType<CharacterCustomization>();
+                if (playerComp != null)
                 {
-                    var playerComp = Object.FindObjectOfType<global::Player>();
-                    if (playerComp != null) playerComp.gameObject.SetActive(true);
+                    playerComp.gameObject.SetActive(true);
                 }
                 return false;
             }
