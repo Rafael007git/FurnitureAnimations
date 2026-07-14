@@ -87,23 +87,33 @@ namespace FurnitureAnimationsMod
                     GameObject locObj = new GameObject("loc");
                     locObj.transform.SetParent(newPoseObj.transform, false);
 
-                    // Если координаты из JSON улетают, временно ставим персонажа ровно в центр шеста (0, 0, 0)
-                    // чтобы проверить саму работу меню
-                    locObj.transform.localPosition = new Vector3(0f, 0f, 0f);
-                    locObj.transform.localEulerAngles = new Vector3(0f, 0f, 0f);
+                    // Теперь координаты и поворот берутся строго из файла конфигурации!
+                    locObj.transform.localPosition = new Vector3(poseConfig.LocPosition.x, poseConfig.LocPosition.y, poseConfig.LocPosition.z);
+                    locObj.transform.localEulerAngles = new Vector3(poseConfig.LocRotation.x, poseConfig.LocRotation.y, poseConfig.LocRotation.z);
+
                     newPose.loc = locObj.transform;
 
-                    // Инжектируем базовую локальную камеру, чтобы она не улетала в другую комнату
-                    GameObject camObj = new GameObject("Local_Review_Camera");
-                    camObj.transform.SetParent(camGroupObj.transform, false);
+                    // === НАЧАЛО БЛОКА ОБРАБОТКИ КАМЕР ИЗ JSON ===
+                    if (poseConfig.Cameras != null)
+                    {
+                        foreach (CameraData camConfig in poseConfig.Cameras)
+                        {
+                            GameObject camObj = new GameObject(camConfig.Name);
+                            // Привязываем камеру строго к контейнеру камер шеста
+                            camObj.transform.SetParent(camGroupObj.transform, false);
 
-                    // Ставим камеру в 3 метрах от шеста на высоте груди, направленную в центр
-                    camObj.transform.localPosition = new Vector3(0f, 1.5f, -3f);
-                    camObj.transform.localEulerAngles = new Vector3(10f, 0f, 0f);
+                            // Выставляем координаты облета из JSON
+                            camObj.transform.localPosition = new Vector3(camConfig.pos.x, camConfig.pos.y, camConfig.pos.z);
+                            camObj.transform.localEulerAngles = new Vector3(camConfig.rot.x, camConfig.rot.y, camConfig.rot.z);
 
-                    camObj.AddComponent<Camera>().enabled = false;
-                    camObj.SetActive(false);
-                    __instance.cameras.AddItem(camObj.transform);
+                            // Добавляем обязательный компонент камеры, чтобы движок мог её включать
+                            camObj.AddComponent<Camera>().enabled = false;
+
+                            camObj.SetActive(false);
+                            __instance.cameras.AddItem(camObj.transform);
+                        }
+                    }
+                    // === КОНЕЦ БЛОКА ОБРАБОТКИ КАМЕР ===
 
                     newPoseObj.SetActive(false);
                     __instance.poses.AddItem(newPoseObj.transform);
