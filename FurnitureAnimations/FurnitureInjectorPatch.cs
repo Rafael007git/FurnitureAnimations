@@ -12,43 +12,28 @@ namespace FurnitureAnimationsMod
         {
             if (__instance == null) return;
 
-            // Защита от бесконечного цикла
-            if (__instance.transform.Find("camerasGroup") != null) return;
+            // Защита: Если позы уже инжектированы, выходим
+            if (__instance.transform.Find("posesGroup") != null) return;
 
             string furnitureName = __instance.name.Replace("(Clone)", "").Trim();
 
-            // Проверяем, есть ли GUID предмета в нашей базе JSON-справочников
             if (ConfigManager.LoadedConfigs.TryGetValue(furnitureName, out FurnitureConfig config))
             {
-                Plugin.Log.LogWarning($"[Injector] Оживляем мебель из клуба: {furnitureName}");
+                Plugin.Log.LogWarning($"[Injector] Инжектируем справочник поз в: {furnitureName}");
 
-                // Создаем правильную структуру контейнеров
-                GameObject camGroupObj = new GameObject("camerasGroup");
-                camGroupObj.transform.SetParent(__instance.transform, false);
-                __instance.camerasGroup = camGroupObj.transform;
-
+                // Создаем контейнер для поз
                 GameObject poseGroupObj = new GameObject("posesGroup");
                 poseGroupObj.transform.SetParent(__instance.transform, false);
                 __instance.posesGroup = poseGroupObj.transform;
 
-                // Нам нужен ванильный донор позы, чтобы скопировать иконку для интерфейса
-                Pose vanillaPoseDonor = null;
+                // Кэш всех ванильных поз игры для поиска иконок
                 Pose[] allGamePoses = Resources.FindObjectsOfTypeAll<Pose>();
-                foreach (var p in allGamePoses)
-                {
-                    // Ищем любую рабочую ванильную позу у шеста, например, где контроллер "Pole Dance4"
-                    if (p.controller != null && p.controller.name == "Pole Dance4" && p.icon != null)
-                    {
-                        vanillaPoseDonor = p;
-                        break;
-                    }
-                }
 
                 foreach (PoseData poseConfig in config.InteractionPoses)
                 {
                     if (poseConfig.Type.Equals("CustomJSON", System.StringComparison.OrdinalIgnoreCase)) continue;
 
-                    // Находим контроллер анимации
+                    // Ищем контроллер анимации
                     RuntimeAnimatorController targetController = null;
                     RuntimeAnimatorController[] allControllers = Resources.FindObjectsOfTypeAll<RuntimeAnimatorController>();
                     foreach (var rc in allControllers)
@@ -60,9 +45,12 @@ namespace FurnitureAnimationsMod
                         }
                     }
 
-                    if (targetController == null) continue;
+                    if (targetController == null)
+                    {
+                        Plugin.Log.LogError($"[Injector] Не найден файл анимации: {poseConfig.ControllerName}");
+                        continue;
+                    }
 
-                    // Создаем объект позы
                     GameObject newPoseObj = new GameObject(poseConfig.DisplayName);
                     newPoseObj.transform.SetParent(__instance.posesGroup, false);
 
@@ -70,62 +58,96 @@ namespace FurnitureAnimationsMod
                     newPose.controller = targetController;
                     newPose.notshown = false;
                     newPose.locked = false;
+                    newPose.crystals = 0;
 
-                    // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Копируем данные UI из ванильного донора
-                    if (vanillaPoseDonor != null)
+                    // Поиск оригинальной позы-донора для иконки
+                    Pose exactVanillaPose = null;
+                    foreach (var p in allGamePoses)
                     {
-                        newPose.icon = vanillaPoseDonor.icon; // Теперь у позы ЕСТЬ иконка!
-                        newPose.categoryName = vanillaPoseDonor.categoryName;
-                        newPose.mood = vanillaPoseDonor.mood;
+                        if (p.controller != null && p.controller.name == poseConfig.ControllerName && p.icon != null)
+                        {
+                            exactVanillaPose = p;
+                            break;
+                        }
+                    }
+
+                    if (exactVanillaPose != null)
+                    {
+                        newPose.icon = exactVanillaPose.icon;
+                        newPose.categoryName = exactVanillaPose.categoryName;
+                        newPose.mood = exactVanillaPose.mood;
                     }
                     else
                     {
                         newPose.categoryName = "Dances";
                     }
 
-                    // Настраиваем точку посадки (loc) персонажа
+                    // Настройка смещения из JSON
                     GameObject locObj = new GameObject("loc");
                     locObj.transform.SetParent(newPoseObj.transform, false);
-
-                    // Теперь координаты и поворот берутся строго из файла конфигурации!
                     locObj.transform.localPosition = new Vector3(poseConfig.LocPosition.x, poseConfig.LocPosition.y, poseConfig.LocPosition.z);
                     locObj.transform.localEulerAngles = new Vector3(poseConfig.LocRotation.x, poseConfig.LocRotation.y, poseConfig.LocRotation.z);
-
                     newPose.loc = locObj.transform;
-
-                    // === НАЧАЛО БЛОКА ОБРАБОТКИ КАМЕР ИЗ JSON ===
-                    if (poseConfig.Cameras != null)
-                    {
-                        foreach (CameraData camConfig in poseConfig.Cameras)
-                        {
-                            GameObject camObj = new GameObject(camConfig.Name);
-                            // Привязываем камеру строго к контейнеру камер шеста
-                            camObj.transform.SetParent(camGroupObj.transform, false);
-
-                            // Выставляем координаты облета из JSON
-                            camObj.transform.localPosition = new Vector3(camConfig.pos.x, camConfig.pos.y, camConfig.pos.z);
-                            camObj.transform.localEulerAngles = new Vector3(camConfig.rot.x, camConfig.rot.y, camConfig.rot.z);
-
-                            // Добавляем обязательный компонент камеры, чтобы движок мог её включать
-                            camObj.AddComponent<Camera>().enabled = false;
-
-                            camObj.SetActive(false);
-                            __instance.cameras.AddItem(camObj.transform);
-                        }
-                    }
-                    // === КОНЕЦ БЛОКА ОБРАБОТКИ КАМЕР ===
 
                     newPoseObj.SetActive(false);
                     __instance.poses.AddItem(newPoseObj.transform);
                 }
 
-                if (!Global.code.interactableFurnitures.items.Contains(__instance.transform))
+                // ИСПРАВЛЕНО: Глушим камеры без вызова методов CommonArray
+                __instance.camerasGroup = null;
+
+                // ИСПРАВЛЕНО: Безопасная проверка и добавление в список мебели через стандартный цикл
+                if (Global.code != null && Global.code.interactableFurnitures != null && Global.code.interactableFurnitures.items != null)
                 {
-                    Global.code.interactableFurnitures.AddItemDifferentObject(__instance.transform);
+                    bool alreadyExists = false;
+                    foreach (var item in Global.code.interactableFurnitures.items)
+                    {
+                        if (item == __instance.transform)
+                        {
+                            alreadyExists = true;
+                            break;
+                        }
+                    }
+
+                    if (!alreadyExists)
+                    {
+                        Global.code.interactableFurnitures.AddItemDifferentObject(__instance.transform);
+                    }
                 }
 
-                Plugin.Log.LogWarning($"[Injector] Мебель {furnitureName} успешно пропатчена. Иконки восстановлены!");
+                Plugin.Log.LogWarning($"[Injector] {furnitureName} успешно оживлен! Загружено поз: {__instance.poses.items.Count}");
             }
+        }
+    }
+
+    [HarmonyPatch(typeof(Furniture), "DoQuitInteraction")]
+    public class FurnitureQuitSafetyPatch
+    {
+        [HarmonyPrefix]
+        public static bool Prefix(Furniture __instance)
+        {
+            if (__instance.user == null)
+            {
+                Plugin.Log.LogWarning("[SafetyPatch] Безопасный выход из пустого интерактива.");
+
+                // ИСПРАВЛЕНО: Ищем игрока через стандартный Find движка Unity, полностью минуя класс Global
+                GameObject playerObj = GameObject.FindWithTag("Player");
+                if (playerObj != null)
+                {
+                    playerObj.SetActive(true);
+                }
+                else
+                {
+                    // Подстраховка, если тег не настроен — ищем по компоненту Player
+                    var playerComp = Object.FindObjectOfType<global::Player>();
+                    if (playerComp != null)
+                    {
+                        playerComp.gameObject.SetActive(true);
+                    }
+                }
+                return false;
+            }
+            return true;
         }
     }
 }
