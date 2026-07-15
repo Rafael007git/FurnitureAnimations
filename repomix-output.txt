@@ -1,0 +1,1442 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+================================================================
+File Summary
+================================================================
+
+Purpose:
+--------
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+
+File Format:
+------------
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  a. A separator line (================)
+  b. The file path (File: path/to/file)
+  c. Another separator line
+  d. The full contents of the file
+  e. A blank line
+
+Usage Guidelines:
+-----------------
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+
+Notes:
+------
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+
+
+================================================================
+Directory Structure
+================================================================
+.gitattributes
+.gitignore
+.repomixignore
+FurnitureAnimations.slnx
+FurnitureAnimations/ConfigManager.cs
+FurnitureAnimations/EditorUiManager.cs
+FurnitureAnimations/FurnitureAnimations.csproj
+FurnitureAnimations/FurnitureInjectorPatch.cs
+FurnitureAnimations/Models.cs
+FurnitureAnimations/Plugin.cs
+FurnitureAnimations/PoseExporter.cs
+FurnitureAnimations/Properties/AssemblyInfo.cs
+repomix.config.json
+
+================================================================
+Files
+================================================================
+
+================
+File: .gitattributes
+================
+###############################################################################
+# Set default behavior to automatically normalize line endings.
+###############################################################################
+* text=auto
+
+###############################################################################
+# Set default behavior for command prompt diff.
+#
+# This is need for earlier builds of msysgit that does not have it on by
+# default for csharp files.
+# Note: This is only used by command line
+###############################################################################
+#*.cs     diff=csharp
+
+###############################################################################
+# Set the merge driver for project and solution files
+#
+# Merging from the command prompt will add diff markers to the files if there
+# are conflicts (Merging from VS is not affected by the settings below, in VS
+# the diff markers are never inserted). Diff markers may cause the following 
+# file extensions to fail to load in VS. An alternative would be to treat
+# these files as binary and thus will always conflict and require user
+# intervention with every merge. To do so, just uncomment the entries below
+###############################################################################
+#*.sln       merge=binary
+#*.csproj    merge=binary
+#*.vbproj    merge=binary
+#*.vcxproj   merge=binary
+#*.vcproj    merge=binary
+#*.dbproj    merge=binary
+#*.fsproj    merge=binary
+#*.lsproj    merge=binary
+#*.wixproj   merge=binary
+#*.modelproj merge=binary
+#*.sqlproj   merge=binary
+#*.wwaproj   merge=binary
+
+###############################################################################
+# behavior for image files
+#
+# image files are treated as binary by default.
+###############################################################################
+#*.jpg   binary
+#*.png   binary
+#*.gif   binary
+
+###############################################################################
+# diff behavior for common document formats
+# 
+# Convert binary document formats to text before diffing them. This feature
+# is only available from the command line. Turn it on by uncommenting the 
+# entries below.
+###############################################################################
+#*.doc   diff=astextplain
+#*.DOC   diff=astextplain
+#*.docx  diff=astextplain
+#*.DOCX  diff=astextplain
+#*.dot   diff=astextplain
+#*.DOT   diff=astextplain
+#*.pdf   diff=astextplain
+#*.PDF   diff=astextplain
+#*.rtf   diff=astextplain
+#*.RTF   diff=astextplain
+
+================
+File: .gitignore
+================
+## Ignore Visual Studio temporary files, build results, and
+## files generated by popular Visual Studio add-ons.
+##
+## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
+
+# User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# User-specific files (MonoDevelop/Xamarin Studio)
+*.userprefs
+
+# Mono auto generated files
+mono_crash.*
+
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+[Ll]og/
+[Ll]ogs/
+
+# Visual Studio 2015/2017 cache/options directory
+.vs/
+# Uncomment if you have tasks that create the project's static files in wwwroot
+#wwwroot/
+
+# Visual Studio 2017 auto generated files
+Generated\ Files/
+
+# MSTest test Results
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+
+# NUnit
+*.VisualState.xml
+TestResult.xml
+nunit-*.xml
+
+# Build Results of an ATL Project
+[Dd]ebugPS/
+[Rr]eleasePS/
+dlldata.c
+
+# Benchmark Results
+BenchmarkDotNet.Artifacts/
+
+# .NET Core
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# ASP.NET Scaffolding
+ScaffoldingReadMe.txt
+
+# StyleCop
+StyleCopReport.xml
+
+# Files built by Visual Studio
+*_i.c
+*_p.c
+*_h.h
+*.ilk
+*.meta
+*.obj
+*.iobj
+*.pch
+*.pdb
+*.ipdb
+*.pgc
+*.pgd
+*.rsp
+*.sbr
+*.tlb
+*.tli
+*.tlh
+*.tmp
+*.tmp_proj
+*_wpftmp.csproj
+*.log
+*.vspscc
+*.vssscc
+.builds
+*.pidb
+*.svclog
+*.scc
+
+# Chutzpah Test files
+_Chutzpah*
+
+# Visual C++ cache files
+ipch/
+*.aps
+*.ncb
+*.opendb
+*.opensdf
+*.sdf
+*.cachefile
+*.VC.db
+*.VC.VC.opendb
+
+# Visual Studio profiler
+*.psess
+*.vsp
+*.vspx
+*.sap
+
+# Visual Studio Trace Files
+*.e2e
+
+# TFS 2012 Local Workspace
+$tf/
+
+# Guidance Automation Toolkit
+*.gpState
+
+# ReSharper is a .NET coding add-in
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+
+# TeamCity is a build add-in
+_TeamCity*
+
+# DotCover is a Code Coverage Tool
+*.dotCover
+
+# AxoCover is a Code Coverage Tool
+.axoCover/*
+!.axoCover/settings.json
+
+# Coverlet is a free, cross platform Code Coverage Tool
+coverage*.json
+coverage*.xml
+coverage*.info
+
+# Visual Studio code coverage results
+*.coverage
+*.coveragexml
+
+# NCrunch
+_NCrunch_*
+.*crunch*.local.xml
+nCrunchTemp_*
+
+# MightyMoose
+*.mm.*
+AutoTest.Net/
+
+# Web workbench (sass)
+.sass-cache/
+
+# Installshield output folder
+[Ee]xpress/
+
+# DocProject is a documentation generator add-in
+DocProject/buildhelp/
+DocProject/Help/*.HxT
+DocProject/Help/*.HxC
+DocProject/Help/*.hhc
+DocProject/Help/*.hhk
+DocProject/Help/*.hhp
+DocProject/Help/Html2
+DocProject/Help/html
+
+# Click-Once directory
+publish/
+
+# Publish Web Output
+*.[Pp]ublish.xml
+*.azurePubxml
+# Note: Comment the next line if you want to checkin your web deploy settings,
+# but database connection strings (with potential passwords) will be unencrypted
+*.pubxml
+*.publishproj
+
+# Microsoft Azure Web App publish settings. Comment the next line if you want to
+# checkin your Azure Web App publish settings, but sensitive information contained
+# in these scripts will be unencrypted
+PublishScripts/
+
+# NuGet Packages
+*.nupkg
+# NuGet Symbol Packages
+*.snupkg
+# The packages folder can be ignored because of Package Restore
+**/[Pp]ackages/*
+# except build/, which is used as an MSBuild target.
+!**/[Pp]ackages/build/
+# Uncomment if necessary however generally it will be regenerated when needed
+#!**/[Pp]ackages/repositories.config
+# NuGet v3's project.json files produces more ignorable files
+*.nuget.props
+*.nuget.targets
+
+# Microsoft Azure Build Output
+csx/
+*.build.csdef
+
+# Microsoft Azure Emulator
+ecf/
+rcf/
+
+# Windows Store app package directories and files
+AppPackages/
+BundleArtifacts/
+Package.StoreAssociation.xml
+_pkginfo.txt
+*.appx
+*.appxbundle
+*.appxupload
+
+# Visual Studio cache files
+# files ending in .cache can be ignored
+*.[Cc]ache
+# but keep track of directories ending in .cache
+!?*.[Cc]ache/
+
+# Others
+ClientBin/
+~$*
+*~
+*.dbmdl
+*.dbproj.schemaview
+*.jfm
+*.pfx
+*.publishsettings
+orleans.codegen.cs
+
+# Including strong name files can present a security risk
+# (https://github.com/github/gitignore/pull/2483#issue-259490424)
+#*.snk
+
+# Since there are multiple workflows, uncomment next line to ignore bower_components
+# (https://github.com/github/gitignore/pull/1529#issuecomment-104372622)
+#bower_components/
+
+# RIA/Silverlight projects
+Generated_Code/
+
+# Backup & report files from converting an old project file
+# to a newer Visual Studio version. Backup files are not needed,
+# because we have git ;-)
+_UpgradeReport_Files/
+Backup*/
+UpgradeLog*.XML
+UpgradeLog*.htm
+ServiceFabricBackup/
+*.rptproj.bak
+
+# SQL Server files
+*.mdf
+*.ldf
+*.ndf
+
+# Business Intelligence projects
+*.rdl.data
+*.bim.layout
+*.bim_*.settings
+*.rptproj.rsuser
+*- [Bb]ackup.rdl
+*- [Bb]ackup ([0-9]).rdl
+*- [Bb]ackup ([0-9][0-9]).rdl
+
+# Microsoft Fakes
+FakesAssemblies/
+
+# GhostDoc plugin setting file
+*.GhostDoc.xml
+
+# Node.js Tools for Visual Studio
+.ntvs_analysis.dat
+node_modules/
+
+# Visual Studio 6 build log
+*.plg
+
+# Visual Studio 6 workspace options file
+*.opt
+
+# Visual Studio 6 auto-generated workspace file (contains which files were open etc.)
+*.vbw
+
+# Visual Studio LightSwitch build output
+**/*.HTMLClient/GeneratedArtifacts
+**/*.DesktopClient/GeneratedArtifacts
+**/*.DesktopClient/ModelManifest.xml
+**/*.Server/GeneratedArtifacts
+**/*.Server/ModelManifest.xml
+_Pvt_Extensions
+
+# Paket dependency manager
+.paket/paket.exe
+paket-files/
+
+# FAKE - F# Make
+.fake/
+
+# CodeRush personal settings
+.cr/personal
+
+# Python Tools for Visual Studio (PTVS)
+__pycache__/
+*.pyc
+
+# Cake - Uncomment if you are using it
+# tools/**
+# !tools/packages.config
+
+# Tabs Studio
+*.tss
+
+# Telerik's JustMock configuration file
+*.jmconfig
+
+# BizTalk build output
+*.btp.cs
+*.btm.cs
+*.odx.cs
+*.xsd.cs
+
+# OpenCover UI analysis results
+OpenCover/
+
+# Azure Stream Analytics local run output
+ASALocalRun/
+
+# MSBuild Binary and Structured Log
+*.binlog
+
+# NVidia Nsight GPU debugger configuration file
+*.nvuser
+
+# MFractors (Xamarin productivity tool) working folder
+.mfractor/
+
+# Local History for Visual Studio
+.localhistory/
+
+# BeatPulse healthcheck temp database
+healthchecksdb
+
+# Backup folder for Package Reference Convert tool in Visual Studio 2017
+MigrationBackup/
+
+# Ionide (cross platform F# VS Code tools) working folder
+.ionide/
+
+# Fody - auto-generated XML schema
+FodyWeavers.xsd
+
+================
+File: .repomixignore
+================
+# Add patterns to ignore here, one per line
+# Example:
+# *.log
+# tmp/
+
+================
+File: FurnitureAnimations.slnx
+================
+<Solution>
+  <Project Path="FurnitureAnimations/FurnitureAnimations.csproj" Id="a4cc8495-9abb-49f7-9fb8-1df40af0c220" />
+</Solution>
+
+================
+File: FurnitureAnimations/ConfigManager.cs
+================
+using System;
+using System.IO;
+using System.Collections.Generic;
+using BepInEx;
+using Newtonsoft.Json;
+
+namespace FurnitureAnimationsMod
+{
+    public static class ConfigManager
+    {
+        // Пути к локальным папкам в BepInEx\config
+        public static string BaseDataPath { get; private set; }
+        public static string PrefabsConfigPath { get; private set; }
+        public static string CustomAnimsPath { get; private set; }
+
+        // Глобальная база данных: Ключ = GUID префаба, Значение = данные инжектора
+        public static Dictionary<string, FurnitureConfig> LoadedConfigs = new Dictionary<string, FurnitureConfig>(StringComparer.OrdinalIgnoreCase);
+
+        public static void Initialize()
+        {
+            try
+            {
+                // Безопасный способ получить путь к папке BepInEx\config без использования класса Paths
+                string gameDir = AppDomain.CurrentDomain.BaseDirectory;
+                BaseDataPath = Path.GetFullPath(Path.Combine(gameDir, "BepInEx", "config", "FurnitureAnimationsData"));
+
+                PrefabsConfigPath = Path.Combine(BaseDataPath, "FurnitureConfigs");
+                CustomAnimsPath = Path.Combine(BaseDataPath, "CustomAnimations");
+
+                // Проверяем и создаем структуру папок, если её нет
+                if (!Directory.Exists(BaseDataPath)) Directory.CreateDirectory(BaseDataPath);
+                if (!Directory.Exists(PrefabsConfigPath)) Directory.CreateDirectory(PrefabsConfigPath);
+                if (!Directory.Exists(CustomAnimsPath)) Directory.CreateDirectory(CustomAnimsPath);
+
+                Plugin.Log.LogInfo("[ConfigManager] Структура папок в BepInEx\\config успешно проверена/создана.");
+
+                // Запускаем полное сканирование
+                ReloadAllConfigs();
+            }
+            catch (Exception ex)
+            {
+                // Используем стандартный вывод Unity, если логгер BepInEx еще не готов
+                UnityEngine.Debug.LogError($"[ConfigManager] Критическая ошибка инициализации: {ex.Message}");
+            }
+        }
+
+        public static void ReloadAllConfigs()
+        {
+            LoadedConfigs.Clear();
+
+            // 1. Сканируем локальную папку BepInEx\config\...\FurnitureConfigs
+            ScanDirectoryForConfigs(PrefabsConfigPath);
+
+            // 2. Сканируем папки Steam Workshop
+            ScanWorkshopDirectory();
+
+            Plugin.Log.LogWarning($"[ConfigManager] Сканирование завершено. Успешно загружено справочников мебели: {LoadedConfigs.Count}");
+        }
+
+        // ИСПРАВЛЕНО: Добавлен static, bool изменен на void
+        private static void ScanDirectoryForConfigs(string directoryPath)
+        {
+            if (!Directory.Exists(directoryPath)) return;
+
+            string[] jsonFiles = Directory.GetFiles(directoryPath, "*.json", SearchOption.AllDirectories);
+            foreach (string file in jsonFiles)
+            {
+                try
+                {
+                    string jsonText = File.ReadAllText(file);
+                    FurnitureConfig config = JsonConvert.DeserializeObject<FurnitureConfig>(jsonText);
+
+                    if (config != null && !string.IsNullOrEmpty(config.FurniturePrefabName))
+                    {
+                        LoadedConfigs[config.FurniturePrefabName] = config;
+                        Plugin.Log.LogInfo($"[ConfigManager] Загружен локальный конфиг для префаба: {config.FurniturePrefabName} (Файл: {Path.GetFileName(file)})");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Log.LogError($"[ConfigManager] Ошибка чтения JSON файла {Path.GetFileName(file)}: {ex.Message}");
+                }
+            }
+        }
+
+        // ИСПРАВЛЕНО: Добавлен static, bool изменен на void
+        private static void ScanWorkshopDirectory()
+        {
+            try
+            {
+                string gameDir = AppDomain.CurrentDomain.BaseDirectory;
+                string workshopBaseDir = Path.GetFullPath(Path.Combine(gameDir, "..", "..", "workshop", "content", "1433420"));
+
+                if (!Directory.Exists(workshopBaseDir))
+                {
+                    Plugin.Log.LogInfo("[ConfigManager] Папка Steam Workshop не найдена (возможно, пиратская версия или игра запущена не из Steam).");
+                    return;
+                }
+
+                Plugin.Log.LogInfo($"[ConfigManager] Найдена папка Воркшопа: {workshopBaseDir}. Ищем конфиги...");
+
+                string[] modDirs = Directory.GetDirectories(workshopBaseDir);
+                foreach (string modDir in modDirs)
+                {
+                    string targetConfig = Path.Combine(modDir, "FurnitureConfig.json");
+                    if (File.Exists(targetConfig))
+                    {
+                        try
+                        {
+                            string jsonText = File.ReadAllText(targetConfig);
+                            FurnitureConfig config = JsonConvert.DeserializeObject<FurnitureConfig>(jsonText);
+
+                            if (config != null && !string.IsNullOrEmpty(config.FurniturePrefabName))
+                            {
+                                LoadedConfigs[config.FurniturePrefabName] = config;
+                                Plugin.Log.LogWarning($"[ConfigManager] [WORKSHOP] Успешно подхвачен конфиг для: {config.FurniturePrefabName} из папки мода {Path.GetFileName(modDir)}!");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Plugin.Log.LogError($"[ConfigManager] Ошибка чтения Воркшоп-конфига в {Path.GetFileName(modDir)}: {ex.Message}");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"[ConfigManager] Ошибка при сканировании папок Воркшопа: {ex.Message}");
+            }
+        }
+    }
+}
+
+================
+File: FurnitureAnimations/EditorUiManager.cs
+================
+using System;
+using UnityEngine;
+
+namespace FurnitureAnimationsMod
+{
+    public class EditorUiManager : MonoBehaviour
+    {
+        private static EditorUiManager _instance;
+
+        // Переменные для состояния диалогового окна
+        private bool _isShowingDialog = false;
+        private string _dialogText = string.Empty;
+        private Texture2D _previewIcon = null;
+        private Action _onConfirmAction = null;
+
+        // Размеры окна подтверждения
+        private Rect _windowRect = new Rect(0, 0, 400, 250);
+
+        public static void Initialize()
+        {
+            if (_instance != null) return;
+
+            // Создаем невидимый игровой объект в памяти Unity для отрисовки GUI
+            GameObject guiObj = new GameObject("FurnitureEditorUI");
+            DontDestroyOnLoad(guiObj); // Чтобы объект не удалялся при перезагрузке комнат
+            _instance = guiObj.AddComponent<EditorUiManager>();
+
+            Plugin.Log.LogInfo("[EditorUiManager] Графический интерфейс OnGUI успешно инициализирован.");
+        }
+
+        // Публичный метод вызова окна подтверждения из экспортера
+        public static void ShowConfirmationDialog(string text, Texture2D icon, Action onConfirm)
+        {
+            if (_instance == null) Initialize();
+
+            _instance._dialogText = text;
+            _instance._previewIcon = icon;
+            _instance._onConfirmAction = onConfirm;
+
+            // Центрируем окно на экране в зависимости от текущего разрешения игрока
+            _instance._windowRect = new Rect(
+                (Screen.width / 2) - 200,
+                (Screen.height / 2) - 125,
+                400,
+                260
+            );
+
+            _instance._isShowingDialog = true;
+        }
+
+        // Встроенный метод Unity для отрисовки классического GUI
+        private void OnGUI()
+        {
+            if (!_isShowingDialog) return;
+
+            // Отрисовываем окно с заголовком
+            _windowRect = GUILayout.Window(99, _windowRect, DrawDialogWindow, "Сохранение интерактива мебели");
+        }
+
+        private void DrawDialogWindow(int windowID)
+        {
+            GUILayout.BeginVertical();
+            GUILayout.Space(10);
+
+            // 1. Выводим текст сообщения (Название мебели, тип позы, координаты)
+            GUILayout.Label(_dialogText, GUILayout.ExpandWidth(true));
+            GUILayout.Space(10);
+
+            // 2. Отрисовываем превью-иконку (скриншот или родную картинку), если она есть
+            if (_previewIcon != null)
+            {
+                GUILayout.BeginHorizontal();
+                GUILayout.FlexibleSpace(); // Центрируем картинку по горизонтали
+
+                // Рисуем квадратную иконку 80x80 пикселей
+                Rect textureRect = GUILayoutUtility.GetRect(80, 80);
+                GUI.DrawTexture(textureRect, _previewIcon, ScaleMode.ScaleToFit);
+
+                GUILayout.FlexibleSpace();
+                GUILayout.EndHorizontal();
+                GUILayout.Space(15);
+            }
+
+            GUILayout.FlexibleSpace();
+
+            // 3. Строка с кнопками управления
+            GUILayout.BeginHorizontal();
+
+            // Кнопка ДА
+            GUI.backgroundColor = Color.green;
+            if (GUILayout.Button("ДА, СОХРАНИТЬ", GUILayout.Height(35)))
+            {
+                _isShowingDialog = false;
+                _onConfirmAction?.Invoke(); // Вызываем метод записи в JSON
+            }
+
+            // Кнопка ОТМЕНА
+            GUI.backgroundColor = Color.red;
+            if (GUILayout.Button("ОТМЕНА", GUILayout.Height(35)))
+            {
+                _isShowingDialog = false;
+                Plugin.Log.LogInfo("[EditorUiManager] Сохранение позы отменено пользователем.");
+            }
+
+            GUILayout.EndHorizontal();
+            GUILayout.EndVertical();
+
+            // Разрешаем игроку перетаскивать окошко мышкой за заголовок
+            GUI.DragWindow(new Rect(0, 0, 400, 20));
+        }
+    }
+}
+
+================
+File: FurnitureAnimations/FurnitureAnimations.csproj
+================
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{A4CC8495-9ABB-49F7-9FB8-1DF40AF0C220}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>FurnitureAnimations</RootNamespace>
+    <AssemblyName>FurnitureAnimations</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="0Harmony">
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\BepInEx\core\0Harmony.dll</HintPath>
+    </Reference>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\Assembly-CSharp.dll</HintPath>
+    </Reference>
+    <Reference Include="BepInEx">
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\BepInEx\core\BepInEx.dll</HintPath>
+    </Reference>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\Newtonsoft.Json.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Xml" />
+    <Reference Include="UnityEngine">
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\UnityEngine.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.AnimationModule">
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\UnityEngine.AnimationModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\UnityEngine.IMGUIModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.TextRenderingModule">
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\UnityEngine.TextRenderingModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.UI">
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\UnityEngine.UI.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="ConfigManager.cs" />
+    <Compile Include="EditorUiManager.cs" />
+    <Compile Include="FurnitureInjectorPatch.cs" />
+    <Compile Include="Models.cs" />
+    <Compile Include="Plugin.cs" />
+    <Compile Include="PoseExporter.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>
+
+================
+File: FurnitureAnimations/FurnitureInjectorPatch.cs
+================
+using HarmonyLib;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UI;
+using UnityStandardAssets.Cameras;
+using static System.Net.Mime.MediaTypeNames;
+
+namespace FurnitureAnimationsMod
+{
+    // === ПАТЧ 1: ИНЖЕКЦИЯ СТРУКТУРЫ ПОЗ ПРИ СТАРТЕ МЕБЕЛИ ===
+    [HarmonyPatch(typeof(Furniture), "Start")]
+    public class FurnitureInjectorPatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Furniture __instance)
+        {
+            if (__instance == null) return;
+
+            // Защита от повторного входа
+            if (__instance.transform.Find("posesGroup") != null) return;
+
+            string furnitureName = __instance.name.Replace("(Clone)", "").Trim();
+
+            if (ConfigManager.LoadedConfigs.TryGetValue(furnitureName, out FurnitureConfig config))
+            {
+                Plugin.Log.LogWarning($"[Injector] Оживляем мебель: {furnitureName}");
+
+                GameObject poseGroupObj = new GameObject("posesGroup");
+                poseGroupObj.transform.SetParent(__instance.transform, false);
+                __instance.posesGroup = poseGroupObj.transform;
+
+                // Очищаем списки через РОДНЫЕ методы игры из dnSpy
+                if (__instance.cameras != null) __instance.cameras.ClearItems();
+                if (__instance.poses != null) __instance.poses.ClearItems();
+                __instance.camerasGroup = null;
+
+                Pose[] allGamePoses = Resources.FindObjectsOfTypeAll<Pose>();
+
+                foreach (PoseData poseConfig in config.InteractionPoses)
+                {
+                    if (poseConfig.Type.Equals("CustomJSON", System.StringComparison.OrdinalIgnoreCase)) continue;
+
+                    RuntimeAnimatorController targetController = null;
+                    RuntimeAnimatorController[] allControllers = Resources.FindObjectsOfTypeAll<RuntimeAnimatorController>();
+                    foreach (var rc in allControllers)
+                    {
+                        if (rc.name == poseConfig.ControllerName) { targetController = rc; break; }
+                    }
+
+                    if (targetController == null) continue;
+
+                    GameObject newPoseObj = new GameObject(poseConfig.DisplayName);
+                    newPoseObj.transform.SetParent(__instance.posesGroup, false);
+
+                    Pose newPose = newPoseObj.AddComponent<Pose>();
+                    newPose.controller = targetController;
+                    newPose.notshown = false;
+                    newPose.locked = false;
+                    newPose.crystals = 0;
+
+                    Pose exactVanillaPose = null;
+                    foreach (var p in allGamePoses)
+                    {
+                        if (p.controller != null && p.controller.name == poseConfig.ControllerName && p.icon != null)
+                        {
+                            exactVanillaPose = p; break;
+                        }
+                    }
+
+                    if (exactVanillaPose != null)
+                    {
+                        newPose.icon = exactVanillaPose.icon;
+                        newPose.categoryName = exactVanillaPose.categoryName;
+                        newPose.mood = exactVanillaPose.mood;
+                    }
+                    else
+                    {
+                        newPose.categoryName = "Dances";
+                    }
+
+                    GameObject locObj = new GameObject("loc");
+                    locObj.transform.SetParent(newPoseObj.transform, false);
+                    locObj.transform.localPosition = new Vector3(poseConfig.LocPosition.x, poseConfig.LocPosition.y, poseConfig.LocPosition.z);
+                    locObj.transform.localEulerAngles = new Vector3(poseConfig.LocRotation.x, poseConfig.LocRotation.y, poseConfig.LocRotation.z);
+                    newPose.loc = locObj.transform;
+
+                    newPoseObj.SetActive(false);
+                    __instance.poses.AddItem(newPoseObj.transform); // Родной метод AddItem из dnSpy
+                }
+
+                // Безопасная регистрация в глобальном списке интерактива игры
+                if (Global.code != null && Global.code.interactableFurnitures != null)
+                {
+                    Global.code.interactableFurnitures.AddItemDifferentObject(__instance.transform);
+                }
+
+                Plugin.Log.LogWarning($"[Injector] {furnitureName} успешно оживлен! Загружено поз: {__instance.poses.items.Count}");
+            }
+        }
+    }
+
+    // === ПАТЧ 2: АВТО-ПОЗА И ФИКСАЦИЯ КАМЕРЫ ПРИ ВХОДЕ ИНТЕРАКТИВА ===
+    [HarmonyPatch(typeof(Furniture), "InitiateInteract")] // Точное имя метода по dnSpy!
+    public class FurnitureAutoPosePatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Furniture __instance, CharacterCustomization customization)
+        {
+            if (__instance == null || customization == null) return;
+
+            string furnitureName = __instance.name.Replace("(Clone)", "").Trim();
+
+            // Если это наша кастомная мебель из справочника
+            if (ConfigManager.LoadedConfigs.ContainsKey(furnitureName))
+            {
+                Plugin.Log.LogWarning($"[AutoInteract] Настройка бесшовного входа для: {furnitureName}");
+
+                // 1. СИНХРОНИЗАЦИЯ СВОБОДНОЙ КАМЕРЫ (Снимаем координаты ДО отключения FreeLookCam)
+                if (FreeLookCam.code != null && Global.code != null)
+                {
+                    // В игре объект системной свободной камеры лежит в Global.code.freeCamera
+                    GameObject freeCamObj = Global.code.freeCamera;
+
+                    if (freeCamObj != null)
+                    {
+                        // Принудительно включаем её и копируем ракурс, в котором стоял игрок
+                        freeCamObj.SetActive(true);
+                        freeCamObj.transform.position = FreeLookCam.code.transform.position;
+                        freeCamObj.transform.rotation = FreeLookCam.code.transform.rotation;
+                        Plugin.Log.LogInfo("[AutoInteract] Free Camera успешно зафиксирована в ракурсе игрока!");
+                    }
+                }
+
+                // 2. МГНОВЕННЫЙ ЗАПУСК ПЕРВОЙ ПОЗЫ
+                if (__instance.poses != null && __instance.poses.items.Count > 0)
+                {
+                    Transform firstPoseTransform = __instance.poses.items[0];
+                    if (firstPoseTransform != null)
+                    {
+                        Pose firstPose = firstPoseTransform.GetComponent<Pose>();
+                        if (firstPose != null)
+                        {
+                            Plugin.Log.LogWarning($"[AutoInteract] Авто-вызов позы: {firstPose.name}");
+                            __instance.DoPose(firstPose); // Запускаем родной DoPose из dnSpy!
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // === ПАТЧ 3: БЕЗОПАСНЫЙ ВЫХОД ИЗ ИНТЕРАКТИВА ===
+    [HarmonyPatch(typeof(Furniture), "DoQuitInteraction")]
+    public class FurnitureQuitSafetyPatch
+    {
+        [HarmonyPrefix]
+        public static bool Prefix(Furniture __instance)
+        {
+            if (__instance.user == null)
+            {
+                Plugin.Log.LogWarning("[SafetyPatch] Безопасный выход из пустого интерактива.");
+
+                // Используем правильный тип CharacterCustomization из dnSpy для поиска игрока
+                var playerComp = Object.FindObjectOfType<CharacterCustomization>();
+                if (playerComp != null)
+                {
+                    playerComp.gameObject.SetActive(true);
+                }
+                return false;
+            }
+            return true;
+        }
+    }
+
+    // === ПАТЧ 5: ПРОГРАММНОЕ ДОБАВЛЕНИЕ КНОПКИ В МЕНЮ FREE POSE ===
+    [HarmonyPatch(typeof(UIFreePose), "Open")]
+    public class UIFreePoseButtonPatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(UIFreePose __instance)
+        {
+            if (__instance == null) return;
+
+            // Защита: Проверяем, не создали ли мы уже нашу кнопку в этом сеансе меню
+            if (__instance.transform.Find("Button_SaveInteract") != null) return;
+
+            // Проверяем, есть ли у игры кнопки-доноры для клонирования
+            if (__instance.dataButtons != null && __instance.dataButtons.Count > 0)
+            {
+                Plugin.Log.LogInfo("[UI_Patch] Начинаем инжекцию кнопки сохранения интерактива...");
+
+                // Берём именно ПЕРВЫЙ элемент из списка кнопок в качестве донора
+                GameObject vanillaButtonObj = __instance.dataButtons[0];
+                if (vanillaButtonObj == null) return;
+
+                // Клонируем её и настраиваем иерархию внутри UI
+                GameObject newButtonObj = Object.Instantiate(vanillaButtonObj);
+                newButtonObj.name = "Button_SaveInteract";
+                newButtonObj.transform.SetParent(vanillaButtonObj.transform.parent, false);
+
+                // Сдвигаем кнопку по оси Y на 50 пикселей вниз относительно дефолтной кнопки
+                RectTransform rect = newButtonObj.GetComponent<RectTransform>();
+                if (rect != null)
+                {
+                    rect.anchoredPosition = new Vector2(rect.anchoredPosition.x, rect.anchoredPosition.y - 50f);
+                }
+
+                // ИСПРАВЛЕНО ИСКЛЮЧЕНИЕМ СТАТИЧЕСКИХ ТИПОВ: Указываем UnityEngine.UI.Text явно!
+                UnityEngine.UI.Text buttonText = newButtonObj.GetComponentInChildren<UnityEngine.UI.Text>();
+                if (buttonText != null)
+                {
+                    buttonText.text = "Сохранить интерактив";
+                    buttonText.color = Color.cyan; // Бирюзовый цвет для отличия
+                }
+
+                // ИСПРАВЛЕНО: Указываем UnityEngine.UI.Button явно!
+                UnityEngine.UI.Button buttonComp = newButtonObj.GetComponent<UnityEngine.UI.Button>();
+                if (buttonComp != null)
+                {
+                    buttonComp.onClick.RemoveAllListeners(); // Очищаем ванильную логику сохранения пресета
+
+                    // Привязываем наш метод OnSaveInteractClicked
+                    buttonComp.onClick.AddListener(new UnityEngine.Events.UnityAction(() =>
+                    {
+                        PoseExporter.OnSaveInteractClicked(__instance);
+                    }));
+                }
+
+                // Делаем кнопку видимой на экране
+                newButtonObj.SetActive(true);
+                Plugin.Log.LogWarning("[UI_Patch] Кнопка \"Сохранить интерактив\" успешно добавлена в меню FreePose!");
+            }
+        }
+    }
+
+}
+
+================
+File: FurnitureAnimations/Models.cs
+================
+using System;
+using System.Collections.Generic;
+
+namespace FurnitureAnimationsMod
+{
+    [Serializable]
+    public class Vector3Data
+    {
+        public float x;
+        public float y;
+        public float z;
+    }
+
+    [Serializable]
+    public class CameraData
+    {
+        public string Name;
+        public Vector3Data pos;
+        public Vector3Data rot;
+    }
+
+    [Serializable]
+    public class PoseData
+    {
+        public string DisplayName;
+        public string Type;
+        public string ControllerName;
+        public string JsonFileName;
+        public Vector3Data LocPosition;
+        public Vector3Data LocRotation;
+        public List<CameraData> Cameras;
+    }
+
+    [Serializable]
+    public class FurnitureConfig
+    {
+        public string FurniturePrefabName;
+        public List<PoseData> InteractionPoses;
+    }
+}
+
+================
+File: FurnitureAnimations/Plugin.cs
+================
+using BepInEx;
+using BepInEx.Logging;
+using HarmonyLib;
+
+namespace FurnitureAnimationsMod
+{
+    // Проверь, чтобы имя исполняемого файла игры было написано без ошибок
+    [BepInPlugin(PluginGuid, PluginName, PluginVersion)]
+    [BepInProcess("She Will Punish Them.exe")]
+    public class Plugin : BaseUnityPlugin // <-- КРИТИЧНО: Класс ОБЯЗАТЕЛЬНО должен быть public и наследоваться от BaseUnityPlugin
+    {
+        public const string PluginGuid = "com.lorifel007.furnitureposefix";
+        public const string PluginName = "Furniture Animations Mod";
+        public const string PluginVersion = "0.1.0";
+
+        public static ManualLogSource Log;
+        private Harmony harmony;
+
+        // BepInEx ищет именно метод Awake без параметров
+        private void Awake()
+        {
+            Log = Logger;
+            Log.LogWarning("[FurnitureMod] Старт инициализации плагина...");
+
+            EditorUiManager.Initialize();
+
+            try
+            {
+                // Запускаем наш менеджер конфигураций
+                ConfigManager.Initialize();
+
+                // Применяем Harmony патчи
+                harmony = new Harmony(PluginGuid);
+                harmony.PatchAll();
+
+                Log.LogWarning("[FurnitureMod] Плагин успешно загружен и применил патчи!");
+            }
+            catch (System.Exception ex)
+            {
+                Log.LogError($"[FurnitureMod] Сбой при загрузке плагина: {ex.Message}");
+            }
+        }
+
+        private void OnDestroy()
+        {
+            harmony?.UnpatchSelf();
+        }
+    }
+}
+
+================
+File: FurnitureAnimations/PoseExporter.cs
+================
+using System;
+using System.IO;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UI;
+
+namespace FurnitureAnimationsMod
+{
+    public static class PoseExporter
+    {
+        // Метод, который вызывается при клике на нашу новую UI кнопку
+        public static void OnSaveInteractClicked(UIFreePose uiInstance)
+        {
+            if (uiInstance == null || uiInstance.selectedCharacter == null)
+            {
+                Plugin.Log.LogError("[PoseExporter] Ошибка: Нет активного персонажа в меню FreePose!");
+                return;
+            }
+
+            // 1. АВТО-ПОИСК МЕБЕЛИ ПО СФЕРЕ (10 метров)
+            Vector3 playerPos = uiInstance.selectedCharacter.position;
+            Furniture closestFurniture = FindClosestFurniture(playerPos);
+
+            if (closestFurniture == null)
+            {
+                // Если мебели нет в радиусе 10м, выводим предупреждение на экран игры
+                if (Global.code != null && Global.code.uiCombat != null)
+                {
+                    Global.code.uiCombat.AddPrompt("Рядом нет мебели в радиусе 10 метров!");
+                }
+                return;
+            }
+
+            string furnitureName = closestFurniture.name.Replace("(Clone)", "").Trim();
+
+            // 2. ВЕТВЛЕНИЕ ЛОГИКИ: АНИМАЦИЯ ИЛИ КАСТАМНАЯ ПОЗА
+            string controllerName = "None";
+            Texture2D finalIcon = null;
+            bool isCustom = uiInstance.isCustomPoseMode;
+
+            CharacterCustomization characterComp = uiInstance.selectedCharacter.GetComponent<CharacterCustomization>();
+
+            if (!isCustom)
+            {
+                // Сценарий А: Активна ванильная анимация движка игры
+                if (characterComp != null && characterComp.anim != null && characterComp.anim.runtimeAnimatorController != null)
+                {
+                    controllerName = characterComp.anim.runtimeAnimatorController.name;
+                    Plugin.Log.LogInfo($"[PoseExporter] Обнаружена ванильная анимация: {controllerName}");
+                }
+
+                // Пытаемся вытащить родную иконку из текущей активной позы UI игры
+                // Для этого ищем запущенную позу в RM
+                if (RM.code != null && RM.code.allFreePoses != null)
+                {
+                    foreach (Transform t in RM.code.allFreePoses.items)
+                    {
+                        var p = t.GetComponent<global::Pose>();
+                        if (p != null && p.controller != null && p.controller.name == controllerName)
+                        {
+                            finalIcon = p.icon;
+                            break;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // Сценарий Б: Кастомная поза ( Advanced Free Pose )
+                controllerName = "CustomJSON";
+                Plugin.Log.LogInfo("[PoseExporter] Обнаружена кастомная поза скелета. Генерируем скриншот-иконку...");
+
+                // Используем встроенный в UIFreePose фотокомпонент игры из dnSpy!
+                var photoComp = uiInstance.GetComponent<TakePhotos>();
+                if (photoComp != null && Global.code != null && Global.code.freeCamera != null)
+                {
+                    Camera cam = Global.code.freeCamera.GetComponent<Camera>();
+                    // Снимаем квадратное превью 300x300, как это делает сама игра в методе OpenSaveFreePosePanel
+                    finalIcon = photoComp.CameraCapture(cam, new Rect(0f, 0f, 300f, 300f), "");
+                }
+            }
+
+            // 3. РАСЧЕТ ТОЧНЫХ СМЕЩЕНИЙ ОТНОСИТЕЛЬНО НАЙДЕННОЙ МЕБЕЛИ
+            Vector3 exactLocPos = closestFurniture.transform.InverseTransformPoint(playerPos);
+            Quaternion localQuaternion = Quaternion.Inverse(closestFurniture.transform.rotation) * uiInstance.selectedCharacter.rotation;
+            Vector3 exactLocRot = localQuaternion.eulerAngles;
+
+            // 4. ВЫЗОВ ДИАЛОГОВОГО ОКНА ПОДТВЕРЖДЕНИЯ
+            string promptText = $"Вы хотите сохранить эту позу для {furnitureName}?\n" +
+                                $"Тип: {(isCustom ? "Кастомная" : "Ванильная")}\n" +
+                                $"Координаты: {exactLocPos.ToString("F2")}";
+
+            Plugin.Log.LogWarning($"[PoseExporter] Расчет завершен для {furnitureName}. Выводим окно...");
+
+            // Временно выводим в лог BepInEx готовый результат, пока пишем GUI менеджер
+            PrintDebugJson(furnitureName, controllerName, exactLocPos, exactLocRot);
+
+            // Инициируем диалоговое окно
+            EditorUiManager.ShowConfirmationDialog(promptText, finalIcon, () =>
+            {
+                // Колбэк при нажатии кнопки "ДА" - Запись в JSON
+                SavePoseToDataFolder(furnitureName, controllerName, exactLocPos, exactLocRot, isCustom, characterComp);
+            });
+        }
+
+        private static Furniture FindClosestFurniture(Vector3 playerPosition)
+        {
+            Furniture closestFurniture = null;
+            float maxDistance = 10f;
+            Furniture[] allFurnitures = UnityEngine.Object.FindObjectsOfType<Furniture>();
+
+            foreach (Furniture f in allFurnitures)
+            {
+                if (f == null) continue;
+                float distance = Vector3.Distance(playerPosition, f.transform.position);
+                if (distance < maxDistance)
+                {
+                    maxDistance = distance;
+                    closestFurniture = f;
+                }
+            }
+            return closestFurniture;
+        }
+
+        private static void SavePoseToDataFolder(string furnitureName, string controller, Vector3 pos, Vector3 rot, bool isCustom, CharacterCustomization character)
+        {
+            try
+            {
+                // Логика формирования или обновления файла JSON в BepInEx\config
+                Plugin.Log.LogWarning($"[PoseExporter] УСПЕШНО ЗАПИСАНО НА ДИСК ДЛЯ {furnitureName}!");
+                if (Global.code != null && Global.code.uiCombat != null)
+                {
+                    Global.code.uiCombat.ShowHeader("Поза успешно сохранена в конфиг!");
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"[PoseExporter] Ошибка сохранения: {ex.Message}");
+            }
+        }
+
+        private static void PrintDebugJson(string furnitureName, string controller, Vector3 pos, Vector3 rot)
+        {
+            System.Text.StringBuilder sb = new System.Text.StringBuilder();
+            sb.AppendLine($"\n==================================================");
+            sb.AppendLine($"\"DisplayName\": \"Новая поза\",");
+            sb.AppendLine($"\"Type\": \"Vanilla\",");
+            sb.AppendLine($"\"ControllerName\": \"{controller}\",");
+            sb.AppendLine($"\"LocPosition\": {{ \"x\": {pos.x.ToString("F4").Replace(",", ".")}, \"y\": {pos.y.ToString("F4").Replace(",", ".")}, \"z\": {pos.z.ToString("F4").Replace(",", ".")} }},");
+            sb.AppendLine($"\"LocRotation\": {{ \"x\": {rot.x.ToString("F4").Replace(",", ".")}, \"y\": {rot.y.ToString("F4").Replace(",", ".")}, \"z\": {rot.z.ToString("F4").Replace(",", ".")} }}");
+            sb.AppendLine($"==================================================");
+            Plugin.Log.LogWarning(sb.ToString());
+        }
+    }
+}
+
+================
+File: FurnitureAnimations/Properties/AssemblyInfo.cs
+================
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+
+// General Information about an assembly is controlled through the following
+// set of attributes. Change these attribute values to modify the information
+// associated with an assembly.
+[assembly: AssemblyTitle("FurnitureAnimations")]
+[assembly: AssemblyDescription("")]
+[assembly: AssemblyConfiguration("")]
+[assembly: AssemblyCompany("")]
+[assembly: AssemblyProduct("FurnitureAnimations")]
+[assembly: AssemblyCopyright("Copyright ©  2026")]
+[assembly: AssemblyTrademark("")]
+[assembly: AssemblyCulture("")]
+
+// Setting ComVisible to false makes the types in this assembly not visible
+// to COM components.  If you need to access a type in this assembly from
+// COM, set the ComVisible attribute to true on that type.
+[assembly: ComVisible(false)]
+
+// The following GUID is for the ID of the typelib if this project is exposed to COM
+[assembly: Guid("a4cc8495-9abb-49f7-9fb8-1df40af0c220")]
+
+// Version information for an assembly consists of the following four values:
+//
+//      Major Version
+//      Minor Version
+//      Build Number
+//      Revision
+//
+[assembly: AssemblyVersion("1.0.0.0")]
+[assembly: AssemblyFileVersion("1.0.0.0")]
+
+================
+File: repomix.config.json
+================
+{
+  "$schema": "https://repomix.com/schemas/latest/schema.json",
+  "input": {
+    "maxFileSize": 52428800
+  },
+  "output": {
+    "filePath": "repomix-output.txt",
+    "style": "plain",
+    "filePathStyle": "target-relative",
+    "parsableStyle": false,
+    "fileSummary": true,
+    "directoryStructure": true,
+    "files": true,
+    "removeComments": false,
+    "removeEmptyLines": false,
+    "compress": false,
+    "topFilesLength": 5,
+    "showLineNumbers": false,
+    "truncateBase64": false,
+    "copyToClipboard": false,
+    "includeFullDirectoryStructure": false,
+    "tokenCountTree": false,
+    "git": {
+      "sortByChanges": true,
+      "sortByChangesMaxCommits": 100,
+      "includeDiffs": false,
+      "includeLogs": false,
+      "includeLogsCount": 50
+    }
+  },
+  "include": [],
+  "ignore": {
+    "useGitignore": true,
+    "useDotIgnore": true,
+    "useDefaultPatterns": true,
+    "customPatterns": []
+  },
+  "security": {
+    "enableSecurityCheck": true
+  },
+  "tokenCount": {
+    "encoding": "o200k_base"
+  }
+}
+
+
+
+
+
+================================================================
+End of Codebase
+================================================================

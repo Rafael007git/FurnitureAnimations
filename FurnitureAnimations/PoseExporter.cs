@@ -126,8 +126,72 @@ namespace FurnitureAnimationsMod
         {
             try
             {
-                // Логика формирования или обновления файла JSON в BepInEx\config
-                Plugin.Log.LogWarning($"[PoseExporter] УСПЕШНО ЗАПИСАНО НА ДИСК ДЛЯ {furnitureName}!");
+                // 1. Формируем пути к файлу конфигурации мебели
+                string fileName = $"{furnitureName}_Config.json";
+                string fullPath = Path.Combine(ConfigManager.PrefabsConfigPath, fileName);
+
+                FurnitureConfig configToSave;
+
+                // 2. Если файл уже существует, считываем его, чтобы не затереть старые позы
+                if (File.Exists(fullPath))
+                {
+                    Plugin.Log.LogInfo($"[PoseExporter] Файл конфигурации {fileName} найден. Читаем существующие позы...");
+                    string existingJson = File.ReadAllText(fullPath);
+                    configToSave = Newtonsoft.Json.JsonConvert.DeserializeObject<FurnitureConfig>(existingJson);
+
+                    if (configToSave == null) configToSave = new FurnitureConfig { FurniturePrefabName = furnitureName, InteractionPoses = new List<PoseData>() };
+                    if (configToSave.InteractionPoses == null) configToSave.InteractionPoses = new List<PoseData>();
+                }
+                else
+                {
+                    // Если файла нет, инициализируем новую чистую структуру
+                    Plugin.Log.LogInfo($"[PoseExporter] Создаем новый конфигурационный файл для: {furnitureName}");
+                    configToSave = new FurnitureConfig
+                    {
+                        FurniturePrefabName = furnitureName,
+                        InteractionPoses = new List<PoseData>()
+                    };
+                }
+
+                // 3. Формируем объект новой позы
+                string generatedPoseName = $"Интерактив — {DateTime.Now:dd.MM HH:mm:ss}";
+
+                PoseData newPoseData = new PoseData
+                {
+                    DisplayName = generatedPoseName,
+                    Type = "Vanilla",
+                    ControllerName = controller,
+                    JsonFileName = isCustom ? $"{furnitureName}_{DateTime.Now:yyyyMMdd_HHmmss}.json" : "",
+                    LocPosition = new Vector3Data { x = (float)Math.Round(pos.x, 4), y = (float)Math.Round(pos.y, 4), z = (float)Math.Round(pos.z, 4) },
+                    LocRotation = new Vector3Data { x = (float)Math.Round(rot.x, 4), y = (float)Math.Round(rot.y, 4), z = (float)Math.Round(rot.z, 4) },
+                    Cameras = new List<CameraData>() // Список камер оставляем пустым по нашей спецификации 0.1.0 Stable
+                };
+
+                // 4. Если Сценарий Б (Кастомная поза) — вызываем экспорт костей в отдельный файл
+                if (isCustom && character != null)
+                {
+                    string customAnimFileName = newPoseData.JsonFileName;
+                    string customAnimFullPath = Path.Combine(ConfigManager.CustomAnimsPath, customAnimFileName);
+
+                    // Запрашиваем экспорт иерархии костей (заглушка или вызов метода Диорамы)
+                    string bonesJson = ExportBonesToCustomJson(character);
+                    File.WriteAllText(customAnimFullPath, bonesJson);
+                    Plugin.Log.LogWarning($"[PoseExporter] Бинарный слепок скелета сохранен в: {customAnimFileName}");
+                }
+
+                // 5. Добавляем позу в общий список
+                configToSave.InteractionPoses.Add(newPoseData);
+
+                // 6. Сериализуем и перезаписываем файл конфигурации мебели на диск с красивыми отступами
+                string finalJson = Newtonsoft.Json.JsonConvert.SerializeObject(configToSave, Newtonsoft.Json.Formatting.Indented);
+                File.WriteAllText(fullPath, finalJson);
+
+                Plugin.Log.LogWarning($"[PoseExporter] УСПЕШНО ЗАПИСАНО НА ДИСК! Конфиг обновлен: {fullPath}");
+
+                // 7. Мгновенно обновляем рантайм-базу данных мода, чтобы поза сразу же появилась в игре без перезапуска!
+                ConfigManager.LoadedConfigs[furnitureName] = configToSave;
+
+                // Выводим красивую плашку в интерфейс самой игры
                 if (Global.code != null && Global.code.uiCombat != null)
                 {
                     Global.code.uiCombat.ShowHeader("Поза успешно сохранена в конфиг!");
@@ -135,10 +199,12 @@ namespace FurnitureAnimationsMod
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogError($"[PoseExporter] Ошибка сохранения: {ex.Message}");
+                Plugin.Log.LogError($"[PoseExporter] Критическая ошибка сохранения: {ex.Message}");
             }
         }
 
+
+        // === ВСПОМОГАТЕЛЬНЫЙ МЕТОД ДЛЯ ВЫВОДА В КОНСОЛЬ ===
         private static void PrintDebugJson(string furnitureName, string controller, Vector3 pos, Vector3 rot)
         {
             System.Text.StringBuilder sb = new System.Text.StringBuilder();
@@ -151,5 +217,94 @@ namespace FurnitureAnimationsMod
             sb.AppendLine($"==================================================");
             Plugin.Log.LogWarning(sb.ToString());
         }
-    }
-}
+
+        // === МЕТОД Г: ЭКСПОРТ КОСТЕЙ И ОГОНЬКОВ ПО СПРАВОЧНИКУ ДИОРАМЫ ===
+        public static string ExportBonesToCustomJson(CharacterCustomization user)
+        {
+            if (user == null) return "{}";
+
+            Plugin.Log.LogInfo("[PoseExporter] Запуск запекания скелета по справочнику DioramaConstants...");
+
+            try
+            {
+                var bakedPoseData = new Dictionary<string, object>();
+
+                Transform FindChildRecursive(Transform parent, string name)
+                {
+                    if (parent.name == name) return parent;
+                    for (int i = 0; i < parent.childCount; i++)
+                    {
+                        Transform found = FindChildRecursive(parent.GetChild(i), name);
+                        if (found != null) return found;
+                    }
+                    return null;
+                }
+
+                foreach (string targetName in DioramaConstants.AnatomyBoneRegistry)
+                {
+                    Transform element = FindChildRecursive(user.transform, targetName);
+                    if (element == null) continue;
+
+                    Light lightComponent = element.GetComponent<Light>();
+                    if (lightComponent != null)
+                    {
+                        bakedPoseData[targetName] = new
+                        {
+                            type = "Light",
+                            enabled = lightComponent.enabled,
+                            intensity = lightComponent.intensity,
+                            range = lightComponent.range,
+                            pos = new { x = (float)System.Math.Round(element.localPosition.x, 4), y = (float)System.Math.Round(element.localPosition.y, 4), z = (float)System.Math.Round(element.localPosition.z, 4) },
+                            color = new { r = lightComponent.color.r, g = lightComponent.color.g, b = lightComponent.color.b }
+                        };
+                        continue;
+                    }
+
+                    if (DioramaConstants.PositionalObjectsRegistry.Contains(targetName))
+                    {
+                        bakedPoseData[targetName] = new
+                        {
+                            type = "Bone",
+                            rot = new
+                            {
+                                x = (float)System.Math.Round(element.localEulerAngles.x, 4),
+                                y = (float)System.Math.Round(element.localEulerAngles.y, 4),
+                                z = (float)System.Math.Round(element.localEulerAngles.z, 4)
+                            },
+                            pos = new
+                            {
+                                x = (float)System.Math.Round(element.localPosition.x, 4),
+                                y = (float)System.Math.Round(element.localPosition.y, 4),
+                                z = (float)System.Math.Round(element.localPosition.z, 4)
+                            }
+                        };
+                    }
+                    else
+                    {
+                        bakedPoseData[targetName] = new
+                        {
+                            type = "Bone",
+                            rot = new
+                            {
+                                x = (float)System.Math.Round(element.localEulerAngles.x, 4),
+                                y = (float)System.Math.Round(element.localEulerAngles.y, 4),
+                                z = (float)System.Math.Round(element.localEulerAngles.z, 4)
+                            }
+                        };
+                    }
+                }
+
+                string jsonResult = Newtonsoft.Json.JsonConvert.SerializeObject(bakedPoseData, Newtonsoft.Json.Formatting.Indented);
+                Plugin.Log.LogWarning($"[PoseExporter] Скелет успешно запечен! Обработано элементов: {bakedPoseData.Count}");
+
+                return jsonResult;
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"[PoseExporter] Критическая ошибка запекания справочника: {ex.Message}");
+                return "{}";
+            }
+        }
+    } // Конец класса PoseExporter
+} // Конец пространства имен FurnitureAnimationsMod
+
