@@ -172,6 +172,8 @@ namespace FurnitureAnimationsMod
         }
     }
 
+
+    // === ПАТЧ 5: ПРОГРАММНОЕ ДОБАВЛЕНИЕ КНОПКИ В МЕНЮ FREE POSE К КНОПКЕ SAVE POSE ===
     [HarmonyPatch(typeof(UIFreePose), "Refresh")]
     public class UIFreePoseButtonPatch
     {
@@ -180,25 +182,49 @@ namespace FurnitureAnimationsMod
         {
             if (__instance == null) return;
 
-            Transform freePoseBtnTrans = __instance.transform.Find("FreePose");
-            if (freePoseBtnTrans == null) return;
+            // Локальная функция для глубокого рекурсивного поиска дочерних объектов по имени
+            Transform FindRecursive(Transform parent, string name)
+            {
+                if (parent.name == name) return parent;
+                for (int i = 0; i < parent.childCount; i++)
+                {
+                    Transform found = FindRecursive(parent.GetChild(i), name);
+                    if (found != null) return found;
+                }
+                return null;
+            }
 
-            // Ищем нашу кнопку на родителе, чтобы не спавнить дубликаты
-            Transform existingBtn = freePoseBtnTrans.parent.Find("Button_SaveInteract");
+            // Ищем оригинальную кнопку "SavePose" в правом нижнем углу экрана
+            Transform savePoseBtnTrans = FindRecursive(__instance.transform, "SavePose");
+            if (savePoseBtnTrans == null)
+            {
+                Plugin.Log.LogError("[UI_Patch] Критическая ошибка: Не найдена кнопка-донор 'SavePose' на экране FreePose!");
+                return;
+            }
+
+            // Защита от дублирования кнопок при обновлении интерфейса игры
+            Transform existingBtn = savePoseBtnTrans.parent.Find("Button_SaveInteract");
             if (existingBtn != null) return;
 
-            Plugin.Log.LogWarning("[UI_Patch] Инжекция кнопки 'Сохранить интерактив' в конец списка...");
+            Plugin.Log.LogWarning("[UI_Patch] Найдена кнопка SavePose. Инжектируем бирюзовую кнопку SDK мода...");
 
-            GameObject newButtonObj = Object.Instantiate(freePoseBtnTrans.gameObject, freePoseBtnTrans.parent);
+            // 1. Клонируем объект кнопки "SavePose" со всеми её стилями
+            GameObject newButtonObj = Object.Instantiate(savePoseBtnTrans.gameObject, savePoseBtnTrans.parent);
             newButtonObj.name = "Button_SaveInteract";
 
-            // КРИТИЧЕСКИЙ ФИКС БАГА 1: Отправляем кнопку в самый конец списка UI!
-            // Компоненты VerticalLayoutGroup игры сами распределят отступы, и наложений не будет.
-            newButtonObj.transform.SetAsLastSibling();
+            // 2. Позиционируем кнопку: сдвигаем на 55 пикселей ВВЕРХ по оси Y относительно SavePose,
+            // чтобы они встали красивым аккуратным столбиком в правом нижнем углу!
+            RectTransform rect = newButtonObj.GetComponent<RectTransform>();
+            if (rect != null)
+            {
+                rect.anchoredPosition = new Vector2(rect.anchoredPosition.x, rect.anchoredPosition.y + 55f);
+            }
 
+            // 3. Уничтожаем ванильные скрипты локализации игры, чтобы они не затерли наш текст
             LocalizationText locText = newButtonObj.GetComponentInChildren<LocalizationText>();
             if (locText != null) Object.Destroy(locText);
 
+            // 4. Меняем текст и подсвечиваем его бирюзовым цветом SDK
             UnityEngine.UI.Text buttonText = newButtonObj.GetComponentInChildren<UnityEngine.UI.Text>();
             if (buttonText != null)
             {
@@ -206,19 +232,22 @@ namespace FurnitureAnimationsMod
                 buttonText.color = Color.cyan;
             }
 
+            // 5. Очищаем старые листенеры и вешаем наш метод экспорта
             UnityEngine.UI.Button buttonComp = newButtonObj.GetComponent<UnityEngine.UI.Button>();
             if (buttonComp != null)
             {
                 buttonComp.onClick.RemoveAllListeners();
                 buttonComp.onClick.AddListener(new UnityEngine.Events.UnityAction(() =>
                 {
+                    Plugin.Log.LogWarning("[UI_Patch] Клик по кнопке 'Сохранить интерактив' зафиксирован!");
                     PoseExporter.OnSaveInteractClicked(__instance);
                 }));
             }
 
+            // Включаем кнопку
             newButtonObj.SetActive(true);
+            Plugin.Log.LogWarning("[UI_Patch] Кнопка 'Сохранить интерактив' успешно размещена в правом нижнем углу!");
         }
     }
-
 
 }

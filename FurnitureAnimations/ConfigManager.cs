@@ -1,132 +1,73 @@
 ﻿using System;
 using System.IO;
 using System.Collections.Generic;
-using BepInEx;
-using Newtonsoft.Json;
+using UnityEngine;
 
 namespace FurnitureAnimationsMod
 {
     public static class ConfigManager
     {
-        // Пути к локальным папкам в BepInEx\config
-        public static string BaseDataPath { get; private set; }
+        // Глобальные пути, перенесенные внутрь папки плагина в plugins!
+        public static string PluginDirectory { get; private set; }
         public static string PrefabsConfigPath { get; private set; }
         public static string CustomAnimsPath { get; private set; }
+        public static string IconsPath { get; private set; }
 
-        // Глобальная база данных: Ключ = GUID префаба, Значение = данные инжектора
         public static Dictionary<string, FurnitureConfig> LoadedConfigs = new Dictionary<string, FurnitureConfig>(StringComparer.OrdinalIgnoreCase);
 
         public static void Initialize()
         {
             try
             {
-                // Безопасный способ получить путь к папке BepInEx\config без использования класса Paths
-                string gameDir = AppDomain.CurrentDomain.BaseDirectory;
-                BaseDataPath = Path.GetFullPath(Path.Combine(gameDir, "BepInEx", "config", "FurnitureAnimationsData"));
+                // 1. Автоматически определяем, где лежит наша скомпилированная .dll
+                string dllPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+                PluginDirectory = Path.GetDirectoryName(dllPath);
 
-                PrefabsConfigPath = Path.Combine(BaseDataPath, "FurnitureConfigs");
-                CustomAnimsPath = Path.Combine(BaseDataPath, "CustomAnimations");
+                // 2. Формируем чистую структуру локальных папок мода
+                PrefabsConfigPath = Path.Combine(PluginDirectory, "FurnitureConfigs");
+                CustomAnimsPath = Path.Combine(PluginDirectory, "CustomAnimations");
+                IconsPath = Path.Combine(PluginDirectory, "Icons");
 
-                // Проверяем и создаем структуру папок, если её нет
-                if (!Directory.Exists(BaseDataPath)) Directory.CreateDirectory(BaseDataPath);
+                // 3. Создаем директории на диске, если их еще нет
                 if (!Directory.Exists(PrefabsConfigPath)) Directory.CreateDirectory(PrefabsConfigPath);
                 if (!Directory.Exists(CustomAnimsPath)) Directory.CreateDirectory(CustomAnimsPath);
+                if (!Directory.Exists(IconsPath)) Directory.CreateDirectory(IconsPath);
 
-                Plugin.Log.LogInfo("[ConfigManager] Структура папок в BepInEx\\config успешно проверена/создана.");
+                Plugin.Log.LogInfo($"[ConfigManager] Базовая директория мода установлена: {PluginDirectory}");
 
-                // Запускаем полное сканирование
-                ReloadAllConfigs();
+                // 4. Запускаем сканирование папки с конфигами мебели
+                LoadAllConfigs();
             }
             catch (Exception ex)
             {
-                // Используем стандартный вывод Unity, если логгер BepInEx еще не готов
-                UnityEngine.Debug.LogError($"[ConfigManager] Критическая ошибка инициализации: {ex.Message}");
+                Plugin.Log.LogError($"[ConfigManager] Критическая ошибка инициализации путей: {ex.Message}");
             }
         }
 
-        public static void ReloadAllConfigs()
+        private static void LoadAllConfigs()
         {
             LoadedConfigs.Clear();
+            string[] files = Directory.GetFiles(PrefabsConfigPath, "*_Config.json");
 
-            // 1. Сканируем локальную папку BepInEx\config\...\FurnitureConfigs
-            ScanDirectoryForConfigs(PrefabsConfigPath);
-
-            // 2. Сканируем папки Steam Workshop
-            ScanWorkshopDirectory();
-
-            Plugin.Log.LogWarning($"[ConfigManager] Сканирование завершено. Успешно загружено справочников мебели: {LoadedConfigs.Count}");
-        }
-
-        // ИСПРАВЛЕНО: Добавлен static, bool изменен на void
-        private static void ScanDirectoryForConfigs(string directoryPath)
-        {
-            if (!Directory.Exists(directoryPath)) return;
-
-            string[] jsonFiles = Directory.GetFiles(directoryPath, "*.json", SearchOption.AllDirectories);
-            foreach (string file in jsonFiles)
+            foreach (string file in files)
             {
                 try
                 {
-                    string jsonText = File.ReadAllText(file);
-                    FurnitureConfig config = JsonConvert.DeserializeObject<FurnitureConfig>(jsonText);
+                    string jsonContent = File.ReadAllText(file);
+                    FurnitureConfig config = Newtonsoft.Json.JsonConvert.DeserializeObject<FurnitureConfig>(jsonContent);
 
                     if (config != null && !string.IsNullOrEmpty(config.FurniturePrefabName))
                     {
                         LoadedConfigs[config.FurniturePrefabName] = config;
-                        Plugin.Log.LogInfo($"[ConfigManager] Загружен локальный конфиг для префаба: {config.FurniturePrefabName} (Файл: {Path.GetFileName(file)})");
+                        Plugin.Log.LogInfo($"[ConfigManager] Успешно загружен рантайм-конфиг мебели: {config.FurniturePrefabName} ({config.InteractionPoses?.Count ?? 0} поз)");
                     }
                 }
                 catch (Exception ex)
                 {
-                    Plugin.Log.LogError($"[ConfigManager] Ошибка чтения JSON файла {Path.GetFileName(file)}: {ex.Message}");
+                    Plugin.Log.LogError($"[ConfigManager] Ошибка чтения файла {Path.GetFileName(file)}: {ex.Message}");
                 }
             }
-        }
-
-        // ИСПРАВЛЕНО: Добавлен static, bool изменен на void
-        private static void ScanWorkshopDirectory()
-        {
-            try
-            {
-                string gameDir = AppDomain.CurrentDomain.BaseDirectory;
-                string workshopBaseDir = Path.GetFullPath(Path.Combine(gameDir, "..", "..", "workshop", "content", "1433420"));
-
-                if (!Directory.Exists(workshopBaseDir))
-                {
-                    Plugin.Log.LogInfo("[ConfigManager] Папка Steam Workshop не найдена (возможно, пиратская версия или игра запущена не из Steam).");
-                    return;
-                }
-
-                Plugin.Log.LogInfo($"[ConfigManager] Найдена папка Воркшопа: {workshopBaseDir}. Ищем конфиги...");
-
-                string[] modDirs = Directory.GetDirectories(workshopBaseDir);
-                foreach (string modDir in modDirs)
-                {
-                    string targetConfig = Path.Combine(modDir, "FurnitureConfig.json");
-                    if (File.Exists(targetConfig))
-                    {
-                        try
-                        {
-                            string jsonText = File.ReadAllText(targetConfig);
-                            FurnitureConfig config = JsonConvert.DeserializeObject<FurnitureConfig>(jsonText);
-
-                            if (config != null && !string.IsNullOrEmpty(config.FurniturePrefabName))
-                            {
-                                LoadedConfigs[config.FurniturePrefabName] = config;
-                                Plugin.Log.LogWarning($"[ConfigManager] [WORKSHOP] Успешно подхвачен конфиг для: {config.FurniturePrefabName} из папки мода {Path.GetFileName(modDir)}!");
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Plugin.Log.LogError($"[ConfigManager] Ошибка чтения Воркшоп-конфига в {Path.GetFileName(modDir)}: {ex.Message}");
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Plugin.Log.LogError($"[ConfigManager] Ошибка при сканировании папок Воркшопа: {ex.Message}");
-            }
+            Plugin.Log.LogWarning($"[ConfigManager] Всего проиндексировано префабов мебели в памяти: {LoadedConfigs.Count}");
         }
     }
 }

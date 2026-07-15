@@ -8,7 +8,7 @@ namespace FurnitureAnimationsMod
 {
     public static class PoseExporter
     {
-        private static Texture2D _lastCapturedIcon = null; // Временное хранение текстуры для колбэка
+        private static Texture2D _lastCapturedIcon = null;
 
         public static void OnSaveInteractClicked(UIFreePose uiInstance)
         {
@@ -30,11 +30,8 @@ namespace FurnitureAnimationsMod
             string controllerName = "None";
             _lastCapturedIcon = null;
 
-            // КРИТИЧЕСКИЙ ФИКС БАГА 2: Умное распознавание типа позы
-            // Проверяем, работает ли сейчас аниматор и загружен ли в него контроллер позы
+            // Умное распознавание типа позы
             bool hasActiveAnimator = characterComp != null && characterComp.anim != null && characterComp.anim.runtimeAnimatorController != null;
-
-            // Если аниматор работает и имя контроллера не пустое — это ПРЕДУСТАНОВЛЕННАЯ поза (Сценарий А)
             bool isPresetPose = hasActiveAnimator && !string.IsNullOrEmpty(characterComp.anim.runtimeAnimatorController.name) && characterComp.anim.runtimeAnimatorController.name != "CustomJSON";
 
             if (isPresetPose)
@@ -58,9 +55,9 @@ namespace FurnitureAnimationsMod
             }
             else
             {
-                // Сценарий Б: Кости выкручены вручную (Полностью кастомная поза)
+                // Сценарий Б: Полностью кастомная поза скелета
                 controllerName = "CustomJSON";
-                Plugin.Log.LogInfo("[PoseExporter] Распознана полностью ручная поза. Делаем снимок...");
+                Plugin.Log.LogInfo("[PoseExporter] Распознана полностью ручная поза. Делаем снимок экрана...");
 
                 var photoComp = uiInstance.GetComponent<TakePhotos>();
                 if (photoComp != null && Global.code != null && Global.code.freeCamera != null)
@@ -70,19 +67,16 @@ namespace FurnitureAnimationsMod
                 }
             }
 
-            // Расчет смещений
             Vector3 exactLocPos = closestFurniture.transform.InverseTransformPoint(playerPos);
             Quaternion localQuaternion = Quaternion.Inverse(closestFurniture.transform.rotation) * uiInstance.selectedCharacter.rotation;
             Vector3 exactLocRot = localQuaternion.eulerAngles;
 
             string promptText = $"Вы хотите сохранить эту позу для {furnitureName}?\n" +
-                                $"Тип: {(!isPresetPose ? "Кастомная" : "Предустановленная")}\n" +
+                                $"Тип: {(isPresetPose ? "Предустановленная" : "Кастомная")}\n" +
                                 $"Контроллер: {controllerName}";
 
-            // Вызываем окно подтверждения
             EditorUiManager.ShowConfirmationDialog(promptText, _lastCapturedIcon, () =>
             {
-                // При нажатии "ДА" передаем управление на запись файлов
                 SavePoseToDataFolder(furnitureName, controllerName, exactLocPos, exactLocRot, !isPresetPose, characterComp);
             });
         }
@@ -109,6 +103,7 @@ namespace FurnitureAnimationsMod
 
                 if (configToSave.InteractionPoses == null) configToSave.InteractionPoses = new List<PoseData>();
 
+                // Исправлено: Красивое имя в списке
                 string generatedPoseName = isCustom ? $"Кастомная — {DateTime.Now:dd.MM HH:mm}" : $"Анимация — {controller}";
                 string customAnimFileName = isCustom ? $"{furnitureName}_{timestamp}.json" : "";
 
@@ -131,27 +126,32 @@ namespace FurnitureAnimationsMod
                     File.WriteAllText(customAnimFullPath, bonesJson);
                 }
 
-                // КРИТИЧЕСКИЙ ФИКС БАГА 3: ФИЗИЧЕСКОЕ СОХРАНЕНИЕ ИКОНКИ НА ДИСК КАК .PNG
+                // ИСПРАВЛЕНО: ЧИСТОЕ СОХРАНЕНИЕ ИКОНКИ В НАШУ НОВУЮ ИМЕННУЮ ПАПКУ ICONS
                 if (_lastCapturedIcon != null)
                 {
-                    // 1. Создаем подпапку Icons прямо внутри нашего базового пути конфигов мебели
-                    string iconsDirectory = Path.Combine(ConfigManager.PrefabsConfigPath, "Icons");
-                    if (!Directory.Exists(iconsDirectory))
+                    string iconName = isCustom ? $"{furnitureName}_{timestamp}.png" : $"{controller}.png";
+                    string iconFullPath = Path.Combine(ConfigManager.IconsPath, iconName); // Используем наш новый IconsPath!
+
+                    bool canWriteTexture = true;
+                    try
                     {
-                        Directory.CreateDirectory(iconsDirectory);
+                        _lastCapturedIcon.GetPixels();
+                    }
+                    catch (Exception)
+                    {
+                        canWriteTexture = false;
+                        Plugin.Log.LogInfo($"[PoseExporter] Текстура '{_lastCapturedIcon.name}' защищена от чтения. Пропускаем физическую запись PNG, игра подтянет её из памяти.");
                     }
 
-                    // 2. Формируем имя картинки в зависимости от типа позы
-                    string iconName = isCustom ? $"{furnitureName}_{timestamp}.png" : $"{controller}.png";
-                    string iconFullPath = Path.Combine(iconsDirectory, iconName);
-
-                    // 3. ИСПРАВЛЕНО ДЛЯ СТАРЫХ UNITY: Вызываем EncodeToPNG через ImageConversion
-                    byte[] pngBytes = UnityEngine.ImageConversion.EncodeToPNG(_lastCapturedIcon);
-
-                    File.WriteAllBytes(iconFullPath, pngBytes);
-                    Plugin.Log.LogWarning($"[PoseExporter] Иконка успешно сохранена на диск: {iconFullPath}");
+                    if (canWriteTexture)
+                    {
+                        byte[] pngBytes = UnityEngine.ImageConversion.EncodeToPNG(_lastCapturedIcon);
+                        File.WriteAllBytes(iconFullPath, pngBytes);
+                        Plugin.Log.LogWarning($"[PoseExporter] Кастомная иконка успешно сохранена: {iconFullPath}");
+                    }
                 }
 
+                // Теперь сохранение гарантированно ДОЙДЕТ до конца списка без краша!
                 configToSave.InteractionPoses.Add(newPoseData);
                 string finalJson = Newtonsoft.Json.JsonConvert.SerializeObject(configToSave, Newtonsoft.Json.Formatting.Indented);
                 File.WriteAllText(fullPath, finalJson);
@@ -163,7 +163,7 @@ namespace FurnitureAnimationsMod
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogError($"[PoseExporter] Ошибка записи: {ex.Message}");
+                Plugin.Log.LogError($"[PoseExporter] Критическая ошибка записи: {ex.Message}");
             }
         }
 
@@ -187,8 +187,11 @@ namespace FurnitureAnimationsMod
             try
             {
                 var bakedPoseData = new Dictionary<string, object>();
+
+                // Локальная функция поиска дочерних объектов
                 Transform FindChildRecursive(Transform parent, string name)
                 {
+                    if (parent == null) return null;
                     if (parent.name == name) return parent;
                     for (int i = 0; i < parent.childCount; i++)
                     {
@@ -196,8 +199,9 @@ namespace FurnitureAnimationsMod
                         if (found != null) return found;
                     }
                     return null;
-                }
+                } // <--- ЗДЕСЬ ФУНКЦИЯ ПОИСКА ПРАВИЛЬНО ЗАКРЫВАЕТСЯ!
 
+                // Пробегаемся строго по нашему эталонному списку имен из реестра Диорамы
                 foreach (string targetName in DioramaConstants.AnatomyBoneRegistry)
                 {
                     Transform element = FindChildRecursive(user.transform, targetName);
@@ -218,10 +222,8 @@ namespace FurnitureAnimationsMod
                         continue;
                     }
 
-                    // Сбор данных для обычной кости скелета (ИСПРАВЛЕНО НА IF/ELSE ДЛЯ ЧИСТОЙ КОМПИЛЯЦИИ)
                     if (DioramaConstants.PositionalObjectsRegistry.Contains(targetName))
                     {
-                        // Если кость находится в Positional-реестре (например, 'hip'), ОБЯЗАТЕЛЬНО запекаем и поворот, и смещение!
                         bakedPoseData[targetName] = new
                         {
                             type = "Bone",
@@ -231,7 +233,6 @@ namespace FurnitureAnimationsMod
                     }
                     else
                     {
-                        // Для остальных костей запекаем только чистый локальный поворот
                         bakedPoseData[targetName] = new
                         {
                             type = "Bone",
@@ -239,6 +240,8 @@ namespace FurnitureAnimationsMod
                         };
                     }
                 }
+
+                // Теперь этот return честно возвращает JSON из самого метода ExportBonesToCustomJson!
                 return Newtonsoft.Json.JsonConvert.SerializeObject(bakedPoseData, Newtonsoft.Json.Formatting.Indented);
             }
             catch (Exception ex)
@@ -246,6 +249,10 @@ namespace FurnitureAnimationsMod
                 Plugin.Log.LogError($"[BonesBake] Ошибка: {ex.Message}");
                 return "{}";
             }
+
+            return "{}";
         }
+
     }
 }
+
