@@ -173,7 +173,7 @@ namespace FurnitureAnimationsMod
     }
 
 
-    // === ПАТЧ 5: ПРОГРАММНОЕ ДОБАВЛЕНИЕ КНОПКИ В МЕНЮ FREE POSE ===
+    // === ПАТЧ 5: ПРОГРАММНОЕ ДОБАВЛЕНИЕ КНОПКИ В МЕНЮ FREE POSE С ФИКСИРОВАННЫМИ КООРДИНАТАМИ ===
     [HarmonyPatch(typeof(UIFreePose), "Refresh")]
     public class UIFreePoseButtonPatch
     {
@@ -182,61 +182,75 @@ namespace FurnitureAnimationsMod
         {
             if (__instance == null) return;
 
-            // Ищем оригинальную кнопку "FreePose" на левой панели в качестве донора
-            Transform freePoseBtnTrans = __instance.transform.Find("FreePose");
-            if (freePoseBtnTrans == null) return;
-
-            // Защита от дублирования кнопок при частых обновлениях интерфейса Refresh()
-            Transform existingBtn = freePoseBtnTrans.parent.Find("Button_SaveInteract");
+            // Защита от дублирования кнопок при обновлении интерфейса
+            Transform existingBtn = __instance.transform.Find("Button_SaveInteract");
             if (existingBtn != null) return;
 
-            Plugin.Log.LogWarning("[UI_Patch] Инжектируем стабильную кнопку 'Сохранить интерактив' на левую панель...");
+            Plugin.Log.LogWarning("[UI_Patch] Сборка автономной кнопки SDK 'Сохранить интерактив'...");
 
-            // Клонируем кнопку строго на её родную панель-родитель (freePoseBtnTrans.parent)
-            GameObject newButtonObj = Object.Instantiate(freePoseBtnTrans.gameObject, freePoseBtnTrans.parent);
+            // 1. Ищем любую кнопку на сцене (например, "FreePose"), чтобы скопировать её базовые компоненты (Image, Button)
+            Transform templateBtn = __instance.transform.Find("FreePose");
+            if (templateBtn == null)
+            {
+                // Подстраховка: берем самую первую попавшуюся кнопку в интерфейсе окна
+                templateBtn = __instance.GetComponentInChildren<UnityEngine.UI.Button>()?.transform;
+            }
+
+            if (templateBtn == null) return;
+
+            // 2. Создаем чистый клон кнопки-шаблона, но родителем делаем КОРЕНЬ всего окна (__instance.transform)
+            // Это гарантирует, что кнопка будет на экране ВСЕГДА и соседние моды её не удалят!
+            GameObject newButtonObj = Object.Instantiate(templateBtn.gameObject, __instance.transform);
             newButtonObj.name = "Button_SaveInteract";
 
-            // СБРОС МАСШТАБА: Возвращаем нормальный размер кнопки, полностью побеждая баг раздувания!
+            // КРИТИЧЕСКИЙ ФИКС БАГА РАЗДУВАНИЯ: Жестко сбрасываем масштаб клона в чистую единицу!
+            // Теперь кнопка примет идеальные, аккуратные пропорции нормы.
             newButtonObj.transform.localScale = Vector3.one;
 
-            // Настраиваем положение кнопки на UI панели
+            // 3. Выставляем фиксированные координаты в правом нижнем углу экрана
             RectTransform rect = newButtonObj.GetComponent<RectTransform>();
             if (rect != null)
             {
-                // Сдвигаем нашу кнопку по оси Y на 60 пикселей ВВЕРХ относительно кнопки FreePose,
-                // чтобы она встала в самый верх левой панели и была видна СРАЗУ при открытии меню!
-                rect.anchoredPosition = new Vector2(rect.anchoredPosition.x, rect.anchoredPosition.y + 60f);
+                // Прижимаем якоря (Anchors) к правому нижнему углу экрана (x=1, y=0)
+                rect.anchorMin = new Vector2(1f, 0f);
+                rect.anchorMax = new Vector2(1f, 0f);
+                rect.pivot = new Vector2(1f, 0f);
+
+                // Выставляем точную позицию: 40 пикселей от правого края, 230 пикселей от низа экрана
+                // Она гарантированно встанет в свободную и пустую зону правого нижнего угла!
+                rect.anchoredPosition = new Vector2(-40f, 230f);
+                rect.sizeDelta = new Vector2(180f, 40f); // Красивый стандартный размер кнопки
             }
 
-            // Стираем ванильные скрипты локализации игры, чтобы они не затерли наш кастомный текст
+            // 4. Стираем ванильные скрипты локализации игры
             LocalizationText locText = newButtonObj.GetComponentInChildren<LocalizationText>();
             if (locText != null) Object.Destroy(locText);
 
-            // Меняем текст на кнопке на наш кастомный бирюзовый
+            // 5. Настраиваем текст бирюзового цвета SDK
             UnityEngine.UI.Text buttonText = newButtonObj.GetComponentInChildren<UnityEngine.UI.Text>();
             if (buttonText != null)
             {
                 buttonText.text = "Сохранить интерактив";
                 buttonText.color = Color.cyan;
+                buttonText.fontSize = 14;
+                buttonText.alignment = TextAnchor.MiddleCenter;
             }
 
-            // Полностью очищаем старые ивенты клика и привязываем наш PoseExporter
+            // 6. Очищаем листенеры шаблона и вешаем наш метод экспорта интерактива
             UnityEngine.UI.Button buttonComp = newButtonObj.GetComponent<UnityEngine.UI.Button>();
             if (buttonComp != null)
             {
                 buttonComp.onClick.RemoveAllListeners();
                 buttonComp.onClick.AddListener(new UnityEngine.Events.UnityAction(() =>
                 {
-                    Plugin.Log.LogWarning("[UI_Patch] Клик по кнопке 'Сохранить интерактив' зафиксирован!");
+                    Plugin.Log.LogWarning("[UI_Patch] Клик по автономной кнопке 'Сохранить интерактив' зафиксирован!");
                     PoseExporter.OnSaveInteractClicked(__instance);
                 }));
             }
 
             newButtonObj.SetActive(true);
-            Plugin.Log.LogWarning("[UI_Patch] Кнопка 'Сохранить интерактив' успешно добавлена на левую панель!");
+            Plugin.Log.LogWarning("[UI_Patch] Автономная кнопка SDK успешно размещена на фиксированных координатах!");
         }
     }
-
-
 
 }
