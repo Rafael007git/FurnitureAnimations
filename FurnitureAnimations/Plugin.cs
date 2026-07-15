@@ -9,9 +9,9 @@ namespace FurnitureAnimationsMod
     [BepInProcess("She Will Punish Them.exe")]
     public class Plugin : BaseUnityPlugin // <-- КРИТИЧНО: Класс ОБЯЗАТЕЛЬНО должен быть public и наследоваться от BaseUnityPlugin
     {
-        public const string PluginGuid = "com.lorifel007.furnitureposefix";
+        public const string PluginGuid = "com.lorifel007.furnitureanimations";
         public const string PluginName = "Furniture Animations Mod";
-        public const string PluginVersion = "0.1.0";
+        public const string PluginVersion = "0.1.1";
 
         public static ManualLogSource Log;
         private Harmony harmony;
