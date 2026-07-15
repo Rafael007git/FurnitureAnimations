@@ -47,7 +47,8 @@ namespace FurnitureAnimationsMod
         private static void LoadAllConfigs()
         {
             LoadedConfigs.Clear();
-            string[] files = Directory.GetFiles(PrefabsConfigPath, "*_Config.json");
+            // Считываем абсолютно все файлы .json в папке конфигураций мебели
+            string[] files = Directory.GetFiles(PrefabsConfigPath, "*.json");
 
             foreach (string file in files)
             {
@@ -56,6 +57,7 @@ namespace FurnitureAnimationsMod
                     string jsonContent = File.ReadAllText(file);
                     FurnitureConfig config = Newtonsoft.Json.JsonConvert.DeserializeObject<FurnitureConfig>(jsonContent);
 
+                    // Проверяем, что это действительно наш конфиг мебели, а не случайный файл
                     if (config != null && !string.IsNullOrEmpty(config.FurniturePrefabName))
                     {
                         LoadedConfigs[config.FurniturePrefabName] = config;
@@ -69,5 +71,6 @@ namespace FurnitureAnimationsMod
             }
             Plugin.Log.LogWarning($"[ConfigManager] Всего проиндексировано префабов мебели в памяти: {LoadedConfigs.Count}");
         }
+
     }
 }
