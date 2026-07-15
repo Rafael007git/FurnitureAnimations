@@ -50,6 +50,7 @@ Directory Structure
 .repomixignore
 FurnitureAnimations.slnx
 FurnitureAnimations/ConfigManager.cs
+FurnitureAnimations/DioramaConstants.cs
 FurnitureAnimations/EditorUiManager.cs
 FurnitureAnimations/FurnitureAnimations.csproj
 FurnitureAnimations/FurnitureInjectorPatch.cs
@@ -518,133 +519,158 @@ File: FurnitureAnimations/ConfigManager.cs
 using System;
 using System.IO;
 using System.Collections.Generic;
-using BepInEx;
-using Newtonsoft.Json;
+using UnityEngine;
 
 namespace FurnitureAnimationsMod
 {
     public static class ConfigManager
     {
-        // Пути к локальным папкам в BepInEx\config
-        public static string BaseDataPath { get; private set; }
+        // Глобальные пути, перенесенные внутрь папки плагина в plugins!
+        public static string PluginDirectory { get; private set; }
         public static string PrefabsConfigPath { get; private set; }
         public static string CustomAnimsPath { get; private set; }
+        public static string IconsPath { get; private set; }
 
-        // Глобальная база данных: Ключ = GUID префаба, Значение = данные инжектора
         public static Dictionary<string, FurnitureConfig> LoadedConfigs = new Dictionary<string, FurnitureConfig>(StringComparer.OrdinalIgnoreCase);
 
         public static void Initialize()
         {
             try
             {
-                // Безопасный способ получить путь к папке BepInEx\config без использования класса Paths
-                string gameDir = AppDomain.CurrentDomain.BaseDirectory;
-                BaseDataPath = Path.GetFullPath(Path.Combine(gameDir, "BepInEx", "config", "FurnitureAnimationsData"));
+                // 1. Автоматически определяем, где лежит наша скомпилированная .dll
+                string dllPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+                PluginDirectory = Path.GetDirectoryName(dllPath);
 
-                PrefabsConfigPath = Path.Combine(BaseDataPath, "FurnitureConfigs");
-                CustomAnimsPath = Path.Combine(BaseDataPath, "CustomAnimations");
+                // 2. Формируем чистую структуру локальных папок мода
+                PrefabsConfigPath = Path.Combine(PluginDirectory, "FurnitureConfigs");
+                CustomAnimsPath = Path.Combine(PluginDirectory, "CustomAnimations");
+                IconsPath = Path.Combine(PluginDirectory, "Icons");
 
-                // Проверяем и создаем структуру папок, если её нет
-                if (!Directory.Exists(BaseDataPath)) Directory.CreateDirectory(BaseDataPath);
+                // 3. Создаем директории на диске, если их еще нет
                 if (!Directory.Exists(PrefabsConfigPath)) Directory.CreateDirectory(PrefabsConfigPath);
                 if (!Directory.Exists(CustomAnimsPath)) Directory.CreateDirectory(CustomAnimsPath);
+                if (!Directory.Exists(IconsPath)) Directory.CreateDirectory(IconsPath);
 
-                Plugin.Log.LogInfo("[ConfigManager] Структура папок в BepInEx\\config успешно проверена/создана.");
+                Plugin.Log.LogInfo($"[ConfigManager] Базовая директория мода установлена: {PluginDirectory}");
 
-                // Запускаем полное сканирование
-                ReloadAllConfigs();
+                // 4. Запускаем сканирование папки с конфигами мебели
+                LoadAllConfigs();
             }
             catch (Exception ex)
             {
-                // Используем стандартный вывод Unity, если логгер BepInEx еще не готов
-                UnityEngine.Debug.LogError($"[ConfigManager] Критическая ошибка инициализации: {ex.Message}");
+                Plugin.Log.LogError($"[ConfigManager] Критическая ошибка инициализации путей: {ex.Message}");
             }
         }
 
-        public static void ReloadAllConfigs()
+        private static void LoadAllConfigs()
         {
             LoadedConfigs.Clear();
+            string[] files = Directory.GetFiles(PrefabsConfigPath, "*_Config.json");
 
-            // 1. Сканируем локальную папку BepInEx\config\...\FurnitureConfigs
-            ScanDirectoryForConfigs(PrefabsConfigPath);
-
-            // 2. Сканируем папки Steam Workshop
-            ScanWorkshopDirectory();
-
-            Plugin.Log.LogWarning($"[ConfigManager] Сканирование завершено. Успешно загружено справочников мебели: {LoadedConfigs.Count}");
-        }
-
-        // ИСПРАВЛЕНО: Добавлен static, bool изменен на void
-        private static void ScanDirectoryForConfigs(string directoryPath)
-        {
-            if (!Directory.Exists(directoryPath)) return;
-
-            string[] jsonFiles = Directory.GetFiles(directoryPath, "*.json", SearchOption.AllDirectories);
-            foreach (string file in jsonFiles)
+            foreach (string file in files)
             {
                 try
                 {
-                    string jsonText = File.ReadAllText(file);
-                    FurnitureConfig config = JsonConvert.DeserializeObject<FurnitureConfig>(jsonText);
+                    string jsonContent = File.ReadAllText(file);
+                    FurnitureConfig config = Newtonsoft.Json.JsonConvert.DeserializeObject<FurnitureConfig>(jsonContent);
 
                     if (config != null && !string.IsNullOrEmpty(config.FurniturePrefabName))
                     {
                         LoadedConfigs[config.FurniturePrefabName] = config;
-                        Plugin.Log.LogInfo($"[ConfigManager] Загружен локальный конфиг для префаба: {config.FurniturePrefabName} (Файл: {Path.GetFileName(file)})");
+                        Plugin.Log.LogInfo($"[ConfigManager] Успешно загружен рантайм-конфиг мебели: {config.FurniturePrefabName} ({config.InteractionPoses?.Count ?? 0} поз)");
                     }
                 }
                 catch (Exception ex)
                 {
-                    Plugin.Log.LogError($"[ConfigManager] Ошибка чтения JSON файла {Path.GetFileName(file)}: {ex.Message}");
+                    Plugin.Log.LogError($"[ConfigManager] Ошибка чтения файла {Path.GetFileName(file)}: {ex.Message}");
                 }
             }
+            Plugin.Log.LogWarning($"[ConfigManager] Всего проиндексировано префабов мебели в памяти: {LoadedConfigs.Count}");
         }
+    }
+}
 
-        // ИСПРАВЛЕНО: Добавлен static, bool изменен на void
-        private static void ScanWorkshopDirectory()
+================
+File: FurnitureAnimations/DioramaConstants.cs
+================
+using System.Collections.Generic;
+
+namespace FurnitureAnimationsMod
+{
+    public static class DioramaConstants
+    {
+        // 1. Общий список всех разрешенных объектов (биологические кости + свет)
+        public static readonly HashSet<string> AnatomyBoneRegistry = new HashSet<string>
         {
-            try
-            {
-                string gameDir = AppDomain.CurrentDomain.BaseDirectory;
-                string workshopBaseDir = Path.GetFullPath(Path.Combine(gameDir, "..", "..", "workshop", "content", "1433420"));
+            // Корневые узлы и таз
+            "Player", "Kira", "Genesis8Female", "hip", "pelvis",
 
-                if (!Directory.Exists(workshopBaseDir))
-                {
-                    Plugin.Log.LogInfo("[ConfigManager] Папка Steam Workshop не найдена (возможно, пиратская версия или игра запущена не из Steam).");
-                    return;
-                }
+            // Интимная анатомия
+            "Rectum", "Vagina", "Clitoris", "Colon",
+            "Left Small Labia 1", "Left Small Labia 2", "Left Small Labia 3", "Left Small Labia 4",
+            "Right Small Labia1", "Right Small Labia 2", "Right Small Labia 3", "Right Small Labia 4",
+            "lLabiumMajora1", "lLabiumMajora2", "rLabiumMajora1", "rLabiumMajora2",
 
-                Plugin.Log.LogInfo($"[ConfigManager] Найдена папка Воркшопа: {workshopBaseDir}. Ищем конфиги...");
+            // Позвоночник, торс и грудь
+            "abdomenLower", "abdomenUpper", "chestLower", "chestUpper", "lPectoral", "rPectoral",
 
-                string[] modDirs = Directory.GetDirectories(workshopBaseDir);
-                foreach (string modDir in modDirs)
-                {
-                    string targetConfig = Path.Combine(modDir, "FurnitureConfig.json");
-                    if (File.Exists(targetConfig))
-                    {
-                        try
-                        {
-                            string jsonText = File.ReadAllText(targetConfig);
-                            FurnitureConfig config = JsonConvert.DeserializeObject<FurnitureConfig>(jsonText);
+            // Нижние конечности (Ноги и пальцы ног)
+            "lThighBend", "rThighBend", "lThighTwist", "rThighTwist", "lShin", "rShin",
+            "lFoot", "rFoot", "lMetatarsals", "rMetatarsals", "lToe", "rToe",
+            "lBigToe", "lBigToe_2", "rBigToe", "rBigToe_2",
+            "lSmallToe1", "lSmallToe1_2", "rSmallToe1", "rSmallToe1_2",
+            "lSmallToe2", "lSmallToe2_2", "rSmallToe2", "rSmallToe2_2",
+            "lSmallToe3", "lSmallToe3_2", "rSmallToe3", "rSmallToe3_2",
+            "lSmallToe4", "lSmallToe4_2", "rSmallToe4", "rSmallToe4_2",
 
-                            if (config != null && !string.IsNullOrEmpty(config.FurniturePrefabName))
-                            {
-                                LoadedConfigs[config.FurniturePrefabName] = config;
-                                Plugin.Log.LogWarning($"[ConfigManager] [WORKSHOP] Успешно подхвачен конфиг для: {config.FurniturePrefabName} из папки мода {Path.GetFileName(modDir)}!");
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Plugin.Log.LogError($"[ConfigManager] Ошибка чтения Воркшоп-конфига в {Path.GetFileName(modDir)}: {ex.Message}");
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Plugin.Log.LogError($"[ConfigManager] Ошибка при сканировании папок Воркшопа: {ex.Message}");
-            }
-        }
+            // Upper Extremities (Плечи, руки и запястья)
+            "lCollar", "rCollar", "lShldrBend", "rShldrBend", "lShldrTwist", "rShldrTwist",
+            "lForearmBend", "rForearmBend", "lForearmTwist", "rForearmTwist", "lHand", "rHand",
+            "lCarpal1", "lCarpal2", "lCarpal3", "lCarpal4",
+            "rCarpal1", "rCarpal2", "rCarpal3", "rCarpal4",
+
+            // Пальцы левой руки
+            "lThumb1", "lThumb2", "lThumb3", "lIndex1", "lIndex2", "lIndex3",
+            "lMid1", "lMid2", "lMid3", "lRing1", "lRing2", "lRing3", "lPinky1", "lPinky2", "lPinky3",
+
+            // Пальцы правой руки
+            "rThumb1", "rThumb2", "rThumb3", "rIndex1", "rIndex2", "rIndex3",
+            "rMid1", "rMid2", "rMid3", "rRing1", "rRing2", "rRing3", "rPinky1", "rPinky2", "rPinky3",
+
+            // Шея, голова и мимика лица
+            "neckLower", "neckUpper", "head", "lowerJaw", "upperTeeth", "lowerTeeth",
+            "lEar", "rEar", "lEye", "rEye", "Nose", "MidNoseBridge", "CenterBrow",
+            "upperFaceRig", "lowerFaceRig", "rJawClench", "lJawClench", "BelowJaw", "Chin",
+            "rCheekUpper", "lCheekUpper", "rCheekLower", "lCheekLower",
+            "rSquintOuter", "rSquintInner", "lSquintOuter", "lSquintInner",
+            "rLipUpperOuter", "rLipUpperInner", "lLipUpperInner", "lLipUpperOuter", "LipUpperMiddle",
+            "rLipLowerOuter", "rLipLowerInner", "LipLowerMiddle", "lLipLowerInner", "lLipLowerOuter",
+            "rLipCorner", "lLipCorner", "LipBelow",
+            "rNasolabialMiddle", "lNasolabialMiddle", "rNasolabialUpper", "lNasolabialUpper",
+            "rNasolabialLower", "lNasolabialLower", "rLipNasolabialCrease", "lLipNasolabialCrease",
+            "rLipBelowNose", "lLipBelowNose", "rNostril", "lNostril",
+            "lBrowOuter", "lBrowMid", "lBrowInner", "rBrowOuter", "rBrowMid", "rBrowInner",
+            "lEyelidLowerInner", "lEyelidLower", "lEyelidLowerOuter", "lEyelidOuter",
+            "lEyelidUpperOuter", "lEyelidUpper", "lEyelidUpperInner", "lEyelidInner",
+            "rEyelidLowerInner", "rEyelidLower", "rEyelidLowerOuter", "rEyelidOuter",
+            "rEyelidUpperOuter", "rEyelidUpper", "rEyelidUpperInner", "rEyelidInner",
+
+            // Язык
+            "tongue01", "tongue02", "tongue03", "tongue04",
+
+            // Источники света
+            "Point Light (1)", "Point Light (5)", "Point Light (9)"
+        };
+
+        // === ОСОБЫЙ РАЗДЕЛ СПРАВОЧНИКА ===
+        // Объекты, которым критически важно возвращать и локальную ПОЗИЦИЮ (смещение), а не только поворот
+        public static readonly HashSet<string> PositionalObjectsRegistry = new HashSet<string>
+        {
+            "hip",
+            "Point Light (1)",
+            "Point Light (5)",
+            "Point Light (9)"
+        };
     }
 }
 
@@ -830,6 +856,9 @@ File: FurnitureAnimations/FurnitureAnimations.csproj
     <Reference Include="UnityEngine.CoreModule">
       <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
     </Reference>
+    <Reference Include="UnityEngine.ImageConversionModule">
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\UnityEngine.ImageConversionModule.dll</HintPath>
+    </Reference>
     <Reference Include="UnityEngine.IMGUIModule">
       <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\UnityEngine.IMGUIModule.dll</HintPath>
     </Reference>
@@ -842,6 +871,7 @@ File: FurnitureAnimations/FurnitureAnimations.csproj
   </ItemGroup>
   <ItemGroup>
     <Compile Include="ConfigManager.cs" />
+    <Compile Include="DioramaConstants.cs" />
     <Compile Include="EditorUiManager.cs" />
     <Compile Include="FurnitureInjectorPatch.cs" />
     <Compile Include="Models.cs" />
@@ -1029,8 +1059,9 @@ namespace FurnitureAnimationsMod
         }
     }
 
-    // === ПАТЧ 5: ПРОГРАММНОЕ ДОБАВЛЕНИЕ КНОПКИ В МЕНЮ FREE POSE ===
-    [HarmonyPatch(typeof(UIFreePose), "Open")]
+
+    // === ПАТЧ 5: ПРОГРАММНОЕ ДОБАВЛЕНИЕ КНОПКИ В МЕНЮ FREE POSE К КНОПКЕ SAVE POSE ===
+    [HarmonyPatch(typeof(UIFreePose), "Refresh")]
     public class UIFreePoseButtonPatch
     {
         [HarmonyPostfix]
@@ -1038,55 +1069,71 @@ namespace FurnitureAnimationsMod
         {
             if (__instance == null) return;
 
-            // Защита: Проверяем, не создали ли мы уже нашу кнопку в этом сеансе меню
-            if (__instance.transform.Find("Button_SaveInteract") != null) return;
-
-            // Проверяем, есть ли у игры кнопки-доноры для клонирования
-            if (__instance.dataButtons != null && __instance.dataButtons.Count > 0)
+            // Локальная функция для глубокого рекурсивного поиска дочерних объектов по имени
+            Transform FindRecursive(Transform parent, string name)
             {
-                Plugin.Log.LogInfo("[UI_Patch] Начинаем инжекцию кнопки сохранения интерактива...");
-
-                // Берём именно ПЕРВЫЙ элемент из списка кнопок в качестве донора
-                GameObject vanillaButtonObj = __instance.dataButtons[0];
-                if (vanillaButtonObj == null) return;
-
-                // Клонируем её и настраиваем иерархию внутри UI
-                GameObject newButtonObj = Object.Instantiate(vanillaButtonObj);
-                newButtonObj.name = "Button_SaveInteract";
-                newButtonObj.transform.SetParent(vanillaButtonObj.transform.parent, false);
-
-                // Сдвигаем кнопку по оси Y на 50 пикселей вниз относительно дефолтной кнопки
-                RectTransform rect = newButtonObj.GetComponent<RectTransform>();
-                if (rect != null)
+                if (parent.name == name) return parent;
+                for (int i = 0; i < parent.childCount; i++)
                 {
-                    rect.anchoredPosition = new Vector2(rect.anchoredPosition.x, rect.anchoredPosition.y - 50f);
+                    Transform found = FindRecursive(parent.GetChild(i), name);
+                    if (found != null) return found;
                 }
-
-                // ИСПРАВЛЕНО ИСКЛЮЧЕНИЕМ СТАТИЧЕСКИХ ТИПОВ: Указываем UnityEngine.UI.Text явно!
-                UnityEngine.UI.Text buttonText = newButtonObj.GetComponentInChildren<UnityEngine.UI.Text>();
-                if (buttonText != null)
-                {
-                    buttonText.text = "Сохранить интерактив";
-                    buttonText.color = Color.cyan; // Бирюзовый цвет для отличия
-                }
-
-                // ИСПРАВЛЕНО: Указываем UnityEngine.UI.Button явно!
-                UnityEngine.UI.Button buttonComp = newButtonObj.GetComponent<UnityEngine.UI.Button>();
-                if (buttonComp != null)
-                {
-                    buttonComp.onClick.RemoveAllListeners(); // Очищаем ванильную логику сохранения пресета
-
-                    // Привязываем наш метод OnSaveInteractClicked
-                    buttonComp.onClick.AddListener(new UnityEngine.Events.UnityAction(() =>
-                    {
-                        PoseExporter.OnSaveInteractClicked(__instance);
-                    }));
-                }
-
-                // Делаем кнопку видимой на экране
-                newButtonObj.SetActive(true);
-                Plugin.Log.LogWarning("[UI_Patch] Кнопка \"Сохранить интерактив\" успешно добавлена в меню FreePose!");
+                return null;
             }
+
+            // Ищем оригинальную кнопку "SavePose" в правом нижнем углу экрана
+            Transform savePoseBtnTrans = FindRecursive(__instance.transform, "SavePose");
+            if (savePoseBtnTrans == null)
+            {
+                Plugin.Log.LogError("[UI_Patch] Критическая ошибка: Не найдена кнопка-донор 'SavePose' на экране FreePose!");
+                return;
+            }
+
+            // Защита от дублирования кнопок при обновлении интерфейса игры
+            Transform existingBtn = savePoseBtnTrans.parent.Find("Button_SaveInteract");
+            if (existingBtn != null) return;
+
+            Plugin.Log.LogWarning("[UI_Patch] Найдена кнопка SavePose. Инжектируем бирюзовую кнопку SDK мода...");
+
+            // 1. Клонируем объект кнопки "SavePose" со всеми её стилями
+            GameObject newButtonObj = Object.Instantiate(savePoseBtnTrans.gameObject, savePoseBtnTrans.parent);
+            newButtonObj.name = "Button_SaveInteract";
+
+            // 2. Позиционируем кнопку: сдвигаем на 55 пикселей ВВЕРХ по оси Y относительно SavePose,
+            // чтобы они встали красивым аккуратным столбиком в правом нижнем углу!
+            RectTransform rect = newButtonObj.GetComponent<RectTransform>();
+            if (rect != null)
+            {
+                rect.anchoredPosition = new Vector2(rect.anchoredPosition.x, rect.anchoredPosition.y + 55f);
+            }
+
+            // 3. Уничтожаем ванильные скрипты локализации игры, чтобы они не затерли наш текст
+            LocalizationText locText = newButtonObj.GetComponentInChildren<LocalizationText>();
+            if (locText != null) Object.Destroy(locText);
+
+            // 4. Меняем текст и подсвечиваем его бирюзовым цветом SDK
+            UnityEngine.UI.Text buttonText = newButtonObj.GetComponentInChildren<UnityEngine.UI.Text>();
+            if (buttonText != null)
+            {
+                buttonText.text = "Сохранить интерактив";
+                buttonText.color = Color.cyan;
+            }
+
+            // 5. Очищаем старые листенеры и вешаем наш метод экспорта
+            UnityEngine.UI.Button buttonComp = newButtonObj.GetComponent<UnityEngine.UI.Button>();
+            if (buttonComp != null)
+            {
+                buttonComp.onClick.RemoveAllListeners();
+                buttonComp.onClick.AddListener(new UnityEngine.Events.UnityAction(() =>
+                {
+                    Plugin.Log.LogWarning("[UI_Patch] Клик по кнопке 'Сохранить интерактив' зафиксирован!");
+                    PoseExporter.OnSaveInteractClicked(__instance);
+                }));
+            }
+
+            // Включаем кнопку
+            newButtonObj.SetActive(true);
+            Plugin.Log.LogWarning("[UI_Patch] Кнопка 'Сохранить интерактив' успешно размещена в правом нижнем углу!");
         }
     }
 
@@ -1202,49 +1249,38 @@ namespace FurnitureAnimationsMod
 {
     public static class PoseExporter
     {
-        // Метод, который вызывается при клике на нашу новую UI кнопку
+        private static Texture2D _lastCapturedIcon = null;
+
         public static void OnSaveInteractClicked(UIFreePose uiInstance)
         {
-            if (uiInstance == null || uiInstance.selectedCharacter == null)
-            {
-                Plugin.Log.LogError("[PoseExporter] Ошибка: Нет активного персонажа в меню FreePose!");
-                return;
-            }
+            if (uiInstance == null || uiInstance.selectedCharacter == null) return;
 
-            // 1. АВТО-ПОИСК МЕБЕЛИ ПО СФЕРЕ (10 метров)
             Vector3 playerPos = uiInstance.selectedCharacter.position;
             Furniture closestFurniture = FindClosestFurniture(playerPos);
 
             if (closestFurniture == null)
             {
-                // Если мебели нет в радиусе 10м, выводим предупреждение на экран игры
                 if (Global.code != null && Global.code.uiCombat != null)
-                {
                     Global.code.uiCombat.AddPrompt("Рядом нет мебели в радиусе 10 метров!");
-                }
                 return;
             }
 
             string furnitureName = closestFurniture.name.Replace("(Clone)", "").Trim();
-
-            // 2. ВЕТВЛЕНИЕ ЛОГИКИ: АНИМАЦИЯ ИЛИ КАСТАМНАЯ ПОЗА
-            string controllerName = "None";
-            Texture2D finalIcon = null;
-            bool isCustom = uiInstance.isCustomPoseMode;
-
             CharacterCustomization characterComp = uiInstance.selectedCharacter.GetComponent<CharacterCustomization>();
 
-            if (!isCustom)
-            {
-                // Сценарий А: Активна ванильная анимация движка игры
-                if (characterComp != null && characterComp.anim != null && characterComp.anim.runtimeAnimatorController != null)
-                {
-                    controllerName = characterComp.anim.runtimeAnimatorController.name;
-                    Plugin.Log.LogInfo($"[PoseExporter] Обнаружена ванильная анимация: {controllerName}");
-                }
+            string controllerName = "None";
+            _lastCapturedIcon = null;
 
-                // Пытаемся вытащить родную иконку из текущей активной позы UI игры
-                // Для этого ищем запущенную позу в RM
+            // Умное распознавание типа позы
+            bool hasActiveAnimator = characterComp != null && characterComp.anim != null && characterComp.anim.runtimeAnimatorController != null;
+            bool isPresetPose = hasActiveAnimator && !string.IsNullOrEmpty(characterComp.anim.runtimeAnimatorController.name) && characterComp.anim.runtimeAnimatorController.name != "CustomJSON";
+
+            if (isPresetPose)
+            {
+                controllerName = characterComp.anim.runtimeAnimatorController.name;
+                Plugin.Log.LogInfo($"[PoseExporter] Распознана предустановленная поза: {controllerName}");
+
+                // Ищем родную иконку этой позы в реестре игры
                 if (RM.code != null && RM.code.allFreePoses != null)
                 {
                     foreach (Transform t in RM.code.allFreePoses.items)
@@ -1252,7 +1288,7 @@ namespace FurnitureAnimationsMod
                         var p = t.GetComponent<global::Pose>();
                         if (p != null && p.controller != null && p.controller.name == controllerName)
                         {
-                            finalIcon = p.icon;
+                            _lastCapturedIcon = p.icon;
                             break;
                         }
                     }
@@ -1260,41 +1296,116 @@ namespace FurnitureAnimationsMod
             }
             else
             {
-                // Сценарий Б: Кастомная поза ( Advanced Free Pose )
+                // Сценарий Б: Полностью кастомная поза скелета
                 controllerName = "CustomJSON";
-                Plugin.Log.LogInfo("[PoseExporter] Обнаружена кастомная поза скелета. Генерируем скриншот-иконку...");
+                Plugin.Log.LogInfo("[PoseExporter] Распознана полностью ручная поза. Делаем снимок экрана...");
 
-                // Используем встроенный в UIFreePose фотокомпонент игры из dnSpy!
                 var photoComp = uiInstance.GetComponent<TakePhotos>();
                 if (photoComp != null && Global.code != null && Global.code.freeCamera != null)
                 {
                     Camera cam = Global.code.freeCamera.GetComponent<Camera>();
-                    // Снимаем квадратное превью 300x300, как это делает сама игра в методе OpenSaveFreePosePanel
-                    finalIcon = photoComp.CameraCapture(cam, new Rect(0f, 0f, 300f, 300f), "");
+                    _lastCapturedIcon = photoComp.CameraCapture(cam, new Rect(0f, 0f, 300f, 300f), "");
                 }
             }
 
-            // 3. РАСЧЕТ ТОЧНЫХ СМЕЩЕНИЙ ОТНОСИТЕЛЬНО НАЙДЕННОЙ МЕБЕЛИ
             Vector3 exactLocPos = closestFurniture.transform.InverseTransformPoint(playerPos);
             Quaternion localQuaternion = Quaternion.Inverse(closestFurniture.transform.rotation) * uiInstance.selectedCharacter.rotation;
             Vector3 exactLocRot = localQuaternion.eulerAngles;
 
-            // 4. ВЫЗОВ ДИАЛОГОВОГО ОКНА ПОДТВЕРЖДЕНИЯ
             string promptText = $"Вы хотите сохранить эту позу для {furnitureName}?\n" +
-                                $"Тип: {(isCustom ? "Кастомная" : "Ванильная")}\n" +
-                                $"Координаты: {exactLocPos.ToString("F2")}";
+                                $"Тип: {(isPresetPose ? "Предустановленная" : "Кастомная")}\n" +
+                                $"Контроллер: {controllerName}";
 
-            Plugin.Log.LogWarning($"[PoseExporter] Расчет завершен для {furnitureName}. Выводим окно...");
-
-            // Временно выводим в лог BepInEx готовый результат, пока пишем GUI менеджер
-            PrintDebugJson(furnitureName, controllerName, exactLocPos, exactLocRot);
-
-            // Инициируем диалоговое окно
-            EditorUiManager.ShowConfirmationDialog(promptText, finalIcon, () =>
+            EditorUiManager.ShowConfirmationDialog(promptText, _lastCapturedIcon, () =>
             {
-                // Колбэк при нажатии кнопки "ДА" - Запись в JSON
-                SavePoseToDataFolder(furnitureName, controllerName, exactLocPos, exactLocRot, isCustom, characterComp);
+                SavePoseToDataFolder(furnitureName, controllerName, exactLocPos, exactLocRot, !isPresetPose, characterComp);
             });
+        }
+
+        private static void SavePoseToDataFolder(string furnitureName, string controller, Vector3 pos, Vector3 rot, bool isCustom, CharacterCustomization character)
+        {
+            try
+            {
+                string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                string fileName = $"{furnitureName}_Config.json";
+                string fullPath = Path.Combine(ConfigManager.PrefabsConfigPath, fileName);
+
+                FurnitureConfig configToSave;
+
+                if (File.Exists(fullPath))
+                {
+                    string existingJson = File.ReadAllText(fullPath);
+                    configToSave = Newtonsoft.Json.JsonConvert.DeserializeObject<FurnitureConfig>(existingJson) ?? new FurnitureConfig();
+                }
+                else
+                {
+                    configToSave = new FurnitureConfig { FurniturePrefabName = furnitureName, InteractionPoses = new List<PoseData>() };
+                }
+
+                if (configToSave.InteractionPoses == null) configToSave.InteractionPoses = new List<PoseData>();
+
+                // Исправлено: Красивое имя в списке
+                string generatedPoseName = isCustom ? $"Кастомная — {DateTime.Now:dd.MM HH:mm}" : $"Анимация — {controller}";
+                string customAnimFileName = isCustom ? $"{furnitureName}_{timestamp}.json" : "";
+
+                PoseData newPoseData = new PoseData
+                {
+                    DisplayName = generatedPoseName,
+                    Type = isCustom ? "CustomJSON" : "Vanilla",
+                    ControllerName = controller,
+                    JsonFileName = customAnimFileName,
+                    LocPosition = new Vector3Data { x = (float)Math.Round(pos.x, 4), y = (float)Math.Round(pos.y, 4), z = (float)Math.Round(pos.z, 4) },
+                    LocRotation = new Vector3Data { x = (float)Math.Round(rot.x, 4), y = (float)Math.Round(rot.y, 4), z = (float)Math.Round(rot.z, 4) },
+                    Cameras = new List<CameraData>()
+                };
+
+                // Сохранение бинарного слепка костей (Сценарий Б)
+                if (isCustom && character != null)
+                {
+                    string customAnimFullPath = Path.Combine(ConfigManager.CustomAnimsPath, customAnimFileName);
+                    string bonesJson = ExportBonesToCustomJson(character);
+                    File.WriteAllText(customAnimFullPath, bonesJson);
+                }
+
+                // ИСПРАВЛЕНО: ЧИСТОЕ СОХРАНЕНИЕ ИКОНКИ В НАШУ НОВУЮ ИМЕННУЮ ПАПКУ ICONS
+                if (_lastCapturedIcon != null)
+                {
+                    string iconName = isCustom ? $"{furnitureName}_{timestamp}.png" : $"{controller}.png";
+                    string iconFullPath = Path.Combine(ConfigManager.IconsPath, iconName); // Используем наш новый IconsPath!
+
+                    bool canWriteTexture = true;
+                    try
+                    {
+                        _lastCapturedIcon.GetPixels();
+                    }
+                    catch (Exception)
+                    {
+                        canWriteTexture = false;
+                        Plugin.Log.LogInfo($"[PoseExporter] Текстура '{_lastCapturedIcon.name}' защищена от чтения. Пропускаем физическую запись PNG, игра подтянет её из памяти.");
+                    }
+
+                    if (canWriteTexture)
+                    {
+                        byte[] pngBytes = UnityEngine.ImageConversion.EncodeToPNG(_lastCapturedIcon);
+                        File.WriteAllBytes(iconFullPath, pngBytes);
+                        Plugin.Log.LogWarning($"[PoseExporter] Кастомная иконка успешно сохранена: {iconFullPath}");
+                    }
+                }
+
+                // Теперь сохранение гарантированно ДОЙДЕТ до конца списка без краша!
+                configToSave.InteractionPoses.Add(newPoseData);
+                string finalJson = Newtonsoft.Json.JsonConvert.SerializeObject(configToSave, Newtonsoft.Json.Formatting.Indented);
+                File.WriteAllText(fullPath, finalJson);
+
+                ConfigManager.LoadedConfigs[furnitureName] = configToSave;
+
+                if (Global.code != null && Global.code.uiCombat != null)
+                    Global.code.uiCombat.ShowHeader("Поза успешно сохранена!");
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"[PoseExporter] Критическая ошибка записи: {ex.Message}");
+            }
         }
 
         private static Furniture FindClosestFurniture(Vector3 playerPosition)
@@ -1302,49 +1413,87 @@ namespace FurnitureAnimationsMod
             Furniture closestFurniture = null;
             float maxDistance = 10f;
             Furniture[] allFurnitures = UnityEngine.Object.FindObjectsOfType<Furniture>();
-
             foreach (Furniture f in allFurnitures)
             {
                 if (f == null) continue;
                 float distance = Vector3.Distance(playerPosition, f.transform.position);
-                if (distance < maxDistance)
-                {
-                    maxDistance = distance;
-                    closestFurniture = f;
-                }
+                if (distance < maxDistance) { maxDistance = distance; closestFurniture = f; }
             }
             return closestFurniture;
         }
 
-        private static void SavePoseToDataFolder(string furnitureName, string controller, Vector3 pos, Vector3 rot, bool isCustom, CharacterCustomization character)
+        public static string ExportBonesToCustomJson(CharacterCustomization user)
         {
+            if (user == null) return "{}";
             try
             {
-                // Логика формирования или обновления файла JSON в BepInEx\config
-                Plugin.Log.LogWarning($"[PoseExporter] УСПЕШНО ЗАПИСАНО НА ДИСК ДЛЯ {furnitureName}!");
-                if (Global.code != null && Global.code.uiCombat != null)
+                var bakedPoseData = new Dictionary<string, object>();
+
+                // Локальная функция поиска дочерних объектов
+                Transform FindChildRecursive(Transform parent, string name)
                 {
-                    Global.code.uiCombat.ShowHeader("Поза успешно сохранена в конфиг!");
+                    if (parent == null) return null;
+                    if (parent.name == name) return parent;
+                    for (int i = 0; i < parent.childCount; i++)
+                    {
+                        Transform found = FindChildRecursive(parent.GetChild(i), name);
+                        if (found != null) return found;
+                    }
+                    return null;
+                } // <--- ЗДЕСЬ ФУНКЦИЯ ПОИСКА ПРАВИЛЬНО ЗАКРЫВАЕТСЯ!
+
+                // Пробегаемся строго по нашему эталонному списку имен из реестра Диорамы
+                foreach (string targetName in DioramaConstants.AnatomyBoneRegistry)
+                {
+                    Transform element = FindChildRecursive(user.transform, targetName);
+                    if (element == null) continue;
+
+                    Light lightComponent = element.GetComponent<Light>();
+                    if (lightComponent != null)
+                    {
+                        bakedPoseData[targetName] = new
+                        {
+                            type = "Light",
+                            enabled = lightComponent.enabled,
+                            intensity = lightComponent.intensity,
+                            range = lightComponent.range,
+                            pos = new { x = (float)Math.Round(element.localPosition.x, 4), y = (float)Math.Round(element.localPosition.y, 4), z = (float)Math.Round(element.localPosition.z, 4) },
+                            color = new { r = lightComponent.color.r, g = lightComponent.color.g, b = lightComponent.color.b }
+                        };
+                        continue;
+                    }
+
+                    if (DioramaConstants.PositionalObjectsRegistry.Contains(targetName))
+                    {
+                        bakedPoseData[targetName] = new
+                        {
+                            type = "Bone",
+                            rot = new { x = (float)Math.Round(element.localEulerAngles.x, 4), y = (float)Math.Round(element.localEulerAngles.y, 4), z = (float)Math.Round(element.localEulerAngles.z, 4) },
+                            pos = new { x = (float)Math.Round(element.localPosition.x, 4), y = (float)Math.Round(element.localPosition.y, 4), z = (float)Math.Round(element.localPosition.z, 4) }
+                        };
+                    }
+                    else
+                    {
+                        bakedPoseData[targetName] = new
+                        {
+                            type = "Bone",
+                            rot = new { x = (float)Math.Round(element.localEulerAngles.x, 4), y = (float)Math.Round(element.localEulerAngles.y, 4), z = (float)Math.Round(element.localEulerAngles.z, 4) }
+                        };
+                    }
                 }
+
+                // Теперь этот return честно возвращает JSON из самого метода ExportBonesToCustomJson!
+                return Newtonsoft.Json.JsonConvert.SerializeObject(bakedPoseData, Newtonsoft.Json.Formatting.Indented);
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogError($"[PoseExporter] Ошибка сохранения: {ex.Message}");
+                Plugin.Log.LogError($"[BonesBake] Ошибка: {ex.Message}");
+                return "{}";
             }
+
+            return "{}";
         }
 
-        private static void PrintDebugJson(string furnitureName, string controller, Vector3 pos, Vector3 rot)
-        {
-            System.Text.StringBuilder sb = new System.Text.StringBuilder();
-            sb.AppendLine($"\n==================================================");
-            sb.AppendLine($"\"DisplayName\": \"Новая поза\",");
-            sb.AppendLine($"\"Type\": \"Vanilla\",");
-            sb.AppendLine($"\"ControllerName\": \"{controller}\",");
-            sb.AppendLine($"\"LocPosition\": {{ \"x\": {pos.x.ToString("F4").Replace(",", ".")}, \"y\": {pos.y.ToString("F4").Replace(",", ".")}, \"z\": {pos.z.ToString("F4").Replace(",", ".")} }},");
-            sb.AppendLine($"\"LocRotation\": {{ \"x\": {rot.x.ToString("F4").Replace(",", ".")}, \"y\": {rot.y.ToString("F4").Replace(",", ".")}, \"z\": {rot.z.ToString("F4").Replace(",", ".")} }}");
-            sb.AppendLine($"==================================================");
-            Plugin.Log.LogWarning(sb.ToString());
-        }
     }
 }
 
