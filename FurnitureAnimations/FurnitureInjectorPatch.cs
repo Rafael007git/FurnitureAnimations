@@ -1,7 +1,9 @@
 ﻿using HarmonyLib;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 using UnityStandardAssets.Cameras;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace FurnitureAnimationsMod
 {
@@ -169,4 +171,66 @@ namespace FurnitureAnimationsMod
             return true;
         }
     }
+
+    // === ПАТЧ 5: ПРОГРАММНОЕ ДОБАВЛЕНИЕ КНОПКИ В МЕНЮ FREE POSE ===
+    [HarmonyPatch(typeof(UIFreePose), "Open")]
+    public class UIFreePoseButtonPatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(UIFreePose __instance)
+        {
+            if (__instance == null) return;
+
+            // Защита: Проверяем, не создали ли мы уже нашу кнопку в этом сеансе меню
+            if (__instance.transform.Find("Button_SaveInteract") != null) return;
+
+            // Проверяем, есть ли у игры кнопки-доноры для клонирования
+            if (__instance.dataButtons != null && __instance.dataButtons.Count > 0)
+            {
+                Plugin.Log.LogInfo("[UI_Patch] Начинаем инжекцию кнопки сохранения интерактива...");
+
+                // Берём именно ПЕРВЫЙ элемент из списка кнопок в качестве донора
+                GameObject vanillaButtonObj = __instance.dataButtons[0];
+                if (vanillaButtonObj == null) return;
+
+                // Клонируем её и настраиваем иерархию внутри UI
+                GameObject newButtonObj = Object.Instantiate(vanillaButtonObj);
+                newButtonObj.name = "Button_SaveInteract";
+                newButtonObj.transform.SetParent(vanillaButtonObj.transform.parent, false);
+
+                // Сдвигаем кнопку по оси Y на 50 пикселей вниз относительно дефолтной кнопки
+                RectTransform rect = newButtonObj.GetComponent<RectTransform>();
+                if (rect != null)
+                {
+                    rect.anchoredPosition = new Vector2(rect.anchoredPosition.x, rect.anchoredPosition.y - 50f);
+                }
+
+                // ИСПРАВЛЕНО ИСКЛЮЧЕНИЕМ СТАТИЧЕСКИХ ТИПОВ: Указываем UnityEngine.UI.Text явно!
+                UnityEngine.UI.Text buttonText = newButtonObj.GetComponentInChildren<UnityEngine.UI.Text>();
+                if (buttonText != null)
+                {
+                    buttonText.text = "Сохранить интерактив";
+                    buttonText.color = Color.cyan; // Бирюзовый цвет для отличия
+                }
+
+                // ИСПРАВЛЕНО: Указываем UnityEngine.UI.Button явно!
+                UnityEngine.UI.Button buttonComp = newButtonObj.GetComponent<UnityEngine.UI.Button>();
+                if (buttonComp != null)
+                {
+                    buttonComp.onClick.RemoveAllListeners(); // Очищаем ванильную логику сохранения пресета
+
+                    // Привязываем наш метод OnSaveInteractClicked
+                    buttonComp.onClick.AddListener(new UnityEngine.Events.UnityAction(() =>
+                    {
+                        PoseExporter.OnSaveInteractClicked(__instance);
+                    }));
+                }
+
+                // Делаем кнопку видимой на экране
+                newButtonObj.SetActive(true);
+                Plugin.Log.LogWarning("[UI_Patch] Кнопка \"Сохранить интерактив\" успешно добавлена в меню FreePose!");
+            }
+        }
+    }
+
 }

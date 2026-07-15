@@ -22,6 +22,8 @@ namespace FurnitureAnimationsMod
             Log = Logger;
             Log.LogWarning("[FurnitureMod] Старт инициализации плагина...");
 
+            EditorUiManager.Initialize();
+
             try
             {
                 // Запускаем наш менеджер конфигураций
