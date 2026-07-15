@@ -7,7 +7,6 @@ namespace FurnitureAnimationsMod
 {
     public static class ConfigManager
     {
-        // Глобальные пути, перенесенные внутрь папки плагина в plugins!
         public static string PluginDirectory { get; private set; }
         public static string PrefabsConfigPath { get; private set; }
         public static string CustomAnimsPath { get; private set; }
@@ -19,23 +18,25 @@ namespace FurnitureAnimationsMod
         {
             try
             {
-                // 1. Автоматически определяем, где лежит наша скомпилированная .dll
+                // 1. Получаем путь к папке BepInEx\plugins\, где лежит наш .dll
                 string dllPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
-                PluginDirectory = Path.GetDirectoryName(dllPath);
+                string pluginsFolder = Path.GetDirectoryName(dllPath);
 
-                // 2. Формируем чистую структуру локальных папок мода
+                // 2. ЖЕСТКИЙ ФИКС: Устанавливаем базовую именную папку мода
+                PluginDirectory = Path.Combine(pluginsFolder, "FurnitureAnimations");
+
+                // 3. Формируем структуру подпапок строго по твоей спецификации
                 PrefabsConfigPath = Path.Combine(PluginDirectory, "FurnitureConfigs");
                 CustomAnimsPath = Path.Combine(PluginDirectory, "CustomAnimations");
-                IconsPath = Path.Combine(PluginDirectory, "Icons");
+                IconsPath = Path.Combine(PrefabsConfigPath, "Icons"); // Папка Icons переехала внутрь FurnitureConfigs!
 
-                // 3. Создаем директории на диске, если их еще нет
+                // 4. Создаем директории на диске, если их нет
                 if (!Directory.Exists(PrefabsConfigPath)) Directory.CreateDirectory(PrefabsConfigPath);
                 if (!Directory.Exists(CustomAnimsPath)) Directory.CreateDirectory(CustomAnimsPath);
                 if (!Directory.Exists(IconsPath)) Directory.CreateDirectory(IconsPath);
 
-                Plugin.Log.LogInfo($"[ConfigManager] Базовая директория мода установлена: {PluginDirectory}");
+                Plugin.Log.LogWarning($"[ConfigManager] Истинные пути SDK мода установлены: {PluginDirectory}");
 
-                // 4. Запускаем сканирование папки с конфигами мебели
                 LoadAllConfigs();
             }
             catch (Exception ex)
@@ -47,7 +48,7 @@ namespace FurnitureAnimationsMod
         private static void LoadAllConfigs()
         {
             LoadedConfigs.Clear();
-            // Считываем абсолютно все файлы .json в папке конфигураций мебели
+            // Считываем ВСЕ файлы .json в папке конфигураций мебели интерактивов
             string[] files = Directory.GetFiles(PrefabsConfigPath, "*.json");
 
             foreach (string file in files)
@@ -57,11 +58,10 @@ namespace FurnitureAnimationsMod
                     string jsonContent = File.ReadAllText(file);
                     FurnitureConfig config = Newtonsoft.Json.JsonConvert.DeserializeObject<FurnitureConfig>(jsonContent);
 
-                    // Проверяем, что это действительно наш конфиг мебели, а не случайный файл
                     if (config != null && !string.IsNullOrEmpty(config.FurniturePrefabName))
                     {
                         LoadedConfigs[config.FurniturePrefabName] = config;
-                        Plugin.Log.LogInfo($"[ConfigManager] Успешно загружен рантайм-конфиг мебели: {config.FurniturePrefabName} ({config.InteractionPoses?.Count ?? 0} поз)");
+                        Plugin.Log.LogInfo($"[ConfigManager] Загружен конфиг мебели: {config.FurniturePrefabName} ({config.InteractionPoses?.Count ?? 0} поз)");
                     }
                 }
                 catch (Exception ex)
@@ -71,6 +71,5 @@ namespace FurnitureAnimationsMod
             }
             Plugin.Log.LogWarning($"[ConfigManager] Всего проиндексировано префабов мебели в памяти: {LoadedConfigs.Count}");
         }
-
     }
 }

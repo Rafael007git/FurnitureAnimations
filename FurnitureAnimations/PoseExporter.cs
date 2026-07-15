@@ -126,11 +126,11 @@ namespace FurnitureAnimationsMod
                     File.WriteAllText(customAnimFullPath, bonesJson);
                 }
 
-                // ИСПРАВЛЕНО: ЧИСТОЕ СОХРАНЕНИЕ ИКОНКИ В НАШУ НОВУЮ ИМЕННУЮ ПАПКУ ICONS
+                // ИСПРАВЛЕНО: Сохранение иконки строго в \FurnitureConfigs\Icons\ с защитой от ванильного краша
                 if (_lastCapturedIcon != null)
                 {
                     string iconName = isCustom ? $"{furnitureName}_{timestamp}.png" : $"{controller}.png";
-                    string iconFullPath = Path.Combine(ConfigManager.IconsPath, iconName); // Используем наш новый IconsPath!
+                    string iconFullPath = Path.Combine(ConfigManager.IconsPath, iconName); // Путь автоматически подхватит FurnitureConfigs\Icons!
 
                     bool canWriteTexture = true;
                     try
@@ -147,7 +147,7 @@ namespace FurnitureAnimationsMod
                     {
                         byte[] pngBytes = UnityEngine.ImageConversion.EncodeToPNG(_lastCapturedIcon);
                         File.WriteAllBytes(iconFullPath, pngBytes);
-                        Plugin.Log.LogWarning($"[PoseExporter] Кастомная иконка успешно сохранена: {iconFullPath}");
+                        Plugin.Log.LogWarning($"[PoseExporter] Иконка успешно сохранена на диск: {iconFullPath}");
                     }
                 }
 
