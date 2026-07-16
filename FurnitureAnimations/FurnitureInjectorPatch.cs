@@ -173,7 +173,7 @@ namespace FurnitureAnimationsMod
         }
     }
 
-    // === ПАТЧ 5: СТАБИЛЬНАЯ ДИНАМИЧЕСКАЯ КНОПКА SDK (ВЕРСИЯ 0.2.0 RELEASE) ===
+    // === ПАТЧ 5: СТАБИЛЬНАЯ ДИНАМИЧЕСКАЯ КНОПКА SDK (ФИНАЛЬНЫЙ РЕЛИЗ 0.2.0) ===
     [HarmonyPatch(typeof(UIFreePose), "Refresh")]
     public class UIFreePoseButtonPatch
     {
@@ -191,34 +191,25 @@ namespace FurnitureAnimationsMod
 
             if (saveBtnTrans == null)
             {
-                // Ищем оригинальную кнопку "FreePose" в качестве донора компонентов
                 Transform templateBtn = __instance.transform.Find("FreePose");
                 if (templateBtn == null) templateBtn = __instance.GetComponentInChildren<UnityEngine.UI.Button>()?.transform;
                 if (templateBtn == null) return;
 
-                // Клонируем её строго в корень __instance.transform, чтобы её не удалили соседние моды
                 newButtonObj = UnityEngine.Object.Instantiate(templateBtn.gameObject, __instance.transform);
                 newButtonObj.name = "Button_SaveInteract";
-
-                // СБРОС МАСШТАБА: Навсегда побеждаем баг раздувания кнопки до двойного размера!
-                newButtonObj.transform.localScale = Vector3.one;
+                newButtonObj.transform.localScale = Vector3.one; // Сброс масштаба, чтобы не раздувало!
 
                 RectTransform rect = newButtonObj.GetComponent<RectTransform>();
                 if (rect != null)
                 {
-                    // Прижимаем якоря (Anchors) к правому нижнему углу экрана
                     rect.anchorMin = new Vector2(1f, 0f); rect.anchorMax = new Vector2(1f, 0f); rect.pivot = new Vector2(1f, 0f);
-
-                    // Выставляем точную позицию: 40 пикселей от правого края, 230 пикселей от низа монитора
-                    rect.anchoredPosition = new Vector2(-40f, 230f);
-                    rect.sizeDelta = new Vector2(210f, 40f); // Слегка расширили под длинный английский текст
+                    rect.anchoredPosition = new Vector2(-40f, 230f); // Позиция справа внизу
+                    rect.sizeDelta = new Vector2(210f, 40f); // Расширили под длинный английский текст
                 }
 
-                // Стираем ванильные скрипты локализации игры, чтобы они не затерли наш текст
-                LocalizationText locText = newButtonObj.GetComponentInChildren<LocalizationText>();
-                if (locText != null) UnityEngine.Object.Destroy(locText);
+                if (newButtonObj.GetComponentInChildren<LocalizationText>() != null)
+                    UnityEngine.Object.Destroy(newButtonObj.GetComponentInChildren<LocalizationText>());
 
-                // Очищаем старые листенеры и вешаем наш метод экспорта интерактива
                 UnityEngine.UI.Button buttonComp = newButtonObj.GetComponent<UnityEngine.UI.Button>();
                 if (buttonComp != null)
                 {
@@ -238,41 +229,47 @@ namespace FurnitureAnimationsMod
 
             if (mainButtonComp == null || buttonText == null) return;
 
-            // 2. ХИРУРГИЧЕСКИЙ АНАЛИЗ НА ОСНОВЕ НАШИХ ЖИВЫХ ЛОГОВ ПОЛЬЗОВАТЕЛЯ
+            // 2. ХИРУРГИЧЕСКИЙ АНАЛИЗ СОСТОЯНИЙ НА ОСНОВЕ ФАКТОВ ДВИЖКА
             string currentCtrlName = (characterComp.anim.runtimeAnimatorController?.name ?? "").ToLower();
 
-            // Проверяем, активен ли инструмент кручения костей Advanced Free Pose (ищем его гизмо на сцене)
-            bool isHandEditingActive = currentCtrlName == "customjson" || GameObject.Find("TransformGizmo") != null;
+            // Проверяем, активен ли ручной режим кручения костей скелета ( Advanced Free Pose )
+            bool isHandEditingActive = GameObject.Find("TransformGizmo") != null || currentCtrlName == "customjson";
 
-            // Проверяем, находится ли персонаж в базовой дефолтной стойке (UnarmedController / Idle)
-            bool isDefaultIdle = currentCtrlName.Contains("unarmed") || currentCtrlName.Contains("idle") || string.IsNullOrEmpty(currentCtrlName);
+            // Проверяем, находится ли персонаж в базовом состоянии покоя (Idle или Unarmed стойка)
+            bool isDefaultIdleActive = currentCtrlName.Contains("idle") || currentCtrlName.Contains("unarmed") || string.IsNullOrEmpty(currentCtrlName);
 
-            // 3. АВТО-ПЕРЕКЛЮЧЕНИЕ ТЕКСТА, ЦВЕТА И ДОСТУПНОСТИ КНОПКИ
+            // УМНАЯ ПРОВЕРКА НА ЛЮБУЮ ВАНИЛЬНУЮ ПОЗУ (И статика, и динамика):
+            // Поза считается выбранной, ЕСЛИ аниматор заморожен (для позы-статуи) 
+            // ИЛИ если имя текущего контроллера сменилось с дефолтного Idle на имя конкретной позы мебели!
+            bool isAnyPresetPoseActive = characterComp.anim.enabled == false || !isDefaultIdleActive;
+
+            // 3. АВТО-ПЕРЕКЛЮЧЕНИЕ ТЕКСТА И ЦВЕТА КНОПКИ
             if (isHandEditingActive)
             {
-                // СОСТОЯНИЕ 3: Кости крутятся вручную (Гизмо Advanced Free Pose на экране)
+                // СОСТОЯНИЕ 3: Крутим кости вручную (Гизмо на экране)
                 buttonText.text = "Save Custom Pose for Furniture";
-                buttonText.color = Color.cyan; // Фирменный бирюзовый SDK
+                buttonText.color = Color.cyan; // Бирюзовый SDK
                 mainButtonComp.interactable = true;
             }
-            else if (isDefaultIdle)
+            else if (isAnyPresetPoseActive)
             {
-                // СОСТОЯНИЕ 1: Меню только открыто, дефолтная стойка, поза мебели не выбрана
-                buttonText.text = "No Furniture Pose";
-                buttonText.color = Color.gray; // Серый неактивный цвет
-                mainButtonComp.interactable = false; // Блокируем клик, защита от пустых сохранений
+                // СОСТОЯНИЕ 2 и 4: Выбрана любая предустановленная поза из списка (статичная или анимированная!)
+                buttonText.text = "Link Preset Pose for Furniture";
+                buttonText.color = Color.green; // Зеленый цвет связи
+                mainButtonComp.interactable = true;
             }
             else
             {
-                // СОСТОЯНИЕ 2 и 4: Выбрана предустановленная ванильная анимация из списка (CoupleL3, laying17 и т.д.)
-                buttonText.text = "Link Preset Pose for Furniture";
-                buttonText.color = Color.green; // Спокойный зеленый цвет связи
-                mainButtonComp.interactable = true;
+                // СОСТОЯНИЕ 1: Поза мебели еще не выбрана (персонаж просто стоит в дефолтном Idle)
+                buttonText.text = "No Furniture Pose";
+                buttonText.color = Color.gray; // Серый цвет
+                mainButtonComp.interactable = false; // Блокируем клик
             }
 
             newButtonObj.SetActive(true);
         }
     }
+
 
 
     // ПАТЧ А: Перехватываем клик по ГОТОВОЙ позе из ванильного списка игры
