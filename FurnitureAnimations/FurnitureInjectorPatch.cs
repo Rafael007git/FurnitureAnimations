@@ -1,4 +1,5 @@
 ﻿using HarmonyLib;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
@@ -179,31 +180,63 @@ namespace FurnitureAnimationsMod
         [HarmonyPostfix]
         public static void Postfix(UIFreePose __instance)
         {
-            if (__instance == null || __instance.selectedCharacter == null) return;
+            if (__instance == null) return;
 
-            CharacterCustomization characterComp = __instance.selectedCharacter.GetComponent<CharacterCustomization>();
-            if (characterComp == null) return;
+            // --- БЛОК ТОТАЛЬНОЙ ДИАГНОСТИКИ В КОНСОЛЬ В РЕЖИМЕ РЕАЛЬНОГО ВРЕМЕНИ ---
+            try
+            {
+                string charInfo = "No Character";
+                string animatorCtrlName = "No Animator/Controller";
+                bool isAnimEnabled = false;
 
-            // 1. Создание или удержание нашей кнопки SDK в корне Canvas окна
+                if (__instance.selectedCharacter != null)
+                {
+                    charInfo = __instance.selectedCharacter.name;
+                    var characterComp = __instance.selectedCharacter.GetComponent<CharacterCustomization>();
+                    if (characterComp != null && characterComp.anim != null)
+                    {
+                        isAnimEnabled = characterComp.anim.enabled;
+                        if (characterComp.anim.runtimeAnimatorController != null)
+                        {
+                            animatorCtrlName = characterComp.anim.runtimeAnimatorController.name;
+                        }
+                    }
+                }
+
+                // Выводим в лог BepInEx срез всех критических параметров
+                Plugin.Log.LogWarning(
+                    $"[SDK_DEBUG] === REFRESH TICK ===\n" +
+                    $"Active Character: {charInfo}\n" +
+                    $"isCustomPoseMode (flag): {__instance.isCustomPoseMode}\n" +
+                    $"Animator Enabled: {isAnimEnabled}\n" +
+                    $"Current Controller Name: {animatorCtrlName}\n" +
+                    $"DataButtons Count: {__instance.dataButtons?.Count ?? 0}\n" +
+                    $"================================"
+                );
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"[SDK_DEBUG] Ошибка сбора логов: {ex.Message}");
+            }
+
+            // --- БАЗОВАЯ ОТРИСОВКА КНОПКИ (БЕЗ БЛОКИРОВОК И ПЕРЕКЛЮЧЕНИЙ, ЧИСТО ДЛЯ ТЕСТА) ---
             Transform saveBtnTrans = __instance.transform.Find("Button_SaveInteract");
-            GameObject newButtonObj = null;
-
             if (saveBtnTrans == null)
             {
                 Transform templateBtn = __instance.transform.Find("FreePose");
                 if (templateBtn == null) templateBtn = __instance.GetComponentInChildren<UnityEngine.UI.Button>()?.transform;
                 if (templateBtn == null) return;
 
-                newButtonObj = Object.Instantiate(templateBtn.gameObject, __instance.transform);
+                GameObject newButtonObj = Object.Instantiate(templateBtn.gameObject, __instance.transform);
                 newButtonObj.name = "Button_SaveInteract";
-                newButtonObj.transform.localScale = Vector3.one; // Сброс масштаба
+                newButtonObj.transform.localScale = Vector3.one;
 
                 RectTransform rect = newButtonObj.GetComponent<RectTransform>();
                 if (rect != null)
                 {
                     rect.anchorMin = new Vector2(1f, 0f); rect.anchorMax = new Vector2(1f, 0f); rect.pivot = new Vector2(1f, 0f);
-                    rect.anchoredPosition = new Vector2(-40f, 230f); // Позиция справа внизуモニター
-                    rect.sizeDelta = new Vector2(180f, 40f);
+                    rect.anchoredPosition = new Vector2(-40f, 230f);
+                    rect.sizeDelta = new Vector2(220f, 40f);
                 }
 
                 if (newButtonObj.GetComponentInChildren<LocalizationText>() != null)
@@ -221,49 +254,16 @@ namespace FurnitureAnimationsMod
                 saveBtnTrans = newButtonObj.transform;
             }
 
-            newButtonObj = saveBtnTrans.gameObject;
-            UnityEngine.UI.Button mainButtonComp = newButtonObj.GetComponent<UnityEngine.UI.Button>();
-            UnityEngine.UI.Text buttonText = newButtonObj.GetComponentInChildren<UnityEngine.UI.Text>();
-
-            if (mainButtonComp == null || buttonText == null) return;
-
-            // 2. ДИСТАНЦИОННЫЙ КОНТРОЛЬ МЕБЕЛИ (5 метров)
-            Furniture nearbyProp = PoseExporter.FindClosestFurniture(characterComp.transform.position, 5f);
-            bool isFurnitureNearby = nearbyProp != null;
-
-            // 3. ПЕРЕКЛЮЧЕНИЕ РЕЖИМОВ КНОПКИ СТРОГО ПО НАШИМ НАДЕЖНЫМ КЛИК-ФЛАГАМ
-            if (!isFurnitureNearby)
+            // Держим её просто белой во время сбора информации
+            var txt = saveBtnTrans.GetComponentInChildren<UnityEngine.UI.Text>();
+            if (txt != null)
             {
-                buttonText.text = "No Furniture Nearby";
-                buttonText.color = Color.gray;
-                mainButtonComp.interactable = false;
+                txt.text = "SDK Debug Mode Active";
+                txt.color = Color.white;
             }
-            else if (Plugin.IsCustomPoseActive)
-            {
-                // Если взведен флаг ручной правки костей скелета
-                buttonText.text = "Save Custom Pose for Furniture";
-                buttonText.color = Color.cyan;
-                mainButtonComp.interactable = true;
-            }
-            else if (!Plugin.IsAnyPoseSelected)
-            {
-                // Если мы только вошли в меню и еще ни разу не кликнули по позе из списка
-                buttonText.text = "No Furniture Pose";
-                buttonText.color = Color.gray;
-                mainButtonComp.interactable = false;
-            }
-            else
-            {
-                // Если поза выбрана, а гизмо отключены — значит сохраняем пресет
-                buttonText.text = "Link Preset Pose for Furniture";
-                buttonText.color = Color.green;
-                mainButtonComp.interactable = true;
-            }
-
-            newButtonObj.SetActive(true);
+            saveBtnTrans.gameObject.SetActive(true);
         }
     }
-
 
     // ПАТЧ А: Перехватываем клик по ГОТОВОЙ позе из ванильного списка игры
     [HarmonyPatch(typeof(UIFreePose), "SelectPose")] // Метод игры при выборе иконки позы
