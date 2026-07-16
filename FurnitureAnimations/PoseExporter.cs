@@ -14,32 +14,39 @@ namespace FurnitureAnimationsMod
         {
             if (uiInstance == null || uiInstance.selectedCharacter == null) return;
 
+            // 1. Проверяем дистанцию до мебели (5 метров)
             Vector3 playerPos = uiInstance.selectedCharacter.position;
-            Furniture closestFurniture = FindClosestFurniture(playerPos);
+            Furniture closestFurniture = FindClosestFurniture(playerPos, 5f);
 
             if (closestFurniture == null)
             {
                 if (Global.code != null && Global.code.uiCombat != null)
-                    Global.code.uiCombat.AddPrompt("Рядом нет мебели в радиусе 10 метров!");
+                    Global.code.uiCombat.AddPrompt("No interactive furniture found within 5 meters!");
                 return;
             }
 
             string furnitureName = closestFurniture.name.Replace("(Clone)", "").Trim();
             CharacterCustomization characterComp = uiInstance.selectedCharacter.GetComponent<CharacterCustomization>();
 
+            // 2. ИЩЕМ НАШУ УЛЬТИМАТИВНУЮ КНОПКУ НА СЦЕНЕ ДЛЯ ОПРЕДЕЛЕНИЯ РЕЖИМА
+            Transform sdkBtnTrans = uiInstance.transform.Find("Button_SaveInteract");
+            UnityEngine.UI.Text buttonTextComp = sdkBtnTrans?.GetComponentInChildren<UnityEngine.UI.Text>();
+
+            string currentButtonText = buttonTextComp != null ? buttonTextComp.text : "";
+
+            // Железно определяем режим на основе текста кнопки, который выбрал пользователь!
+            bool isCustomBakeMode = currentButtonText == "Save Custom Pose for Furniture";
+
             string controllerName = "None";
             _lastCapturedIcon = null;
 
-            // Умное распознавание типа позы
-            bool hasActiveAnimator = characterComp != null && characterComp.anim != null && characterComp.anim.runtimeAnimatorController != null;
-            bool isPresetPose = hasActiveAnimator && !string.IsNullOrEmpty(characterComp.anim.runtimeAnimatorController.name) && characterComp.anim.runtimeAnimatorController.name != "CustomJSON";
-
-            if (isPresetPose)
+            if (!isCustomBakeMode)
             {
-                controllerName = characterComp.anim.runtimeAnimatorController.name;
-                Plugin.Log.LogInfo($"[PoseExporter] Распознана предустановленная поза: {controllerName}");
+                // Сценарий А: Link Preset Pose (Зеленый режим кнопки)
+                controllerName = (characterComp?.anim?.runtimeAnimatorController?.name ?? "None");
+                Plugin.Log.LogInfo($"[PoseExporter] Текст кнопки: '{currentButtonText}'. Запуск Сценария А (Preset Link) для {controllerName}...");
 
-                // Ищем родную иконку этой позы в реестре игры
+                // Вытаскиваем родную иконку из игры
                 if (RM.code != null && RM.code.allFreePoses != null)
                 {
                     foreach (Transform t in RM.code.allFreePoses.items)
@@ -55,10 +62,11 @@ namespace FurnitureAnimationsMod
             }
             else
             {
-                // Сценарий Б: Полностью кастомная поза скелета
+                // Сценарий Б: Save Custom Pose (Бирюзовый режим кнопки)
                 controllerName = "CustomJSON";
-                Plugin.Log.LogInfo("[PoseExporter] Распознана полностью ручная поза. Делаем снимок экрана...");
+                Plugin.Log.LogInfo($"[PoseExporter] Текст кнопки: '{currentButtonText}'. Запуск Сценария Б (Bake Custom Skeleton)...");
 
+                // Генерируем скриншот-иконку нашей камерой
                 var photoComp = uiInstance.GetComponent<TakePhotos>();
                 if (photoComp != null && Global.code != null && Global.code.freeCamera != null)
                 {
@@ -67,19 +75,23 @@ namespace FurnitureAnimationsMod
                 }
             }
 
+            // Расчет локального смещения относительно мебели
             Vector3 exactLocPos = closestFurniture.transform.InverseTransformPoint(playerPos);
             Quaternion localQuaternion = Quaternion.Inverse(closestFurniture.transform.rotation) * uiInstance.selectedCharacter.rotation;
             Vector3 exactLocRot = localQuaternion.eulerAngles;
 
-            string promptText = $"Вы хотите сохранить эту позу для {furnitureName}?\n" +
-                                $"Тип: {(isPresetPose ? "Предустановленная" : "Кастомная")}\n" +
-                                $"Контроллер: {controllerName}";
+            string promptText = $"Do you want to save this pose for {furnitureName}?\n" +
+                                $"Type: {(isCustomBakeMode ? "Baked Custom Pose" : "Preset Animation Link")}\n" +
+                                $"Identifier: {controllerName}";
 
+            // Вызываем GUI диалог подтверждения
             EditorUiManager.ShowConfirmationDialog(promptText, _lastCapturedIcon, () =>
             {
-                SavePoseToDataFolder(furnitureName, controllerName, exactLocPos, exactLocRot, !isPresetPose, characterComp);
+                // При нажатии "ДА" передаем флаг isCustomBakeMode на физическую запись файлов
+                SavePoseToDataFolder(furnitureName, controllerName, exactLocPos, exactLocRot, isCustomBakeMode, characterComp);
             });
         }
+
 
         private static void SavePoseToDataFolder(string furnitureName, string controller, Vector3 pos, Vector3 rot, bool isCustom, CharacterCustomization character)
         {
