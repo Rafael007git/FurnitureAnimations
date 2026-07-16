@@ -1,6 +1,9 @@
 ﻿using System;
+using System.IO;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using RuntimeGizmos; // Подключаем пространство имен гизмо из нашего PDF!
 
 namespace FurnitureAnimationsMod
 {
@@ -11,22 +14,19 @@ namespace FurnitureAnimationsMod
         private UnityEngine.UI.Text _buttonText;
         private float _updateTimer = 0f;
 
-        // Инициализация ссылок на компоненты
         public void Setup(UIFreePose ui)
         {
             _uiInstance = ui;
             _mainButton = GetComponent<UnityEngine.UI.Button>();
             _buttonText = GetComponentInChildren<UnityEngine.UI.Text>();
-
-            Plugin.Log.LogWarning("[SDK_Controller] Скрипт автоматического трекинга успешно запущен на кнопке!");
+            Plugin.Log.LogInfo("[SDK_Controller] Нативный Update-трекер успешно запущен напрямую.");
         }
 
-        // Встроенный метод Unity: срабатывает каждый кадр
         private void Update()
         {
             if (_uiInstance == null || _mainButton == null || _buttonText == null) return;
 
-            // Оптимизация: опрашиваем движок игры не каждый кадр, а 5 раз в секунду (каждые 0.2 сек)
+            // Опрашиваем состояние 5 раз в секунду для идеальной оптимизации
             _updateTimer += Time.deltaTime;
             if (_updateTimer < 0.2f) return;
             _updateTimer = 0f;
@@ -38,41 +38,67 @@ namespace FurnitureAnimationsMod
 
             try
             {
-                // 1. АНАЛИЗ СОСТОЯНИЙ НА ОСНОВЕ ФАКТОВ ДВИЖКА
                 string currentCtrlName = (characterComp.anim.runtimeAnimatorController?.name ?? "").ToLower();
 
-                // Проверяем наличие гизмоAdvanced Free Pose на сцене
-                bool isHandEditingActive = GameObject.Find("TransformGizmo") != null || currentCtrlName == "customjson";
+                // 1. ЖЕЛЕЗОБЕТОННЫЙ ПЕРЕХВАТ НА ОСНОВЕ ДАННЫХ ИЗ PDF
+                bool isGizmoActiveOnScene = false;
+                bool isUserActivelyRotating = false;
 
-                // Проверяем, находится ли персонаж в дефолтной стойке
-                bool isDefaultIdleActive = currentCtrlName.Contains("idle") || currentCtrlName.Contains("unarmed") || string.IsNullOrEmpty(currentCtrlName);
+                // Обращаемся напрямую к статическому синглтону из строки 1521 нашего PDF!
+                if (TransformGizmo.transformGizmo_ != null)
+                {
+                    // Проверяем, запущен ли режим гизмо для костей (строка 1476)
+                    isGizmoActiveOnScene = TransformGizmo.transformGizmo_.runTransformGizmo;
 
-                // Если аниматор заморожен или имя сменилось с дефолтного — поза мебели выбрана!
+                    // Проверяем рантайм-событие: крутит ли пользователь кость прямо СЕЙЧАС (строка 22)
+                    isUserActivelyRotating = TransformGizmo.transformGizmo_.isTransforming;
+                }
+
+                // Взводим режим кастомной позы, если гизмо активны на экране или имя контроллера сменилось
+                bool isHandEditingActive = currentCtrlName.Contains("custom") ||
+                                           _uiInstance.isCustomPoseMode == true ||
+                                           isGizmoActiveOnScene;
+
+                // Базовое состояние Idle покоя персонажа
+                bool isDefaultIdleActive = currentCtrlName.Contains("idle") ||
+                                           currentCtrlName.Contains("unarmed") ||
+                                           string.IsNullOrEmpty(currentCtrlName);
+
+                // Поза мебели активна, если аниматор выключен игрой или контроллер ушел с Idle стойки
                 bool isAnyPresetPoseActive = characterComp.anim.enabled == false || !isDefaultIdleActive;
 
-                // 2. МГНОВЕННОЕ ОБНОВЛЕНИЕ ВИЗУАЛА КНОПКИ
+                // Если поймали событие физического вращения осей мышкою — логируем!
+                if (isUserActivelyRotating)
+                {
+                    Plugin.Log.LogWarning("[SDK_Gizmo] LIVE EVENT: Обнаружено вращение кости куклы в реальном времени!");
+                }
+
+                // 2. ДИНАМИЧЕСКОЕ ИЗМЕНЕНИЕ ИНТЕРФЕЙСА КНОПКИ SDK
                 if (isHandEditingActive)
                 {
+                    // СОСТОЯНИЕ 3: АКТИВЕН РЕЖИМ ADVANCED FREE POSE
                     _buttonText.text = "Save Custom Pose for Furniture";
-                    _buttonText.color = Color.cyan; // Бирюзовый SDK
+                    _buttonText.color = Color.cyan; // Фирменный бирюзовый SDK
                     _mainButton.interactable = true;
                 }
                 else if (isAnyPresetPoseActive)
                 {
+                    // СОСТОЯНИЕ 2 и 4: ВЫБРАНА ВАНИЛЬНАЯ ПОЗА ИЗ СПИСКА
                     _buttonText.text = "Link Preset Pose for Furniture";
                     _buttonText.color = Color.green; // Зеленый цвет связи
                     _mainButton.interactable = true;
                 }
                 else
                 {
+                    // СОСТОЯНИЕ 1: МЕНЮ ПУСТОЕ (Поза мебели не выбрана)
                     _buttonText.text = "No Furniture Pose";
-                    _buttonText.color = Color.gray; // Серый цвет
-                    _mainButton.interactable = false; // Блокируем клик
+                    _buttonText.color = Color.gray; // Серый цвет блокировки
+                    _mainButton.interactable = false;
                 }
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogError($"[SDK_Controller] Ошибка в Update-трекере: {ex.Message}");
+                Plugin.Log.LogError($"[SDK_Controller] Ошибка прямого трекинга: {ex.Message}");
             }
         }
     }
