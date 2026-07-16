@@ -233,18 +233,20 @@ namespace FurnitureAnimationsMod
 
             if (mainButtonComp == null || buttonText == null) return;
 
-            // 2. УМНЫЙ АНАЛИЗ ОКРУЖЕНИЯ: Проверяем наличие мебели в радиусе 5 метров!
+            // 2. УМНЫЙ АНАЛИЗ ОКРУЖЕНИЯ: Ищем мебель в радиусе 5 метров
             Furniture nearbyProp = PoseExporter.FindClosestFurniture(characterComp.transform.position, 5f);
             bool isFurnitureNearby = nearbyProp != null;
 
             // 3. ДИНАМИЧЕСКИЙ АНАЛИЗ СОСТОЯНИЯ АНИМАЦИЙ
             string currentCtrlName = characterComp.anim.runtimeAnimatorController?.name ?? "";
+
             bool isMenuEmpty = string.IsNullOrEmpty(currentCtrlName) || currentCtrlName == "Combat_Idle" || currentCtrlName == "Common_Idle";
             bool isCustomModeActive = __instance.isCustomPoseMode;
 
+            // 4. ТВОЯ ИСПРАВЛЕННАЯ ЛОГИКА НАЗВАНИЙ С ДИСТАНЦИОННЫМ БЛОКОМ
             if (!isFurnitureNearby)
             {
-                // КРИТИЧЕСКИЙ UX ФИКС: Рядом нет мебели в радиусе 5м! Жесткий блок кнопки.
+                // Если мебели нет ближе 5 метров — жестко блокируем кнопку
                 buttonText.text = "No Furniture Nearby";
                 buttonText.color = Color.gray;
                 mainButtonComp.interactable = false;
@@ -252,22 +254,22 @@ namespace FurnitureAnimationsMod
             else if (isMenuEmpty && !isCustomModeActive)
             {
                 // СОСТОЯНИЕ 1: Мебель рядом есть, но поза еще не выбрана
-                buttonText.text = "Select Furniture Pose";
+                buttonText.text = "No Furniture Pose";
                 buttonText.color = Color.gray;
                 mainButtonComp.interactable = false;
             }
             else if (isCustomModeActive)
             {
-                // СОСТОЯНИЕ 3: Активирован ручной режим Advanced Free Pose (Гизмо на экране)
-                buttonText.text = "Bake Custom Prop Pose";
-                buttonText.color = Color.cyan; // Бирюзовый цвет SDK
+                // СОСТОЯНИЕ 3: Активирован ручной режим FreePose (Гизмо на экране)
+                buttonText.text = "Save Custom Pose for Furniture";
+                buttonText.color = Color.cyan;
                 mainButtonComp.interactable = true;
             }
             else
             {
-                // СОСТОЯНИЕ 2 и 4: Выбрана ванильная готовая анимация из списка
-                buttonText.text = "Link Preset to Furniture";
-                buttonText.color = Color.green; // Зеленый цвет связи
+                // СОСТОЯНИЕ 2 и 4: Выбрана предустановленная ванильная анимация из списка
+                buttonText.text = "Link Preset Pose for Furniture";
+                buttonText.color = Color.green;
                 mainButtonComp.interactable = true;
             }
 
