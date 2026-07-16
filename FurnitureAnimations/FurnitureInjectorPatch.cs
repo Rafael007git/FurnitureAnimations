@@ -173,97 +173,107 @@ namespace FurnitureAnimationsMod
         }
     }
 
-    // === ПАТЧ 5: СТАБИЛЬНАЯ ДИНАМИЧЕСКАЯ КНОПКА НА НАДЕНЫХ РУЧНЫХ ФЛАГАХ ===
+    // === ПАТЧ 5: СТАБИЛЬНАЯ ДИНАМИЧЕСКАЯ КНОПКА SDK (ВЕРСИЯ 0.2.0 RELEASE) ===
     [HarmonyPatch(typeof(UIFreePose), "Refresh")]
     public class UIFreePoseButtonPatch
     {
         [HarmonyPostfix]
         public static void Postfix(UIFreePose __instance)
         {
-            if (__instance == null) return;
+            if (__instance == null || __instance.selectedCharacter == null) return;
 
-            // --- БЛОК ТОТАЛЬНОЙ ДИАГНОСТИКИ В КОНСОЛЬ В РЕЖИМЕ РЕАЛЬНОГО ВРЕМЕНИ ---
-            try
-            {
-                string charInfo = "No Character";
-                string animatorCtrlName = "No Animator/Controller";
-                bool isAnimEnabled = false;
+            CharacterCustomization characterComp = __instance.selectedCharacter.GetComponent<CharacterCustomization>();
+            if (characterComp == null || characterComp.anim == null) return;
 
-                if (__instance.selectedCharacter != null)
-                {
-                    charInfo = __instance.selectedCharacter.name;
-                    var characterComp = __instance.selectedCharacter.GetComponent<CharacterCustomization>();
-                    if (characterComp != null && characterComp.anim != null)
-                    {
-                        isAnimEnabled = characterComp.anim.enabled;
-                        if (characterComp.anim.runtimeAnimatorController != null)
-                        {
-                            animatorCtrlName = characterComp.anim.runtimeAnimatorController.name;
-                        }
-                    }
-                }
-
-                // Выводим в лог BepInEx срез всех критических параметров
-                Plugin.Log.LogWarning(
-                    $"[SDK_DEBUG] === REFRESH TICK ===\n" +
-                    $"Active Character: {charInfo}\n" +
-                    $"isCustomPoseMode (flag): {__instance.isCustomPoseMode}\n" +
-                    $"Animator Enabled: {isAnimEnabled}\n" +
-                    $"Current Controller Name: {animatorCtrlName}\n" +
-                    $"DataButtons Count: {__instance.dataButtons?.Count ?? 0}\n" +
-                    $"================================"
-                );
-            }
-            catch (Exception ex)
-            {
-                Plugin.Log.LogError($"[SDK_DEBUG] Ошибка сбора логов: {ex.Message}");
-            }
-
-            // --- БАЗОВАЯ ОТРИСОВКА КНОПКИ (БЕЗ БЛОКИРОВОК И ПЕРЕКЛЮЧЕНИЙ, ЧИСТО ДЛЯ ТЕСТА) ---
+            // 1. Создание или удержание нашей кнопки SDK в корне Canvas окна
             Transform saveBtnTrans = __instance.transform.Find("Button_SaveInteract");
+            GameObject newButtonObj = null;
+
             if (saveBtnTrans == null)
             {
+                // Ищем оригинальную кнопку "FreePose" в качестве донора компонентов
                 Transform templateBtn = __instance.transform.Find("FreePose");
                 if (templateBtn == null) templateBtn = __instance.GetComponentInChildren<UnityEngine.UI.Button>()?.transform;
                 if (templateBtn == null) return;
 
-                GameObject newButtonObj = UnityEngine.Object.Instantiate(templateBtn.gameObject, __instance.transform);
+                // Клонируем её строго в корень __instance.transform, чтобы её не удалили соседние моды
+                newButtonObj = UnityEngine.Object.Instantiate(templateBtn.gameObject, __instance.transform);
                 newButtonObj.name = "Button_SaveInteract";
+
+                // СБРОС МАСШТАБА: Навсегда побеждаем баг раздувания кнопки до двойного размера!
                 newButtonObj.transform.localScale = Vector3.one;
 
                 RectTransform rect = newButtonObj.GetComponent<RectTransform>();
                 if (rect != null)
                 {
+                    // Прижимаем якоря (Anchors) к правому нижнему углу экрана
                     rect.anchorMin = new Vector2(1f, 0f); rect.anchorMax = new Vector2(1f, 0f); rect.pivot = new Vector2(1f, 0f);
+
+                    // Выставляем точную позицию: 40 пикселей от правого края, 230 пикселей от низа монитора
                     rect.anchoredPosition = new Vector2(-40f, 230f);
-                    rect.sizeDelta = new Vector2(220f, 40f);
+                    rect.sizeDelta = new Vector2(210f, 40f); // Слегка расширили под длинный английский текст
                 }
 
-                if (newButtonObj.GetComponentInChildren<LocalizationText>() != null)
-                    UnityEngine.Object.Destroy(newButtonObj.GetComponentInChildren<LocalizationText>());
+                // Стираем ванильные скрипты локализации игры, чтобы они не затерли наш текст
+                LocalizationText locText = newButtonObj.GetComponentInChildren<LocalizationText>();
+                if (locText != null) UnityEngine.Object.Destroy(locText);
 
+                // Очищаем старые листенеры и вешаем наш метод экспорта интерактива
                 UnityEngine.UI.Button buttonComp = newButtonObj.GetComponent<UnityEngine.UI.Button>();
                 if (buttonComp != null)
                 {
                     buttonComp.onClick.RemoveAllListeners();
                     buttonComp.onClick.AddListener(new UnityEngine.Events.UnityAction(() =>
                     {
+                        Plugin.Log.LogWarning("[UI_Patch] Клик по автономной кнопке 'Сохранить интерактив' зафиксирован!");
                         PoseExporter.OnSaveInteractClicked(__instance);
                     }));
                 }
                 saveBtnTrans = newButtonObj.transform;
             }
 
-            // Держим её просто белой во время сбора информации
-            var txt = saveBtnTrans.GetComponentInChildren<UnityEngine.UI.Text>();
-            if (txt != null)
+            newButtonObj = saveBtnTrans.gameObject;
+            UnityEngine.UI.Button mainButtonComp = newButtonObj.GetComponent<UnityEngine.UI.Button>();
+            UnityEngine.UI.Text buttonText = newButtonObj.GetComponentInChildren<UnityEngine.UI.Text>();
+
+            if (mainButtonComp == null || buttonText == null) return;
+
+            // 2. ХИРУРГИЧЕСКИЙ АНАЛИЗ НА ОСНОВЕ НАШИХ ЖИВЫХ ЛОГОВ ПОЛЬЗОВАТЕЛЯ
+            string currentCtrlName = (characterComp.anim.runtimeAnimatorController?.name ?? "").ToLower();
+
+            // Проверяем, активен ли инструмент кручения костей Advanced Free Pose (ищем его гизмо на сцене)
+            bool isHandEditingActive = currentCtrlName == "customjson" || GameObject.Find("TransformGizmo") != null;
+
+            // Проверяем, находится ли персонаж в базовой дефолтной стойке (UnarmedController / Idle)
+            bool isDefaultIdle = currentCtrlName.Contains("unarmed") || currentCtrlName.Contains("idle") || string.IsNullOrEmpty(currentCtrlName);
+
+            // 3. АВТО-ПЕРЕКЛЮЧЕНИЕ ТЕКСТА, ЦВЕТА И ДОСТУПНОСТИ КНОПКИ
+            if (isHandEditingActive)
             {
-                txt.text = "SDK Debug Mode Active";
-                txt.color = Color.white;
+                // СОСТОЯНИЕ 3: Кости крутятся вручную (Гизмо Advanced Free Pose на экране)
+                buttonText.text = "Save Custom Pose for Furniture";
+                buttonText.color = Color.cyan; // Фирменный бирюзовый SDK
+                mainButtonComp.interactable = true;
             }
-            saveBtnTrans.gameObject.SetActive(true);
+            else if (isDefaultIdle)
+            {
+                // СОСТОЯНИЕ 1: Меню только открыто, дефолтная стойка, поза мебели не выбрана
+                buttonText.text = "No Furniture Pose";
+                buttonText.color = Color.gray; // Серый неактивный цвет
+                mainButtonComp.interactable = false; // Блокируем клик, защита от пустых сохранений
+            }
+            else
+            {
+                // СОСТОЯНИЕ 2 и 4: Выбрана предустановленная ванильная анимация из списка (CoupleL3, laying17 и т.д.)
+                buttonText.text = "Link Preset Pose for Furniture";
+                buttonText.color = Color.green; // Спокойный зеленый цвет связи
+                mainButtonComp.interactable = true;
+            }
+
+            newButtonObj.SetActive(true);
         }
     }
+
 
     // ПАТЧ А: Перехватываем клик по ГОТОВОЙ позе из ванильного списка игры
     [HarmonyPatch(typeof(UIFreePose), "SelectPose")] // Метод игры при выборе иконки позы
