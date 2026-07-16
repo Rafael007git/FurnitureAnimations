@@ -22,13 +22,13 @@ namespace FurnitureAnimationsMod
                 string dllPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
                 string pluginsFolder = Path.GetDirectoryName(dllPath);
 
-                // 2. ЖЕСТКИЙ ФИКС: Устанавливаем базовую именную папку мода
+                // 2. Базовая именная папка мода
                 PluginDirectory = Path.Combine(pluginsFolder, "FurnitureAnimations");
 
-                // 3. Формируем структуру подпапок строго по твоей спецификации
+                // 3. АРХИТЕКТУРНЫЙ ФИКС ПУТЕЙ СЕЙВА:
                 PrefabsConfigPath = Path.Combine(PluginDirectory, "FurnitureConfigs");
                 CustomAnimsPath = Path.Combine(PluginDirectory, "CustomAnimations");
-                IconsPath = Path.Combine(PrefabsConfigPath, "Icons"); // Папка Icons переехала внутрь FurnitureConfigs!
+                IconsPath = Path.Combine(CustomAnimsPath, "Icons"); // <-- Папка уехала в CustomAnimations\Icons
 
                 // 4. Создаем директории на диске, если их нет
                 if (!Directory.Exists(PrefabsConfigPath)) Directory.CreateDirectory(PrefabsConfigPath);
