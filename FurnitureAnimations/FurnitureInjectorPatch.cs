@@ -162,7 +162,7 @@ namespace FurnitureAnimationsMod
                 Plugin.Log.LogWarning("[SafetyPatch] Безопасный выход из пустого интерактива.");
 
                 // Используем правильный тип CharacterCustomization из dnSpy для поиска игрока
-                var playerComp = Object.FindObjectOfType<CharacterCustomization>();
+                var playerComp = UnityEngine.Object.FindObjectOfType<CharacterCustomization>();
                 if (playerComp != null)
                 {
                     playerComp.gameObject.SetActive(true);
@@ -227,7 +227,7 @@ namespace FurnitureAnimationsMod
                 if (templateBtn == null) templateBtn = __instance.GetComponentInChildren<UnityEngine.UI.Button>()?.transform;
                 if (templateBtn == null) return;
 
-                GameObject newButtonObj = Object.Instantiate(templateBtn.gameObject, __instance.transform);
+                GameObject newButtonObj = UnityEngine.Object.Instantiate(templateBtn.gameObject, __instance.transform);
                 newButtonObj.name = "Button_SaveInteract";
                 newButtonObj.transform.localScale = Vector3.one;
 
@@ -240,7 +240,7 @@ namespace FurnitureAnimationsMod
                 }
 
                 if (newButtonObj.GetComponentInChildren<LocalizationText>() != null)
-                    Object.Destroy(newButtonObj.GetComponentInChildren<LocalizationText>());
+                    UnityEngine.Object.Destroy(newButtonObj.GetComponentInChildren<LocalizationText>());
 
                 UnityEngine.UI.Button buttonComp = newButtonObj.GetComponent<UnityEngine.UI.Button>();
                 if (buttonComp != null)
