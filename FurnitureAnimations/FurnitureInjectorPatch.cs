@@ -237,41 +237,48 @@ namespace FurnitureAnimationsMod
             Furniture nearbyProp = PoseExporter.FindClosestFurniture(characterComp.transform.position, 5f);
             bool isFurnitureNearby = nearbyProp != null;
 
-            // 3. ДИНАМИЧЕСКИЙ АНАЛИЗ СОСТОЯНИЯ АНИМАЦИЙ
-            string currentCtrlName = characterComp.anim.runtimeAnimatorController?.name ?? "";
+            // 3. УМНЫЙ АНАЛИЗ СОСТОЯНИЙ АНИМАЦИИ (БЕЗ ЖЕСТКИХ СТРОКОВЫХ ИМЕН)
+            string currentCtrlName = (characterComp.anim.runtimeAnimatorController?.name ?? "").ToLower();
 
-            bool isMenuEmpty = string.IsNullOrEmpty(currentCtrlName) || currentCtrlName == "Combat_Idle" || currentCtrlName == "Common_Idle";
+            // Проверяем, активировал ли мод bugerry режим кастомного кручения костей скелета
+            // Мы смотрим на флаг окна или на наличие гизмо в памяти игры
             bool isCustomModeActive = __instance.isCustomPoseMode;
 
-            // 4. ТВОЯ ИСПРАВЛЕННАЯ ЛОГИКА НАЗВАНИЙ С ДИСТАНЦИОННЫМ БЛОКОМ
+            // Умная проверка: если в имени контроллера нет ключевых слов позы мебели, 
+            // и это дефолтный idle персонажа — значит меню пустое
+            bool isMenuEmpty = currentCtrlName.Contains("idle") ||
+                               currentCtrlName.Contains("base") ||
+                               string.IsNullOrEmpty(currentCtrlName);
+
+            // 4. ЛОГИКА НАЗВАНИЙ КНОПОК
             if (!isFurnitureNearby)
             {
-                // Если мебели нет ближе 5 метров — жестко блокируем кнопку
                 buttonText.text = "No Furniture Nearby";
-                buttonText.color = Color.gray;
-                mainButtonComp.interactable = false;
-            }
-            else if (isMenuEmpty && !isCustomModeActive)
-            {
-                // СОСТОЯНИЕ 1: Мебель рядом есть, но поза еще не выбрана
-                buttonText.text = "No Furniture Pose";
                 buttonText.color = Color.gray;
                 mainButtonComp.interactable = false;
             }
             else if (isCustomModeActive)
             {
-                // СОСТОЯНИЕ 3: Активирован ручной режим FreePose (Гизмо на экране)
+                // Если включен режим FreePose — это ВСЕГДА кастомное сохранение костей!
                 buttonText.text = "Save Custom Pose for Furniture";
                 buttonText.color = Color.cyan;
                 mainButtonComp.interactable = true;
             }
+            else if (isMenuEmpty)
+            {
+                // Если гизмо нет, а контроллер — обычный Idle, значит поза мебели еще не выбрана
+                buttonText.text = "No Furniture Pose";
+                buttonText.color = Color.gray;
+                mainButtonComp.interactable = false;
+            }
             else
             {
-                // СОСТОЯНИЕ 2 и 4: Выбрана предустановленная ванильная анимация из списка
+                // Во всех остальных случаях (когда включена поза мебели из списка)
                 buttonText.text = "Link Preset Pose for Furniture";
                 buttonText.color = Color.green;
                 mainButtonComp.interactable = true;
             }
+
 
             newButtonObj.SetActive(true);
         }
