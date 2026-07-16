@@ -173,103 +173,88 @@ namespace FurnitureAnimationsMod
         }
     }
 
-    // === ПАТЧ 5: СТАБИЛЬНАЯ ДИНАМИЧЕСКАЯ КНОПКА SDK (ФИНАЛЬНЫЙ РЕЛИЗ 0.2.0) ===
-    [HarmonyPatch(typeof(UIFreePose), "Refresh")]
+    // === ПАТЧ 5: УЛЬТИМАТИВНАЯ ИНЖЕКЦИЯ АВТОНОМНОЙ КНОПКИ ЧЕРЕЗ MONOBEHAVIOUR ===
+    [HarmonyPatch(typeof(UIFreePose), "Open")] // Перешли на железный метод Open!
     public class UIFreePoseButtonPatch
     {
         [HarmonyPostfix]
         public static void Postfix(UIFreePose __instance)
         {
-            if (__instance == null || __instance.selectedCharacter == null) return;
+            if (__instance == null) return;
 
-            CharacterCustomization characterComp = __instance.selectedCharacter.GetComponent<CharacterCustomization>();
-            if (characterComp == null || characterComp.anim == null) return;
+            // Защита от дублирования кнопок при повторных открытиях меню
+            Transform existingBtn = __instance.transform.Find("Button_SaveInteract");
+            if (existingBtn != null) return;
 
-            // 1. Создание или удержание нашей кнопки SDK в корне Canvas окна
-            Transform saveBtnTrans = __instance.transform.Find("Button_SaveInteract");
-            GameObject newButtonObj = null;
+            Plugin.Log.LogWarning("[UI_Patch] Меню открыто. Начинаем физическую сборку автономной кнопки SDK...");
 
-            if (saveBtnTrans == null)
+            // Ищем оригинальную кнопку "FreePose" на левой панели в качестве донора компонентов (Image, Button)
+            Transform templateBtn = __instance.transform.Find("FreePose");
+            if (templateBtn == null)
             {
-                Transform templateBtn = __instance.transform.Find("FreePose");
-                if (templateBtn == null) templateBtn = __instance.GetComponentInChildren<UnityEngine.UI.Button>()?.transform;
-                if (templateBtn == null) return;
-
-                newButtonObj = UnityEngine.Object.Instantiate(templateBtn.gameObject, __instance.transform);
-                newButtonObj.name = "Button_SaveInteract";
-                newButtonObj.transform.localScale = Vector3.one; // Сброс масштаба, чтобы не раздувало!
-
-                RectTransform rect = newButtonObj.GetComponent<RectTransform>();
-                if (rect != null)
-                {
-                    rect.anchorMin = new Vector2(1f, 0f); rect.anchorMax = new Vector2(1f, 0f); rect.pivot = new Vector2(1f, 0f);
-                    rect.anchoredPosition = new Vector2(-40f, 230f); // Позиция справа внизу
-                    rect.sizeDelta = new Vector2(210f, 40f); // Расширили под длинный английский текст
-                }
-
-                if (newButtonObj.GetComponentInChildren<LocalizationText>() != null)
-                    UnityEngine.Object.Destroy(newButtonObj.GetComponentInChildren<LocalizationText>());
-
-                UnityEngine.UI.Button buttonComp = newButtonObj.GetComponent<UnityEngine.UI.Button>();
-                if (buttonComp != null)
-                {
-                    buttonComp.onClick.RemoveAllListeners();
-                    buttonComp.onClick.AddListener(new UnityEngine.Events.UnityAction(() =>
-                    {
-                        Plugin.Log.LogWarning("[UI_Patch] Клик по автономной кнопке 'Сохранить интерактив' зафиксирован!");
-                        PoseExporter.OnSaveInteractClicked(__instance);
-                    }));
-                }
-                saveBtnTrans = newButtonObj.transform;
+                // Подстраховка: берем первую попавшуюся кнопку в иерархии окна
+                templateBtn = __instance.GetComponentInChildren<UnityEngine.UI.Button>()?.transform;
             }
 
-            newButtonObj = saveBtnTrans.gameObject;
-            UnityEngine.UI.Button mainButtonComp = newButtonObj.GetComponent<UnityEngine.UI.Button>();
+            if (templateBtn == null)
+            {
+                Plugin.Log.LogError("[UI_Patch] Критическая ошибка: Не найден шаблон кнопки на Canvas!");
+                return;
+            }
+
+            // 1. Клонируем кнопку строго в корень __instance.transform, защищая от удаления другими модами
+            GameObject newButtonObj = UnityEngine.Object.Instantiate(templateBtn.gameObject, __instance.transform);
+            newButtonObj.name = "Button_SaveInteract";
+
+            // Жестко сбрасываем масштаб клона до нормы, убирая баг раздувания в два раза!
+            newButtonObj.transform.localScale = Vector3.one;
+
+            // 2. Выставляем фиксированные координаты в правом нижнем углу экрана монитора
+            RectTransform rect = newButtonObj.GetComponent<RectTransform>();
+            if (rect != null)
+            {
+                // Прижимаем якоря к правому нижнему углу экрана (x=1, y=0)
+                rect.anchorMin = new Vector2(1f, 0f); rect.anchorMax = new Vector2(1f, 0f); rect.pivot = new Vector2(1f, 0f);
+
+                // Фиксированная позиция: 40 пикселей от правого края, 230 пикселей от низа монитора
+                rect.anchoredPosition = new Vector2(-40f, 230f);
+                rect.sizeDelta = new Vector2(210f, 40f); // Красивый стандартный размер
+            }
+
+            // 3. Уничтожаем ванильные скрипты локализации игры, чтобы они не затерли наш текст
+            LocalizationText locText = newButtonObj.GetComponentInChildren<LocalizationText>();
+            if (locText != null) UnityEngine.Object.Destroy(locText);
+
+            // 4. Первичная настройка шрифта и текста
             UnityEngine.UI.Text buttonText = newButtonObj.GetComponentInChildren<UnityEngine.UI.Text>();
-
-            if (mainButtonComp == null || buttonText == null) return;
-
-            // 2. ХИРУРГИЧЕСКИЙ АНАЛИЗ СОСТОЯНИЙ НА ОСНОВЕ ФАКТОВ ДВИЖКА
-            string currentCtrlName = (characterComp.anim.runtimeAnimatorController?.name ?? "").ToLower();
-
-            // Проверяем, активен ли ручной режим кручения костей скелета ( Advanced Free Pose )
-            bool isHandEditingActive = GameObject.Find("TransformGizmo") != null || currentCtrlName == "customjson";
-
-            // Проверяем, находится ли персонаж в базовом состоянии покоя (Idle или Unarmed стойка)
-            bool isDefaultIdleActive = currentCtrlName.Contains("idle") || currentCtrlName.Contains("unarmed") || string.IsNullOrEmpty(currentCtrlName);
-
-            // УМНАЯ ПРОВЕРКА НА ЛЮБУЮ ВАНИЛЬНУЮ ПОЗУ (И статика, и динамика):
-            // Поза считается выбранной, ЕСЛИ аниматор заморожен (для позы-статуи) 
-            // ИЛИ если имя текущего контроллера сменилось с дефолтного Idle на имя конкретной позы мебели!
-            bool isAnyPresetPoseActive = characterComp.anim.enabled == false || !isDefaultIdleActive;
-
-            // 3. АВТО-ПЕРЕКЛЮЧЕНИЕ ТЕКСТА И ЦВЕТА КНОПКИ
-            if (isHandEditingActive)
+            if (buttonText != null)
             {
-                // СОСТОЯНИЕ 3: Крутим кости вручную (Гизмо на экране)
-                buttonText.text = "Save Custom Pose for Furniture";
-                buttonText.color = Color.cyan; // Бирюзовый SDK
-                mainButtonComp.interactable = true;
+                buttonText.text = "Initializing SDK...";
+                buttonText.color = Color.white;
+                buttonText.fontSize = 13;
+                buttonText.alignment = TextAnchor.MiddleCenter;
             }
-            else if (isAnyPresetPoseActive)
+
+            // 5. Очищаем старые листенеры шаблона и вешаем наш метод экспорта
+            UnityEngine.UI.Button buttonComp = newButtonObj.GetComponent<UnityEngine.UI.Button>();
+            if (buttonComp != null)
             {
-                // СОСТОЯНИЕ 2 и 4: Выбрана любая предустановленная поза из списка (статичная или анимированная!)
-                buttonText.text = "Link Preset Pose for Furniture";
-                buttonText.color = Color.green; // Зеленый цвет связи
-                mainButtonComp.interactable = true;
+                buttonComp.onClick.RemoveAllListeners();
+                buttonComp.onClick.AddListener(new UnityEngine.Events.UnityAction(() =>
+                {
+                    Plugin.Log.LogWarning("[UI_Patch] Клик по автономной кнопке 'Сохранить интерактив' зафиксирован!");
+                    PoseExporter.OnSaveInteractClicked(__instance);
+                }));
             }
-            else
-            {
-                // СОСТОЯНИЕ 1: Поза мебели еще не выбрана (персонаж просто стоит в дефолтном Idle)
-                buttonText.text = "No Furniture Pose";
-                buttonText.color = Color.gray; // Серый цвет
-                mainButtonComp.interactable = false; // Блокируем клик
-            }
+
+            // 6. ХИРУРГИЧЕСКИЙ ШАГ: Подселяем наш MonoBehaviour скрипт прямо на созданную кнопку!
+            FurnitureSdkButtonController controller = newButtonObj.AddComponent<FurnitureSdkButtonController>();
+            controller.Setup(__instance);
 
             newButtonObj.SetActive(true);
+            Plugin.Log.LogWarning("[UI_Patch] Автономная кнопка SDK успешно создана и переведена на MonoBehaviour-контроль!");
         }
     }
-
 
 
     // ПАТЧ А: Перехватываем клик по ГОТОВОЙ позе из ванильного списка игры
