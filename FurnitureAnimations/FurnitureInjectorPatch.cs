@@ -172,8 +172,7 @@ namespace FurnitureAnimationsMod
         }
     }
 
-
-    // === ПАТЧ 5: УЛЬТИМАТИВНАЯ ДИНАМИЧЕСКАЯ КНОПКА SDK С АВТО-РЕЖИМАМИ ===
+    // === ПАТЧ 5: УЛЬТИМАТИВНАЯ ДИНАМИЧЕСКАЯ КНОПКА SDK С АВТО-БЛОКИРОВКОЙ ПО РАДИУСУ (ENG) ===
     [HarmonyPatch(typeof(UIFreePose), "Refresh")]
     public class UIFreePoseButtonPatch
     {
@@ -191,14 +190,16 @@ namespace FurnitureAnimationsMod
 
             if (saveBtnTrans == null)
             {
-                // Если кнопки нет — клонируем её из шаблона "FreePose" один раз
+                // Если кнопки нет — клонируем её из шаблона один раз строго в корень __instance.transform
                 Transform templateBtn = __instance.transform.Find("FreePose");
                 if (templateBtn == null) templateBtn = __instance.GetComponentInChildren<UnityEngine.UI.Button>()?.transform;
                 if (templateBtn == null) return;
 
                 newButtonObj = Object.Instantiate(templateBtn.gameObject, __instance.transform);
                 newButtonObj.name = "Button_SaveInteract";
-                newButtonObj.transform.localScale = Vector3.one; // Сброс масштаба, чтобы не раздувало!
+
+                // Сброс масштаба, чтобы не раздувало
+                newButtonObj.transform.localScale = Vector3.one;
 
                 RectTransform rect = newButtonObj.GetComponent<RectTransform>();
                 if (rect != null)
@@ -208,7 +209,7 @@ namespace FurnitureAnimationsMod
                     rect.sizeDelta = new Vector2(180f, 40f);
                 }
 
-                // Стираем локализацию
+                // Стираем ванильную локализацию игры
                 LocalizationText locText = newButtonObj.GetComponentInChildren<LocalizationText>();
                 if (locText != null) Object.Destroy(locText);
 
@@ -232,38 +233,48 @@ namespace FurnitureAnimationsMod
 
             if (mainButtonComp == null || buttonText == null) return;
 
-            // 2. ДИНАМИЧЕСКИЙ АНАЛИЗ СОСТОЯНИЯ ИГРЫ ДЛЯ ОПРЕДЕЛЕНИЯ ТЕКСТА КНОПКИ
+            // 2. УМНЫЙ АНАЛИЗ ОКРУЖЕНИЯ: Проверяем наличие мебели в радиусе 5 метров!
+            Furniture nearbyProp = PoseExporter.FindClosestFurniture(characterComp.transform.position, 5f);
+            bool isFurnitureNearby = nearbyProp != null;
+
+            // 3. ДИНАМИЧЕСКИЙ АНАЛИЗ СОСТОЯНИЯ АНИМАЦИЙ
             string currentCtrlName = characterComp.anim.runtimeAnimatorController?.name ?? "";
-
-            // Проверяем, выбрано ли хоть что-то
             bool isMenuEmpty = string.IsNullOrEmpty(currentCtrlName) || currentCtrlName == "Combat_Idle" || currentCtrlName == "Common_Idle";
-            bool isCustomModeActive = __instance.isCustomPoseMode; // Флаг Advanced Free Pose мода!
+            bool isCustomModeActive = __instance.isCustomPoseMode;
 
-            if (isMenuEmpty && !isCustomModeActive)
+            if (!isFurnitureNearby)
             {
-                // СОСТОЯНИЕ 1: Поза не выбрана
-                buttonText.text = "No Furniture Pose";
+                // КРИТИЧЕСКИЙ UX ФИКС: Рядом нет мебели в радиусе 5м! Жесткий блок кнопки.
+                buttonText.text = "No Furniture Nearby";
                 buttonText.color = Color.gray;
-                mainButtonComp.interactable = false; // Выключаем кликабельность кнопки
+                mainButtonComp.interactable = false;
+            }
+            else if (isMenuEmpty && !isCustomModeActive)
+            {
+                // СОСТОЯНИЕ 1: Мебель рядом есть, но поза еще не выбрана
+                buttonText.text = "Select Furniture Pose";
+                buttonText.color = Color.gray;
+                mainButtonComp.interactable = false;
             }
             else if (isCustomModeActive)
             {
-                // СОСТОЯНИЕ 3: Активирован ручной режим FreePose (Гизмо на экране)
-                buttonText.text = "Save Custom Pose for Furniture";
-                buttonText.color = Color.cyan; // Фирменный бирюзовый SDK
+                // СОСТОЯНИЕ 3: Активирован ручной режим Advanced Free Pose (Гизмо на экране)
+                buttonText.text = "Bake Custom Prop Pose";
+                buttonText.color = Color.cyan; // Бирюзовый цвет SDK
                 mainButtonComp.interactable = true;
             }
             else
             {
-                // СОСТОЯНИЕ 2 и 4: Выбрана предустановленная ванильная анимация из списка
-                buttonText.text = "Link Preset Pose for Furniture";
-                buttonText.color = Color.green; // Спокойный зеленый
+                // СОСТОЯНИЕ 2 и 4: Выбрана ванильная готовая анимация из списка
+                buttonText.text = "Link Preset to Furniture";
+                buttonText.color = Color.green; // Зеленый цвет связи
                 mainButtonComp.interactable = true;
             }
 
             newButtonObj.SetActive(true);
         }
     }
+
 
 
 }

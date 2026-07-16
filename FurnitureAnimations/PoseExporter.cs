@@ -167,16 +167,21 @@ namespace FurnitureAnimationsMod
             }
         }
 
-        private static Furniture FindClosestFurniture(Vector3 playerPosition)
+        // Обновленный метод поиска: теперь принимает максимальную дистанцию (радиус)
+        public static Furniture FindClosestFurniture(Vector3 playerPosition, float maxDistance = 5f)
         {
             Furniture closestFurniture = null;
-            float maxDistance = 10f;
             Furniture[] allFurnitures = UnityEngine.Object.FindObjectsOfType<Furniture>();
+
             foreach (Furniture f in allFurnitures)
             {
                 if (f == null) continue;
                 float distance = Vector3.Distance(playerPosition, f.transform.position);
-                if (distance < maxDistance) { maxDistance = distance; closestFurniture = f; }
+                if (distance < maxDistance)
+                {
+                    maxDistance = distance;
+                    closestFurniture = f;
+                }
             }
             return closestFurniture;
         }
