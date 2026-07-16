@@ -172,7 +172,7 @@ namespace FurnitureAnimationsMod
         }
     }
 
-    // === ПАТЧ 5: УЛЬТИМАТИВНАЯ ДИНАМИЧЕСКАЯ КНОПКА SDK С АВТО-БЛОКИРОВКОЙ ПО РАДИУСУ (ENG) ===
+    // === ПАТЧ 5: СТАБИЛЬНАЯ ДИНАМИЧЕСКАЯ КНОПКА НА НАДЕНЫХ РУЧНЫХ ФЛАГАХ ===
     [HarmonyPatch(typeof(UIFreePose), "Refresh")]
     public class UIFreePoseButtonPatch
     {
@@ -182,38 +182,33 @@ namespace FurnitureAnimationsMod
             if (__instance == null || __instance.selectedCharacter == null) return;
 
             CharacterCustomization characterComp = __instance.selectedCharacter.GetComponent<CharacterCustomization>();
-            if (characterComp == null || characterComp.anim == null) return;
+            if (characterComp == null) return;
 
-            // 1. Ищем, создана ли уже наша кнопка в корне окна
+            // 1. Создание или удержание нашей кнопки SDK в корне Canvas окна
             Transform saveBtnTrans = __instance.transform.Find("Button_SaveInteract");
             GameObject newButtonObj = null;
 
             if (saveBtnTrans == null)
             {
-                // Если кнопки нет — клонируем её из шаблона один раз строго в корень __instance.transform
                 Transform templateBtn = __instance.transform.Find("FreePose");
                 if (templateBtn == null) templateBtn = __instance.GetComponentInChildren<UnityEngine.UI.Button>()?.transform;
                 if (templateBtn == null) return;
 
                 newButtonObj = Object.Instantiate(templateBtn.gameObject, __instance.transform);
                 newButtonObj.name = "Button_SaveInteract";
-
-                // Сброс масштаба, чтобы не раздувало
-                newButtonObj.transform.localScale = Vector3.one;
+                newButtonObj.transform.localScale = Vector3.one; // Сброс масштаба
 
                 RectTransform rect = newButtonObj.GetComponent<RectTransform>();
                 if (rect != null)
                 {
                     rect.anchorMin = new Vector2(1f, 0f); rect.anchorMax = new Vector2(1f, 0f); rect.pivot = new Vector2(1f, 0f);
-                    rect.anchoredPosition = new Vector2(-40f, 230f); // Фиксированная позиция справа
+                    rect.anchoredPosition = new Vector2(-40f, 230f); // Позиция справа внизуモニター
                     rect.sizeDelta = new Vector2(180f, 40f);
                 }
 
-                // Стираем ванильную локализацию игры
-                LocalizationText locText = newButtonObj.GetComponentInChildren<LocalizationText>();
-                if (locText != null) Object.Destroy(locText);
+                if (newButtonObj.GetComponentInChildren<LocalizationText>() != null)
+                    Object.Destroy(newButtonObj.GetComponentInChildren<LocalizationText>());
 
-                // Навешиваем клик
                 UnityEngine.UI.Button buttonComp = newButtonObj.GetComponent<UnityEngine.UI.Button>();
                 if (buttonComp != null)
                 {
@@ -223,7 +218,6 @@ namespace FurnitureAnimationsMod
                         PoseExporter.OnSaveInteractClicked(__instance);
                     }));
                 }
-
                 saveBtnTrans = newButtonObj.transform;
             }
 
@@ -233,57 +227,80 @@ namespace FurnitureAnimationsMod
 
             if (mainButtonComp == null || buttonText == null) return;
 
-            // 2. УМНЫЙ АНАЛИЗ ОКРУЖЕНИЯ: Ищем мебель в радиусе 5 метров
+            // 2. ДИСТАНЦИОННЫЙ КОНТРОЛЬ МЕБЕЛИ (5 метров)
             Furniture nearbyProp = PoseExporter.FindClosestFurniture(characterComp.transform.position, 5f);
             bool isFurnitureNearby = nearbyProp != null;
 
-            // 3. УМНЫЙ АНАЛИЗ СОСТОЯНИЙ АНИМАЦИИ (БЕЗ ЖЕСТКИХ СТРОКОВЫХ ИМЕН)
-            string currentCtrlName = (characterComp.anim.runtimeAnimatorController?.name ?? "").ToLower();
-
-            // Проверяем, активировал ли мод bugerry режим кастомного кручения костей скелета
-            // Мы смотрим на флаг окна или на наличие гизмо в памяти игры
-            bool isCustomModeActive = __instance.isCustomPoseMode;
-
-            // Умная проверка: если в имени контроллера нет ключевых слов позы мебели, 
-            // и это дефолтный idle персонажа — значит меню пустое
-            bool isMenuEmpty = currentCtrlName.Contains("idle") ||
-                               currentCtrlName.Contains("base") ||
-                               string.IsNullOrEmpty(currentCtrlName);
-
-            // 4. ЛОГИКА НАЗВАНИЙ КНОПОК
+            // 3. ПЕРЕКЛЮЧЕНИЕ РЕЖИМОВ КНОПКИ СТРОГО ПО НАШИМ НАДЕЖНЫМ КЛИК-ФЛАГАМ
             if (!isFurnitureNearby)
             {
                 buttonText.text = "No Furniture Nearby";
                 buttonText.color = Color.gray;
                 mainButtonComp.interactable = false;
             }
-            else if (isCustomModeActive)
+            else if (Plugin.IsCustomPoseActive)
             {
-                // Если включен режим FreePose — это ВСЕГДА кастомное сохранение костей!
+                // Если взведен флаг ручной правки костей скелета
                 buttonText.text = "Save Custom Pose for Furniture";
                 buttonText.color = Color.cyan;
                 mainButtonComp.interactable = true;
             }
-            else if (isMenuEmpty)
+            else if (!Plugin.IsAnyPoseSelected)
             {
-                // Если гизмо нет, а контроллер — обычный Idle, значит поза мебели еще не выбрана
+                // Если мы только вошли в меню и еще ни разу не кликнули по позе из списка
                 buttonText.text = "No Furniture Pose";
                 buttonText.color = Color.gray;
                 mainButtonComp.interactable = false;
             }
             else
             {
-                // Во всех остальных случаях (когда включена поза мебели из списка)
+                // Если поза выбрана, а гизмо отключены — значит сохраняем пресет
                 buttonText.text = "Link Preset Pose for Furniture";
                 buttonText.color = Color.green;
                 mainButtonComp.interactable = true;
             }
-
 
             newButtonObj.SetActive(true);
         }
     }
 
 
+    // ПАТЧ А: Перехватываем клик по ГОТОВОЙ позе из ванильного списка игры
+    [HarmonyPatch(typeof(UIFreePose), "SelectPose")] // Метод игры при выборе иконки позы
+    public class UIFreePoseSelectPoseTracker
+    {
+        [HarmonyPostfix]
+        public static void Postfix()
+        {
+            Plugin.IsAnyPoseSelected = true;    // Поза выбрана!
+            Plugin.IsCustomPoseActive = false;  // Режим ручного гизмо автоматически гасится игрой
+            Plugin.Log.LogInfo("[SDK_Tracker] Выбрана готовая ванильная поза из списка.");
+        }
+    }
+
+    // ПАТЧ Б: Перехватываем клик по кнопке "FreePose" (Включение гизмо мода bugerry)
+    [HarmonyPatch(typeof(UIFreePose), "ToggleCustomPoseMode")] // Или метод bugerry/игры, включающий FreePose
+    public class UIFreePoseToggleModeTracker
+    {
+        [HarmonyPostfix]
+        public static void Postfix(UIFreePose __instance)
+        {
+            // Смотрим на реальное состояние окна игры после клика
+            Plugin.IsCustomPoseActive = __instance.isCustomPoseMode;
+            Plugin.Log.LogInfo($"[SDK_Tracker] Переключение режима ручной правки костей: {Plugin.IsCustomPoseActive}");
+        }
+    }
+
+    [HarmonyPatch(typeof(UIFreePose), "Close")]
+    public class UIFreePoseCloseTracker
+    {
+        [HarmonyPostfix]
+        public static void Postfix()
+        {
+            Plugin.IsAnyPoseSelected = false;
+            Plugin.IsCustomPoseActive = false;
+            Plugin.Log.LogInfo("[SDK_Tracker] Меню FreePose закрыто, флаги полностью очищены.");
+        }
+    }
 
 }

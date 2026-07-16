@@ -16,6 +16,9 @@ namespace FurnitureAnimationsMod
         public static ManualLogSource Log;
         private Harmony harmony;
 
+        public static bool IsAnyPoseSelected = false;
+        public static bool IsCustomPoseActive = false;
+
         // BepInEx ищет именно метод Awake без параметров
         private void Awake()
         {
