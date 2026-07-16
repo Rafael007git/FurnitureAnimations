@@ -173,84 +173,97 @@ namespace FurnitureAnimationsMod
     }
 
 
-    // === ПАТЧ 5: ПРОГРАММНОЕ ДОБАВЛЕНИЕ КНОПКИ В МЕНЮ FREE POSE С ФИКСИРОВАННЫМИ КООРДИНАТАМИ ===
+    // === ПАТЧ 5: УЛЬТИМАТИВНАЯ ДИНАМИЧЕСКАЯ КНОПКА SDK С АВТО-РЕЖИМАМИ ===
     [HarmonyPatch(typeof(UIFreePose), "Refresh")]
     public class UIFreePoseButtonPatch
     {
         [HarmonyPostfix]
         public static void Postfix(UIFreePose __instance)
         {
-            if (__instance == null) return;
+            if (__instance == null || __instance.selectedCharacter == null) return;
 
-            // Защита от дублирования кнопок при обновлении интерфейса
-            Transform existingBtn = __instance.transform.Find("Button_SaveInteract");
-            if (existingBtn != null) return;
+            CharacterCustomization characterComp = __instance.selectedCharacter.GetComponent<CharacterCustomization>();
+            if (characterComp == null || characterComp.anim == null) return;
 
-            Plugin.Log.LogWarning("[UI_Patch] Сборка автономной кнопки SDK 'Сохранить интерактив'...");
+            // 1. Ищем, создана ли уже наша кнопка в корне окна
+            Transform saveBtnTrans = __instance.transform.Find("Button_SaveInteract");
+            GameObject newButtonObj = null;
 
-            // 1. Ищем любую кнопку на сцене (например, "FreePose"), чтобы скопировать её базовые компоненты (Image, Button)
-            Transform templateBtn = __instance.transform.Find("FreePose");
-            if (templateBtn == null)
+            if (saveBtnTrans == null)
             {
-                // Подстраховка: берем самую первую попавшуюся кнопку в интерфейсе окна
-                templateBtn = __instance.GetComponentInChildren<UnityEngine.UI.Button>()?.transform;
-            }
+                // Если кнопки нет — клонируем её из шаблона "FreePose" один раз
+                Transform templateBtn = __instance.transform.Find("FreePose");
+                if (templateBtn == null) templateBtn = __instance.GetComponentInChildren<UnityEngine.UI.Button>()?.transform;
+                if (templateBtn == null) return;
 
-            if (templateBtn == null) return;
+                newButtonObj = Object.Instantiate(templateBtn.gameObject, __instance.transform);
+                newButtonObj.name = "Button_SaveInteract";
+                newButtonObj.transform.localScale = Vector3.one; // Сброс масштаба, чтобы не раздувало!
 
-            // 2. Создаем чистый клон кнопки-шаблона, но родителем делаем КОРЕНЬ всего окна (__instance.transform)
-            // Это гарантирует, что кнопка будет на экране ВСЕГДА и соседние моды её не удалят!
-            GameObject newButtonObj = Object.Instantiate(templateBtn.gameObject, __instance.transform);
-            newButtonObj.name = "Button_SaveInteract";
-
-            // КРИТИЧЕСКИЙ ФИКС БАГА РАЗДУВАНИЯ: Жестко сбрасываем масштаб клона в чистую единицу!
-            // Теперь кнопка примет идеальные, аккуратные пропорции нормы.
-            newButtonObj.transform.localScale = Vector3.one;
-
-            // 3. Выставляем фиксированные координаты в правом нижнем углу экрана
-            RectTransform rect = newButtonObj.GetComponent<RectTransform>();
-            if (rect != null)
-            {
-                // Прижимаем якоря (Anchors) к правому нижнему углу экрана (x=1, y=0)
-                rect.anchorMin = new Vector2(1f, 0f);
-                rect.anchorMax = new Vector2(1f, 0f);
-                rect.pivot = new Vector2(1f, 0f);
-
-                // Выставляем точную позицию: 40 пикселей от правого края, 230 пикселей от низа экрана
-                // Она гарантированно встанет в свободную и пустую зону правого нижнего угла!
-                rect.anchoredPosition = new Vector2(-40f, 230f);
-                rect.sizeDelta = new Vector2(180f, 40f); // Красивый стандартный размер кнопки
-            }
-
-            // 4. Стираем ванильные скрипты локализации игры
-            LocalizationText locText = newButtonObj.GetComponentInChildren<LocalizationText>();
-            if (locText != null) Object.Destroy(locText);
-
-            // 5. Настраиваем текст бирюзового цвета SDK
-            UnityEngine.UI.Text buttonText = newButtonObj.GetComponentInChildren<UnityEngine.UI.Text>();
-            if (buttonText != null)
-            {
-                buttonText.text = "Сохранить интерактив";
-                buttonText.color = Color.cyan;
-                buttonText.fontSize = 14;
-                buttonText.alignment = TextAnchor.MiddleCenter;
-            }
-
-            // 6. Очищаем листенеры шаблона и вешаем наш метод экспорта интерактива
-            UnityEngine.UI.Button buttonComp = newButtonObj.GetComponent<UnityEngine.UI.Button>();
-            if (buttonComp != null)
-            {
-                buttonComp.onClick.RemoveAllListeners();
-                buttonComp.onClick.AddListener(new UnityEngine.Events.UnityAction(() =>
+                RectTransform rect = newButtonObj.GetComponent<RectTransform>();
+                if (rect != null)
                 {
-                    Plugin.Log.LogWarning("[UI_Patch] Клик по автономной кнопке 'Сохранить интерактив' зафиксирован!");
-                    PoseExporter.OnSaveInteractClicked(__instance);
-                }));
+                    rect.anchorMin = new Vector2(1f, 0f); rect.anchorMax = new Vector2(1f, 0f); rect.pivot = new Vector2(1f, 0f);
+                    rect.anchoredPosition = new Vector2(-40f, 230f); // Фиксированная позиция справа
+                    rect.sizeDelta = new Vector2(180f, 40f);
+                }
+
+                // Стираем локализацию
+                LocalizationText locText = newButtonObj.GetComponentInChildren<LocalizationText>();
+                if (locText != null) Object.Destroy(locText);
+
+                // Навешиваем клик
+                UnityEngine.UI.Button buttonComp = newButtonObj.GetComponent<UnityEngine.UI.Button>();
+                if (buttonComp != null)
+                {
+                    buttonComp.onClick.RemoveAllListeners();
+                    buttonComp.onClick.AddListener(new UnityEngine.Events.UnityAction(() =>
+                    {
+                        PoseExporter.OnSaveInteractClicked(__instance);
+                    }));
+                }
+
+                saveBtnTrans = newButtonObj.transform;
+            }
+
+            newButtonObj = saveBtnTrans.gameObject;
+            UnityEngine.UI.Button mainButtonComp = newButtonObj.GetComponent<UnityEngine.UI.Button>();
+            UnityEngine.UI.Text buttonText = newButtonObj.GetComponentInChildren<UnityEngine.UI.Text>();
+
+            if (mainButtonComp == null || buttonText == null) return;
+
+            // 2. ДИНАМИЧЕСКИЙ АНАЛИЗ СОСТОЯНИЯ ИГРЫ ДЛЯ ОПРЕДЕЛЕНИЯ ТЕКСТА КНОПКИ
+            string currentCtrlName = characterComp.anim.runtimeAnimatorController?.name ?? "";
+
+            // Проверяем, выбрано ли хоть что-то
+            bool isMenuEmpty = string.IsNullOrEmpty(currentCtrlName) || currentCtrlName == "Combat_Idle" || currentCtrlName == "Common_Idle";
+            bool isCustomModeActive = __instance.isCustomPoseMode; // Флаг Advanced Free Pose мода!
+
+            if (isMenuEmpty && !isCustomModeActive)
+            {
+                // СОСТОЯНИЕ 1: Поза не выбрана
+                buttonText.text = "No Furniture Pose";
+                buttonText.color = Color.gray;
+                mainButtonComp.interactable = false; // Выключаем кликабельность кнопки
+            }
+            else if (isCustomModeActive)
+            {
+                // СОСТОЯНИЕ 3: Активирован ручной режим FreePose (Гизмо на экране)
+                buttonText.text = "Save Custom Pose for Furniture";
+                buttonText.color = Color.cyan; // Фирменный бирюзовый SDK
+                mainButtonComp.interactable = true;
+            }
+            else
+            {
+                // СОСТОЯНИЕ 2 и 4: Выбрана предустановленная ванильная анимация из списка
+                buttonText.text = "Link Preset Pose for Furniture";
+                buttonText.color = Color.green; // Спокойный зеленый
+                mainButtonComp.interactable = true;
             }
 
             newButtonObj.SetActive(true);
-            Plugin.Log.LogWarning("[UI_Patch] Автономная кнопка SDK успешно размещена на фиксированных координатах!");
         }
     }
+
 
 }
