@@ -170,6 +170,16 @@ namespace FurnitureAnimationsMod
 
                 ConfigManager.LoadedConfigs[furnitureName] = configToSave;
 
+                // ХИРУРГИЧЕСКИЙ ВЫЗОВ МГНОВЕННОГО РЕФРЕША:
+                // Ищем объект мебели, который мы сейчас редактировали на сцене Unity
+                Furniture currentPropOnScene = FindClosestFurniture(character.transform.position, 5f);
+                if (currentPropOnScene != null)
+                {
+                    // Вызываем наш метод пересборки кнопок интерактива!
+                    FurnitureInjectorPatch.RebuildFurniturePoses(currentPropOnScene);
+                    Plugin.Log.LogWarning($"[PoseExporter] Рантайм-рефреш меню интерактива для {furnitureName} выполнен успешно!");
+                }
+
                 if (Global.code != null && Global.code.uiCombat != null)
                     Global.code.uiCombat.ShowHeader("Поза успешно сохранена!");
             }

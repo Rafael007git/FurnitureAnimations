@@ -1,6 +1,7 @@
 ﻿using HarmonyLib;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityStandardAssets.Cameras;
@@ -8,7 +9,7 @@ using static System.Net.Mime.MediaTypeNames;
 
 namespace FurnitureAnimationsMod
 {
-    // === ПАТЧ 1: ИНЖЕКЦИЯ СТРУКТУРЫ ПОЗ ПРИ СТАРТЕ МЕБЕЛИ ===
+    // === ПАТЧ 1: ИНЖЕКЦИЯ СТРУКТУРЫ ПОЗ ПРИ СТАРТЕ МЕБЕЛИ (RELEASE 0.2.0 С АВТО-РЕФРЕШЕМ) ===
     [HarmonyPatch(typeof(Furniture), "Start")]
     public class FurnitureInjectorPatch
     {
@@ -16,39 +17,55 @@ namespace FurnitureAnimationsMod
         public static void Postfix(Furniture __instance)
         {
             if (__instance == null) return;
+            // При старте мебели просто вызываем наш универсальный метод сборки!
+            RebuildFurniturePoses(__instance);
+        }
 
-            // Защита от повторного входа
-            if (__instance.transform.Find("posesGroup") != null) return;
+        // Наш новый публичный метод, который можно вызвать из ЛЮБОЙ точки мода для мгновенного рефреша!
+        public static void RebuildFurniturePoses(Furniture __instance)
+        {
+            if (__instance == null) return;
 
             string furnitureName = __instance.name.Replace("(Clone)", "").Trim();
 
             if (ConfigManager.LoadedConfigs.TryGetValue(furnitureName, out FurnitureConfig config))
             {
-                Plugin.Log.LogWarning($"[Injector] Оживляем мебель: {furnitureName}");
+                Plugin.Log.LogWarning($"[Injector] Сборка/Рефреш списка поз для мебели: {furnitureName}");
 
+                // 1. Если группа поз уже существовала — полностью уничтожаем её старые дочерние объекты!
+                Transform oldGroup = __instance.transform.Find("posesGroup");
+                if (oldGroup != null)
+                {
+                    UnityEngine.Object.Destroy(oldGroup.gameObject);
+                }
+
+                // 2. Создаем чистый, свежий контейнер для обновленного списка поз
                 GameObject poseGroupObj = new GameObject("posesGroup");
                 poseGroupObj.transform.SetParent(__instance.transform, false);
                 __instance.posesGroup = poseGroupObj.transform;
 
-                // Очищаем списки через РОДНЫЕ методы игры из dnSpy
+                // 3. Очищаем рантайм-списки через РОДНЫЕ методы игры из dnSpy
                 if (__instance.cameras != null) __instance.cameras.ClearItems();
                 if (__instance.poses != null) __instance.poses.ClearItems();
                 __instance.camerasGroup = null;
 
                 Pose[] allGamePoses = Resources.FindObjectsOfTypeAll<Pose>();
+                RuntimeAnimatorController[] allControllers = Resources.FindObjectsOfTypeAll<RuntimeAnimatorController>();
 
                 foreach (PoseData poseConfig in config.InteractionPoses)
                 {
-                    if (poseConfig.Type.Equals("CustomJSON", System.StringComparison.OrdinalIgnoreCase)) continue;
+                    if (poseConfig == null) continue;
 
+                    bool isCustomPose = poseConfig.Type.Equals("CustomJSON", System.StringComparison.OrdinalIgnoreCase);
                     RuntimeAnimatorController targetController = null;
-                    RuntimeAnimatorController[] allControllers = Resources.FindObjectsOfTypeAll<RuntimeAnimatorController>();
+                    string searchName = isCustomPose ? "UnarmedController" : poseConfig.ControllerName;
+
                     foreach (var rc in allControllers)
                     {
-                        if (rc.name == poseConfig.ControllerName) { targetController = rc; break; }
+                        if (rc != null && rc.name == searchName) { targetController = rc; break; }
                     }
 
-                    if (targetController == null) continue;
+                    if (targetController == null && !isCustomPose) continue;
 
                     GameObject newPoseObj = new GameObject(poseConfig.DisplayName);
                     newPoseObj.transform.SetParent(__instance.posesGroup, false);
@@ -59,26 +76,52 @@ namespace FurnitureAnimationsMod
                     newPose.locked = false;
                     newPose.crystals = 0;
 
-                    Pose exactVanillaPose = null;
-                    foreach (var p in allGamePoses)
+                    // Инжекция картинки-иконки с диска
+                    if (isCustomPose)
                     {
-                        if (p.controller != null && p.controller.name == poseConfig.ControllerName && p.icon != null)
-                        {
-                            exactVanillaPose = p; break;
-                        }
-                    }
+                        newPose.categoryName = "Custom";
+                        string iconName = poseConfig.JsonFileName.Replace(".json", ".png");
+                        string iconFullPath = Path.Combine(ConfigManager.IconsPath, iconName);
 
-                    if (exactVanillaPose != null)
-                    {
-                        newPose.icon = exactVanillaPose.icon;
-                        newPose.categoryName = exactVanillaPose.categoryName;
-                        newPose.mood = exactVanillaPose.mood;
+                        if (File.Exists(iconFullPath))
+                        {
+                            try
+                            {
+                                byte[] imgBytes = File.ReadAllBytes(iconFullPath);
+                                Texture2D customTex = new Texture2D(2, 2);
+                                customTex.LoadImage(imgBytes);
+                                newPose.icon = customTex;
+                            }
+                            catch (Exception ex)
+                            {
+                                Plugin.Log.LogError($"[Injector] Сбой загрузки иконки {iconName}: {ex.Message}");
+                            }
+                        }
                     }
                     else
                     {
-                        newPose.categoryName = "Dances";
+                        Pose exactVanillaPose = null;
+                        foreach (var p in allGamePoses)
+                        {
+                            if (p != null && p.controller != null && p.controller.name == poseConfig.ControllerName && p.icon != null)
+                            {
+                                exactVanillaPose = p; break;
+                            }
+                        }
+
+                        if (exactVanillaPose != null)
+                        {
+                            newPose.icon = exactVanillaPose.icon;
+                            newPose.categoryName = exactVanillaPose.categoryName;
+                            newPose.mood = exactVanillaPose.mood;
+                        }
+                        else
+                        {
+                            newPose.categoryName = "Dances";
+                        }
                     }
 
+                    // Координаты локатора позы
                     GameObject locObj = new GameObject("loc");
                     locObj.transform.SetParent(newPoseObj.transform, false);
                     locObj.transform.localPosition = new Vector3(poseConfig.LocPosition.x, poseConfig.LocPosition.y, poseConfig.LocPosition.z);
@@ -92,13 +135,16 @@ namespace FurnitureAnimationsMod
                 // Безопасная регистрация в глобальном списке интерактива игры
                 if (Global.code != null && Global.code.interactableFurnitures != null)
                 {
+                    // Чтобы не дублировать ссылки, удаляем старую перед добавлением свежей
+                    Global.code.interactableFurnitures.items.Remove(__instance.transform);
                     Global.code.interactableFurnitures.AddItemDifferentObject(__instance.transform);
                 }
 
-                Plugin.Log.LogWarning($"[Injector] {furnitureName} успешно оживлен! Загружено поз: {__instance.poses.items.Count}");
+                Plugin.Log.LogWarning($"[Injector] Рефреш завершен! Всего актуальных поз в памяти мебели: {__instance.poses.items.Count}");
             }
         }
     }
+
 
     // === ПАТЧ 2: АВТО-ПОЗА И ФИКСАЦИЯ КАМЕРЫ ПРИ ВХОДЕ ИНТЕРАКТИВА ===
     [HarmonyPatch(typeof(Furniture), "InitiateInteract")] // Точное имя метода по dnSpy!
@@ -255,7 +301,6 @@ namespace FurnitureAnimationsMod
             Plugin.Log.LogWarning("[UI_Patch] Автономная кнопка SDK успешно создана и переведена на MonoBehaviour-контроль!");
         }
     }
-
 
     // ПАТЧ А: Перехватываем клик по ГОТОВОЙ позе из ванильного списка игры
     [HarmonyPatch(typeof(UIFreePose), "SelectPose")] // Метод игры при выборе иконки позы
