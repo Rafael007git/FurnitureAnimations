@@ -342,123 +342,138 @@ namespace FurnitureAnimationsMod
         }
     }
 
-    // === ПАТЧ 2: ПЕРЕХВАТ МЕТОДА DOPOSE И НАКАТЫВАНИЕ КОСТЕЙ ДИОРАМЫ (RELEASE 0.2.0) ===
-    [HarmonyPatch(typeof(Furniture), "DoPose")] // Патчим главный метод активации повадок мебели!
+    // === ТРОЙНОЙ ДИАГНОСТИЧЕСКИЙ ПАТЧ ДЛЯ ПОИСКА А-ПОЗЫ (RELEASE 0.2.0 DEBUG) ===
+    [HarmonyPatch(typeof(Furniture), "DoPose")]
     public class FurnitureDoPoseDioramaPatch
     {
         [HarmonyPostfix]
         public static void Postfix(Furniture __instance, Pose pose)
         {
-            if (__instance == null || pose == null || __instance.user == null) return;
+            if (__instance == null || pose == null) return;
 
-            // Получаем трансформ персонажа, который сейчас оседлал мебель
-            Transform character = __instance.user != null ? __instance.user.transform : null;
+            // ТОЧКА 1: Проверяем сам факт вызова метода DoPose игрой
+            Plugin.Log.LogWarning($"[TRACKER_T1] Метод DoPose ВЫЗВАН! Мебель: {__instance.name}, Объект позы на сцене: {pose.name}");
+
+            if (__instance.user == null)
+            {
+                Plugin.Log.LogError("[TRACKER_T1] Ошибка: У мебели отсутствует пользователь (user == null)!");
+                return;
+            }
+
+            Transform character = __instance.user.transform;
             string furnitureName = __instance.name.Replace("(Clone)", "").Trim();
 
-            // Проверяем наличие рантайм-конфига для этого пропса
-            if (ConfigManager.LoadedConfigs.TryGetValue(furnitureName, out FurnitureConfig config))
+            if (!ConfigManager.LoadedConfigs.TryGetValue(furnitureName, out FurnitureConfig config))
             {
-                // Ищем данные позы в нашем JSON по имени объекта позы
-                PoseData currentPoseData = config.InteractionPoses.Find(p => p != null && p.DisplayName == pose.name);
+                Plugin.Log.LogError($"[TRACKER_T1] Ошибка: Для мебели '{furnitureName}' вообще не загружен JSON-конфиг!");
+                return;
+            }
 
-                // Если поза ванильная — выходим, пусть игра крутит её штатно
-                if (currentPoseData == null || !currentPoseData.Type.Equals("CustomJSON", System.StringComparison.OrdinalIgnoreCase)) return;
+            // Ищем позу в конфиге мебели
+            PoseData currentPoseData = config.InteractionPoses.Find(p => p != null && p.DisplayName == pose.name);
 
-                Plugin.Log.LogWarning($"[Runtime_Injector] DoPose зафиксировал кастомный интерактив! Файл: {currentPoseData.JsonFileName}");
-
-                string customAnimFullPath = Path.Combine(ConfigManager.CustomAnimsPath, currentPoseData.JsonFileName);
-
-                if (!File.Exists(customAnimFullPath))
+            if (currentPoseData == null)
+            {
+                Plugin.Log.LogError($"[TRACKER_T1] Ошибка: Поза с DisplayName '{pose.name}' не найдена в InteractionPoses конфига {furnitureName}!");
+                // Выведем список того, что вообще есть в памяти для этой мебели, чтобы найти опечатку
+                foreach (var p in config.InteractionPoses)
                 {
-                    Plugin.Log.LogError($"[Runtime_Injector] Критическая ошибка: Файл костей Диорамы отсутствует: {customAnimFullPath}");
+                    if (p != null) Plugin.Log.LogInfo($" -> Доступно в памяти конфига: '{p.DisplayName}' (Тип: {p.Type})");
+                }
+                return;
+            }
+
+            if (!currentPoseData.Type.Equals("CustomJSON", StringComparison.OrdinalIgnoreCase))
+            {
+                Plugin.Log.LogInfo($"[TRACKER_T1] Это ванильная поза '{pose.name}' (Тип: Vanilla). Накат Диорамы пропускаем.");
+                return;
+            }
+
+            // ТОЧКА 2: Мы успешно вошли в Сценарий Б (Кастомная поза)!
+            Plugin.Log.LogWarning($"[TRACKER_T2] Шаг пройден! Начинаем чтение файла: {currentPoseData.JsonFileName}");
+            string customAnimFullPath = Path.Combine(ConfigManager.CustomAnimsPath, currentPoseData.JsonFileName);
+
+            if (!File.Exists(customAnimFullPath))
+            {
+                Plugin.Log.LogError($"[TRACKER_T2] Критическая ошибка: Файл слепка костей физически отсутствует по пути: {customAnimFullPath}");
+                return;
+            }
+
+            try
+            {
+                string jsonBones = File.ReadAllText(customAnimFullPath);
+                var rawBonesData = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, BakedElementData>>(jsonBones);
+
+                if (rawBonesData == null || rawBonesData.Count == 0)
+                {
+                    Plugin.Log.LogError("[TRACKER_T2] Ошибка: Файл JSON пустой или поврежден!");
                     return;
                 }
 
-                try
+                Plugin.Log.LogInfo($"[TRACKER_T2] Файл прочитан успешно. Раскатываем {rawBonesData.Count} элементов Диорамы на скелет...");
+
+                Transform FindChildRecursive(Transform parent, string name)
                 {
-                    // Читаем бинарный слепок из CustomAnimations напрямую в модель BakedElementData
-                    string jsonBones = File.ReadAllText(customAnimFullPath);
-                    var rawBonesData = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, BakedElementData>>(jsonBones);
-
-                    if (rawBonesData == null) return;
-
-                    Plugin.Log.LogInfo($"[Runtime_Injector] Раскатываем {rawBonesData.Count} элементов Диорамы на суккуба {character.name}...");
-
-                    // Локальная функция рекурсивного поиска Transform костей скелета вглубь
-                    Transform FindChildRecursive(Transform parent, string name)
+                    if (parent == null) return null;
+                    if (parent.name == name) return parent;
+                    for (int i = 0; i < parent.childCount; i++)
                     {
-                        if (parent == null) return null;
-                        if (parent.name == name) return parent;
-                        for (int i = 0; i < parent.childCount; i++)
-                        {
-                            Transform found = FindChildRecursive(parent.GetChild(i), name);
-                            if (found != null) return found;
-                        }
-                        return null;
+                        Transform found = FindChildRecursive(parent.GetChild(i), name);
+                        if (found != null) return found;
                     }
-
-                    // ВОССТАНОВЛЕНИЕ КОСТЕЙ И ОГОНЬКОВ СВЕТА СУККУБА
-                    foreach (var kp in rawBonesData)
-                    {
-                        string targetName = kp.Key;
-                        BakedElementData elementData = kp.Value;
-                        if (elementData == null) continue;
-
-                        Transform boneTrans = FindChildRecursive(character, targetName);
-                        if (boneTrans == null) continue;
-
-                        string type = elementData.type ?? "Bone";
-
-                        if (type.Equals("Light", StringComparison.OrdinalIgnoreCase))
-                        {
-                            // Разворачиваем настройки огоньков Диорамы
-                            Light lightComponent = boneTrans.GetComponent<Light>();
-                            if (lightComponent != null)
-                            {
-                                lightComponent.enabled = elementData.enabled;
-                                lightComponent.intensity = elementData.intensity;
-                                lightComponent.range = elementData.range;
-                                if (elementData.color != null)
-                                {
-                                    lightComponent.color = new Color(elementData.color.r, elementData.color.g, elementData.color.b);
-                                }
-                            }
-                            if (elementData.pos != null)
-                            {
-                                boneTrans.localPosition = new Vector3(elementData.pos.x, elementData.pos.y, elementData.pos.z);
-                            }
-                        }
-                        else
-                        {
-                            // Разворачиваем углы поворота костей
-                            if (elementData.rot != null)
-                            {
-                                boneTrans.localEulerAngles = new Vector3(elementData.rot.x, elementData.rot.y, elementData.rot.z);
-                            }
-
-                            // Для позиционных объектов (hip) принудительно восстанавливаем локальное смещение
-                            if (DioramaConstants.PositionalObjectsRegistry.Contains(targetName) && elementData.pos != null)
-                            {
-                                boneTrans.localPosition = new Vector3(elementData.pos.x, elementData.pos.y, elementData.pos.z);
-                            }
-                        }
-                    }
-
-                    // ЖЕСТКАЯ ЗАМОРОЗКА АНИМАТОРА КУКЛЫ ПРИ ИНТЕРАКТИВЕ
-                    Animator anim = character.GetComponent<Animator>();
-                    if (anim != null)
-                    {
-                        anim.applyRootMotion = false; // Защита от проваливания под текстуры пола
-                        anim.speed = 0f; // Стираем скорость в ноль
-                        anim.enabled = false; // Выключаем компонент, намертво удерживая кастомную позу-статую!
-                    }
-
-                    Plugin.Log.LogWarning($"[Runtime_Injector] Кастомная поза Диорамы '{pose.name}' успешно раскатана и зафиксирована на мебели {furnitureName}!");
+                    return null;
                 }
-                catch (Exception ex)
+
+                int successBonesCount = 0;
+                foreach (var kp in rawBonesData)
                 {
-                    Plugin.Log.LogError($"[Runtime_Injector] Сбой при инъекции слепка костей: {ex.Message}");
+                    string targetName = kp.Key;
+                    BakedElementData elementData = kp.Value;
+                    if (elementData == null) continue;
+
+                    Transform boneTrans = FindChildRecursive(character, targetName);
+                    if (boneTrans == null) continue;
+
+                    string type = elementData.type ?? "Bone";
+
+                    if (type.Equals("Light", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Light lightComponent = boneTrans.GetComponent<Light>();
+                        if (lightComponent != null)
+                        {
+                            lightComponent.enabled = elementData.enabled;
+                            lightComponent.intensity = elementData.intensity;
+                            lightComponent.range = elementData.range;
+                            if (elementData.color != null) lightComponent.color = new Color(elementData.color.r, elementData.color.g, elementData.color.b);
+                        }
+                        if (elementData.pos != null) boneTrans.localPosition = new Vector3(elementData.pos.x, elementData.pos.y, elementData.pos.z);
+                    }
+                    else
+                    {
+                        if (elementData.rot != null) boneTrans.localEulerAngles = new Vector3(elementData.rot.x, elementData.rot.y, elementData.rot.z);
+                        if (DioramaConstants.PositionalObjectsRegistry.Contains(targetName) && elementData.pos != null)
+                        {
+                            boneTrans.localPosition = new Vector3(elementData.pos.x, elementData.pos.y, elementData.pos.z);
+                        }
+                    }
+                    successBonesCount++;
                 }
+
+                // ТОЧКА 3: Применение завершено. Проверяем, устоит ли поза против движка!
+                Plugin.Log.LogWarning($"[TRACKER_T3] Раскатка костей завершена! Успешно изменено {successBonesCount} узлов скелета.");
+
+                Animator anim = character.GetComponent<Animator>();
+                if (anim != null)
+                {
+                    anim.applyRootMotion = false;
+                    anim.speed = 0f;
+                    anim.enabled = false; // Замораживаем аниматор
+                    Plugin.Log.LogInfo($"[TRACKER_T3] Компонент Animator ПРИНУДИТЕЛЬНО ВЫКЛЮЧЕН (enabled = false).");
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"[TRACKER_T2] Критический краш в процессе раскатки костей: {ex.Message}\n{ex.StackTrace}");
             }
         }
     }
