@@ -428,7 +428,7 @@ namespace FurnitureAnimationsMod
 
                 // В. Родную кнопку Load Pose поднимаем вторым этажом ровно НАД кнопкой Save Pose!
                 // Смещаем её по вертикали (ось Y) на 45 пикселей вверх от новой позиции Save
-                rectVanillaLoad.anchoredPosition = new Vector2(originalLoadPos.x, originalLoadPos.y + 30f);
+                rectVanillaLoad.anchoredPosition = new Vector2(originalLoadPos.x, originalLoadPos.y + 27f);
             }
 
             // Вычищаем игровой скрипт локализации
