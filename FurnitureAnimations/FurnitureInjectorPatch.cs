@@ -221,7 +221,7 @@ namespace FurnitureAnimationsMod
         }
     }
 
-    // === ПАТЧ 4: ПОСТФИКС-ПЕРЕХВАТ С КОРУТИНОЙ-ОТЛОЖКОЙ ДЛЯ СТАБИЛИЗАЦИИ СKЕЛЕТА (RELEASE 0.2.0) ===
+    // === ПАТЧ 4: ПОСТФИКС-ПЕРЕХВАТ КЛИКА С ТОТАЛЬНЫМ ДЕБАГОМ (RELEASE 0.2.0 DIAGNOSTIC) ===
     [HarmonyPatch(typeof(PoseIcon), "Click")]
     public class PoseIconClickDioramaPatch
     {
@@ -230,75 +230,109 @@ namespace FurnitureAnimationsMod
         {
             if (__instance == null || __instance.pose == null) return;
 
-            string uiPoseName = __instance.pose.name ?? "";
-            Plugin.Log.LogWarning($"[SDK_Icon] Физический клик зафиксирован для позы: '{uiPoseName}'");
+            string uiPoseName = __instance.pose.name ?? "NULL";
+            string uiCtrlName = __instance.pose.controller != null ? __instance.pose.controller.name : "NULL";
+
+            // ТОЧКА ВХОДА 1: Выводим все рантайм-данные, которые прилетели от интерфейса игры при клике мыши
+            Plugin.Log.LogWarning($"[SDK_DEBUG_T1] Клик зафиксирован! Поза в UI: '{uiPoseName}' | Контроллер в UI: '{uiCtrlName}'");
 
             UIFreePose uiFreePoseWindow = UnityEngine.Object.FindObjectOfType<UIFreePose>();
-            if (uiFreePoseWindow == null || uiFreePoseWindow.selectedCharacter == null) return;
+            if (uiFreePoseWindow == null || uiFreePoseWindow.selectedCharacter == null)
+            {
+                Plugin.Log.LogError("[SDK_DEBUG_T1] Ошибка: Окно UIFreePose или персонаж не найдены на сцене!");
+                return;
+            }
 
             CharacterCustomization characterComp = uiFreePoseWindow.selectedCharacter.GetComponent<CharacterCustomization>();
-            if (characterComp == null || characterComp.interactingObject == null) return;
+            if (characterComp == null || characterComp.interactingObject == null)
+            {
+                Plugin.Log.LogError("[SDK_DEBUG_T1] Ошибка: Персонаж не привязан к мебели (interactingObject == null)!");
+                return;
+            }
 
             string furnitureName = characterComp.interactingObject.name.Replace("(Clone)", "").Trim();
+            Plugin.Log.LogInfo($"[SDK_DEBUG_T1] Персонаж взаимодействует с мебелью: '{furnitureName}'");
 
+            // ТОЧКА 2: Проверяем рантайм-словарь LoadedConfigs
             if (ConfigManager.LoadedConfigs.TryGetValue(furnitureName, out FurnitureConfig config))
             {
-                // ИСПРАВЛЕНО: Безопасный поиск по типу контроллера и подстроке, обходящий любые проблемы с тире/дефисами!
-                string uiCtrlNameLower = (__instance.pose.controller != null ? __instance.pose.controller.name.ToLower() : "");
-                string uiPoseNameLower = uiPoseName.ToLower();
+                Plugin.Log.LogInfo($"[SDK_DEBUG_T2] Конфиг для '{furnitureName}' успешно найден в памяти мода. Всего поз в JSON: {config.InteractionPoses.Count}");
 
-                // Проверяем маркеры кастомности, прилетевшие из интерфейса игры
-                bool isUiPoseCustom = uiCtrlNameLower.Contains("custom") ||
-                                     uiCtrlNameLower.Contains("unarmed") ||
-                                     uiPoseNameLower.Contains("custom");
-
-                PoseData currentPoseData = null;
-
-                if (isUiPoseCustom)
+                // Выведем список ВСЕХ поз, которые прочитаны из JSON для этой мебели, чтобы глазами увидеть несовпадения
+                foreach (var p in config.InteractionPoses)
                 {
-                    // Если UI говорит, что это кастом — берем кастомную позу из нашего JSON-списка мебели!
-                    currentPoseData = config.InteractionPoses.Find(p => p != null &&
-                        (p.Type.Equals("CustomJSON", StringComparison.OrdinalIgnoreCase) || p.ControllerName.Contains("Custom")));
+                    if (p == null) continue;
+                    Plugin.Log.LogInfo($"   -> В JSON диска: Name='{p.DisplayName}' | Type='{p.Type}' | Ctrl='{p.ControllerName}' | File='{p.JsonFileName}'");
                 }
-                else
+
+                // Готовим строки для эластичного сравнения
+                string cleanUiName = uiPoseName.ToLower().Replace(" ", "").Replace("-", "").Replace("—", "").Replace("–", "").Trim();
+                Plugin.Log.LogInfo($"[SDK_DEBUG_T2] Очищенное имя позы из UI для поиска: '{cleanUiName}'");
+
+                // ПРЯМОЙ ПОИСК
+                PoseData currentPoseData = config.InteractionPoses.Find(p =>
+                    p != null &&
+                    p.DisplayName.ToLower().Replace(" ", "").Replace("-", "").Replace("—", "").Replace("–", "").Trim() == cleanUiName
+                );
+
+                // ТОЧКА 3: Логируем результат поиска
+                if (currentPoseData == null)
                 {
-                    // Если это ваниль — ищем по обычному DisplayName
-                    currentPoseData = config.InteractionPoses.Find(p => p != null && p.DisplayName.ToLower() == uiPoseNameLower);
+                    Plugin.Log.LogWarning($"[SDK_DEBUG_T3] Прямое совпадение по имени не найдено. Проверяем маркеры кастомности...");
+
+                    bool isUiCustom = uiCtrlName.ToLower().Contains("custom") || uiCtrlName.ToLower().Contains("unarmed") || cleanUiName.Contains("custom");
+
+                    if (isUiCustom)
+                    {
+                        Plugin.Log.LogWarning($"[SDK_DEBUG_T3] UI-маркеры кричат, что это CUSTOM! Принудительно вытаскиваем первую кастомную позу из JSON...");
+                        currentPoseData = config.InteractionPoses.Find(p => p != null && (p.Type.Equals("CustomJSON", StringComparison.OrdinalIgnoreCase) || p.Type.Contains("Кастомная")));
+                    }
                 }
 
                 if (currentPoseData == null)
                 {
-                    Plugin.Log.LogInfo($"[SDK_Icon] Поза '{uiPoseName}' не найдена в реестре мода. Передаем управление игре.");
+                    Plugin.Log.LogError($"[SDK_DEBUG_T3] Излом! Поза '{uiPoseName}' окончательно определена как ванильная (нет совпадений). Код выходит.");
                     return;
                 }
 
-                // Строгий фильтр: перехватываем ТОЛЬКО статичную Диораму (тип CustomJSON)
-                if (!currentPoseData.Type.Equals("CustomJSON", StringComparison.OrdinalIgnoreCase))
+                Plugin.Log.LogWarning($"[SDK_DEBUG_T3] Победа поиска! Целевая поза определена: '{currentPoseData.DisplayName}' | Файл: '{currentPoseData.JsonFileName}' | Тип: '{currentPoseData.Type}'");
+
+                if (!currentPoseData.Type.Equals("CustomJSON", StringComparison.OrdinalIgnoreCase) && !currentPoseData.Type.Contains("Кастомная"))
                 {
-                    Plugin.Log.LogInfo($"[SDK_Icon] Поза '{uiPoseName}' имеет тип '{currentPoseData.Type}'. Накат Диорамы пропускаем.");
+                    Plugin.Log.LogInfo($"[SDK_DEBUG_T3] Поза имеет тип '{currentPoseData.Type}'. Накат Диорамы не требуется. Выход.");
                     return;
                 }
 
-                Plugin.Log.LogWarning($"[SDK_Icon] Целевой файл кастомной позы найден: {currentPoseData.JsonFileName}. Запускаем отложенный поток...");
-
-                // Запускаем корутину ожидания кадров
+                // ТОЧКА 4: Запуск отложенной корутины
+                Plugin.Log.LogWarning($"[SDK_DEBUG_T4] КОНВЕЙЕР ЗАПУЩЕН! Передаем файл '{currentPoseData.JsonFileName}' в поток ожидания кадров...");
                 uiFreePoseWindow.StartCoroutine(ExecuteBonesInjectionDelayed(characterComp, currentPoseData.JsonFileName));
+            }
+            else
+            {
+                Plugin.Log.LogError($"[SDK_DEBUG_T2] Ошибка: Мебель '{furnitureName}' отсутствует в LoadedConfigs словаре мода!");
             }
         }
 
-
-        // Наша корутина-шпион: ждет завершения сброса игры и бьет на следующем кадре!
         private static System.Collections.IEnumerator ExecuteBonesInjectionDelayed(CharacterCustomization characterComp, string jsonFileName)
         {
-            // Ждем ровно 1 кадр, пока игра и bugerry закончат сброс куклы в А-позу
-            yield return null;
+            Plugin.Log.LogWarning($"[SDK_Coroutine] Поток ожидания стартовал. Пропускаем 3 кадра...");
+            for (int i = 0; i < 3; i++)
+            {
+                yield return null;
+            }
 
-            if (characterComp == null || characterComp.anim == null) yield break;
+            if (characterComp == null || characterComp.anim == null)
+            {
+                Plugin.Log.LogError("[SDK_Coroutine] Ошибка во время ожидания: Персонаж или аниматор испарились!");
+                yield break;
+            }
 
             string customAnimFullPath = Path.Combine(ConfigManager.CustomAnimsPath, jsonFileName);
+            Plugin.Log.LogInfo($"[SDK_Coroutine] Кадры прошли. Ищем файл на диске: {customAnimFullPath}");
+
             if (!File.Exists(customAnimFullPath))
             {
-                Plugin.Log.LogError($"[SDK_Coroutine] Ошибка: Файл слепка костей пропал: {customAnimFullPath}");
+                Plugin.Log.LogError($"[SDK_Coroutine] Критическая ошибка: Файл слепка костей физически отсутствует: {customAnimFullPath}");
                 yield break;
             }
 
@@ -310,7 +344,7 @@ namespace FurnitureAnimationsMod
 
                 if (rawBonesData != null)
                 {
-                    Plugin.Log.LogInfo($"[SDK_Coroutine] Кадр ожидания прошел. Раскатываем {rawBonesData.Count} элементов Диорамы...");
+                    Plugin.Log.LogWarning($"[SDK_Coroutine] Файл успешно десериализован! Начинаем физическую раскатку {rawBonesData.Count} элементов на скелет...");
 
                     Transform FindChildRecursive(Transform parent, string name)
                     {
@@ -324,7 +358,6 @@ namespace FurnitureAnimationsMod
                         return null;
                     }
 
-                    // ВОССТАНОВЛЕНИЕ СКЕЛЕТА, АНАТОМИИ И СВЕТА ДИОРАМЫ
                     foreach (var kp in rawBonesData)
                     {
                         Transform boneTrans = FindChildRecursive(character, kp.Key);
@@ -352,19 +385,20 @@ namespace FurnitureAnimationsMod
                     }
                 }
 
-                // Намертво усыпляем аниматор
+                // Замораживаем аниматор
                 characterComp.anim.applyRootMotion = false;
                 characterComp.anim.speed = 0f;
                 characterComp.anim.enabled = false;
 
-                Plugin.Log.LogWarning($"[SDK_Coroutine] Скелет Диорамы успешно зафиксирован в ракурсе мебели на актуальном кадре!");
+                Plugin.Log.LogWarning($"[SDK_Coroutine] СУПЕР-ПОБЕДА! Скелет Диорамы '{jsonFileName}' успешно зафиксирован на экране!");
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogError($"[SDK_Coroutine] Краш в потоке отложки: {ex.Message}");
+                Plugin.Log.LogError($"[SDK_Coroutine] Краш в процессе инъекции костей: {ex.Message}");
             }
         }
     }
+
 
     // === ПАТЧ 5: УЛЬТИМАТИВНАЯ ИНЖЕКЦИЯ АВТОНОМНОЙ КНОПКИ ЧЕРЕЗ MONOBEHAVIOUR ===
     [HarmonyPatch(typeof(UIFreePose), "Open")] // Перешли на железный метод Open!
