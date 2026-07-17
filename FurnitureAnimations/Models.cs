@@ -37,4 +37,25 @@ namespace FurnitureAnimationsMod
         public string FurniturePrefabName;
         public List<PoseData> InteractionPoses;
     }
+
+    // Модель для распаковки бинарного слепка кости/света из CustomAnimations
+    [Serializable]
+    public class BakedElementData
+    {
+        public string type;
+        public bool enabled;
+        public float intensity;
+        public float range;
+        public Vector3Data rot;
+        public Vector3Data pos;
+        public ColorData color;
+    }
+
+    [Serializable]
+    public class ColorData
+    {
+        public float r;
+        public float g;
+        public float b;
+    }
 }

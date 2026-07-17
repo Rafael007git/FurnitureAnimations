@@ -1,7 +1,9 @@
 ﻿using HarmonyLib;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Xml.Linq;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityStandardAssets.Cameras;
@@ -339,5 +341,121 @@ namespace FurnitureAnimationsMod
             Plugin.Log.LogInfo("[SDK_Tracker] Меню FreePose закрыто, флаги полностью очищены.");
         }
     }
+
+    // === ПАТЧ 2: ПЕРЕХВАТ КЛИКА И НАКАТЫВАНИЕ КОСТЕЙ ДИОРАМЫ ПРИ ИНТЕРАКТИВЕ (БЕЗ JOBJECT) ===
+    [HarmonyPatch(typeof(global::Pose), "Warp")]
+    public class PoseWarpDioramaPatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(global::Pose __instance, Transform character)
+        {
+            if (__instance == null || character == null) return;
+
+            Furniture parentFurniture = __instance.GetComponentInParent<Furniture>();
+            if (parentFurniture == null) return;
+
+            string furnitureName = parentFurniture.name.Replace("(Clone)", "").Trim();
+
+            if (ConfigManager.LoadedConfigs.TryGetValue(furnitureName, out FurnitureConfig config))
+            {
+                PoseData currentPoseData = config.InteractionPoses.Find(p => p != null && p.DisplayName == __instance.name);
+
+                if (currentPoseData == null || !currentPoseData.Type.Equals("CustomJSON", System.StringComparison.OrdinalIgnoreCase)) return;
+
+                Plugin.Log.LogWarning($"[Runtime_Injector] Обнаружен клик по кастомной позе мебели! Файл: {currentPoseData.JsonFileName}");
+
+                string customAnimFullPath = Path.Combine(ConfigManager.CustomAnimsPath, currentPoseData.JsonFileName);
+
+                if (!File.Exists(customAnimFullPath))
+                {
+                    Plugin.Log.LogError($"[Runtime_Injector] Ошибка: Файл слепка костей не найден: {customAnimFullPath}");
+                    return;
+                }
+
+                try
+                {
+                    // Читаем бинарный слепок костей напрямую в нашу строго типизированную модель!
+                    string jsonBones = File.ReadAllText(customAnimFullPath);
+                    var rawBonesData = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, BakedElementData>>(jsonBones);
+
+                    if (rawBonesData == null) return;
+
+                    Plugin.Log.LogInfo($"[Runtime_Injector] Начинаем раскатку {rawBonesData.Count} элементов Диорамы на скелет...");
+
+                    Transform FindChildRecursive(Transform parent, string name)
+                    {
+                        if (parent == null) return null;
+                        if (parent.name == name) return parent;
+                        for (int i = 0; i < parent.childCount; i++)
+                        {
+                            Transform found = FindChildRecursive(parent.GetChild(i), name);
+                            if (found != null) return found;
+                        }
+                        return null;
+                    }
+
+                    foreach (var kp in rawBonesData)
+                    {
+                        string targetName = kp.Key;
+                        BakedElementData elementData = kp.Value;
+                        if (elementData == null) continue;
+
+                        Transform boneTrans = FindChildRecursive(character, targetName);
+                        if (boneTrans == null) continue;
+
+                        string type = elementData.type ?? "Bone";
+
+                        if (type.Equals("Light", StringComparison.OrdinalIgnoreCase))
+                        {
+                            Light lightComponent = boneTrans.GetComponent<Light>();
+                            if (lightComponent != null)
+                            {
+                                lightComponent.enabled = elementData.enabled;
+                                lightComponent.intensity = elementData.intensity;
+                                lightComponent.range = elementData.range;
+
+                                if (elementData.color != null)
+                                {
+                                    lightComponent.color = new Color(elementData.color.r, elementData.color.g, elementData.color.b);
+                                }
+                            }
+
+                            if (elementData.pos != null)
+                            {
+                                boneTrans.localPosition = new Vector3(elementData.pos.x, elementData.pos.y, elementData.pos.z);
+                            }
+                        }
+                        else
+                        {
+                            if (elementData.rot != null)
+                            {
+                                boneTrans.localEulerAngles = new Vector3(elementData.rot.x, elementData.rot.y, elementData.rot.z);
+                            }
+
+                            if (DioramaConstants.PositionalObjectsRegistry.Contains(targetName) && elementData.pos != null)
+                            {
+                                boneTrans.localPosition = new Vector3(elementData.pos.x, elementData.pos.y, elementData.pos.z);
+                            }
+                        }
+                    }
+
+                    Animator anim = character.GetComponent<Animator>();
+                    if (anim != null)
+                    {
+                        anim.applyRootMotion = false;
+                        anim.speed = 0f;
+                        anim.enabled = false;
+                    }
+
+                    Plugin.Log.LogWarning($"[Runtime_Injector] Кастомная поза Диорамы '{__instance.name}' успешно раскатана на скелет {character.name}!");
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Log.LogError($"[Runtime_Injector] Критическая ошибка инъекции слепка костей: {ex.Message}");
+                }
+            }
+        }
+    }
+
 
 }
