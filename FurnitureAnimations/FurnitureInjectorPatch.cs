@@ -381,7 +381,7 @@ namespace FurnitureAnimationsMod
         }
     }
 
-    // === ПАТЧ 5: ПОДСЕЛЕНИЕ КНОПКИ SDK В ПРАВЫЙ НИЖНИЙ УГОЛ UI (RELEASE 0.2.0 STABLE) ===
+    // === ПАТЧ 5: РОКИРОВКА КНОПОК И ПОЛНАЯ ЗАЧИСТКА ОКНА СОХРАНЕНИЯ (RELEASE 0.2.0 STABLE) ===
     [HarmonyPatch(typeof(UIFreePose), "Open")]
     public class UIFreePoseButtonPatch
     {
@@ -393,66 +393,73 @@ namespace FurnitureAnimationsMod
             Transform existingBtn = __instance.transform.Find("Button_SaveInteract");
             if (existingBtn != null) return;
 
-            Plugin.Log.LogWarning("[UI_Patch] Меню открыто. Находим родную кнопку 'Button Save' для клонирования масштаба...");
+            Plugin.Log.LogWarning("[UI_Patch] Меню открыто. Запуск геометрической рокировки кнопок...");
 
-            // 1. НАХОДИМ КОМПАКТНУЮ РОДНУЮ КНОПКУ ДИОРАМЫ КАK ЭТАЛОН РАЗМЕРА
-            Transform targetTemplateBtn = __instance.transform.Find("Button Save") ??
-                                          __instance.transform.Find("Button Load") ??
-                                          __instance.GetComponentInChildren<UnityEngine.UI.Button>()?.transform;
+            // 1. НАХОДИМ ВСЕ РОДНЫЕ КНОПКИ УПРАВЛЕНИЯ НА CANVAS
+            Transform vanillaSaveBtn = __instance.transform.Find("Button Save");
+            Transform vanillaLoadBtn = __instance.transform.Find("Button Load");
 
-            if (targetTemplateBtn == null)
-            {
-                Plugin.Log.LogError("[UI_Patch] Ошибка: Шаблон кнопки 'Button Save' не найден на Canvas!");
-                return;
-            }
+            Transform targetTemplateBtn = vanillaSaveBtn ?? vanillaLoadBtn ?? __instance.GetComponentInChildren<UnityEngine.UI.Button>()?.transform;
+            if (targetTemplateBtn == null) return;
 
-            // 2. КЛОНИРУЕМ ЕЁ НА CANVAS
+            // 2. КЛОНИРУЕМ КОМПАКТНУЮ КНОПКУ SDK
             GameObject newButtonObj = UnityEngine.Object.Instantiate(targetTemplateBtn.gameObject, __instance.transform);
             newButtonObj.name = "Button_SaveInteract";
             newButtonObj.transform.localScale = Vector3.one;
 
-            // 3. ЮВЕЛИРНАЯ ПОСАДКА НА ВТОРУЮ ЛИНИЮ В ПРАВЫЙ УГОЛ
-            RectTransform templateRect = targetTemplateBtn.GetComponent<RectTransform>();
-            RectTransform rect = newButtonObj.GetComponent<RectTransform>();
+            RectTransform rectSDK = newButtonObj.GetComponent<RectTransform>();
+            RectTransform rectVanillaSave = vanillaSaveBtn != null ? vanillaSaveBtn.GetComponent<RectTransform>() : null;
+            RectTransform rectVanillaLoad = vanillaLoadBtn != null ? vanillaLoadBtn.GetComponent<RectTransform>() : null;
 
-            if (rect != null && templateRect != null)
+            // 3. ХИРУРГИЧЕСКАЯ РОКИРОВКА КООРДИНАТ В ПРАВОМ УГЛУ
+            if (rectSDK != null && rectVanillaSave != null && rectVanillaLoad != null)
             {
-                rect.anchorMin = templateRect.anchorMin;
-                rect.anchorMax = templateRect.anchorMax;
-                rect.pivot = templateRect.pivot;
+                // Сохраняем исходные фабричные координаты игры для точной рокировки
+                Vector2 originalSavePos = rectVanillaSave.anchoredPosition; // Исходное место Save
+                Vector2 originalLoadPos = rectVanillaLoad.anchoredPosition; // Исходное место Load
 
-                // Смещаем нашу кнопку строго по вертикали ровно на 45 пикселей вверх (+45f).
-                // Она встанет аккуратным вторым этажом над стандартными кнопками Save/Load!
-                rect.anchoredPosition = new Vector2(templateRect.anchoredPosition.x, templateRect.anchoredPosition.y + 45f);
-                rect.sizeDelta = templateRect.sizeDelta; // Копируем компактный фабричный размер!
+                // А. Нашу кнопку SDK сажаем на оригинальное место кнопки Save Pose!
+                rectSDK.anchorMin = rectVanillaSave.anchorMin; rectSDK.anchorMax = rectVanillaSave.anchorMax; rectSDK.pivot = rectVanillaSave.pivot;
+                rectSDK.anchoredPosition = originalSavePos;
+                rectSDK.sizeDelta = rectVanillaSave.sizeDelta;
+
+                // Б. Родную кнопку Save Pose смещаем вправо на оригинальное место кнопки Load!
+                rectVanillaSave.anchoredPosition = originalLoadPos;
+
+                // В. Родную кнопку Load Pose поднимаем вторым этажом ровно НАД кнопкой Save Pose!
+                // Смещаем её по вертикали (ось Y) на 45 пикселей вверх от новой позиции Save
+                rectVanillaLoad.anchoredPosition = new Vector2(originalLoadPos.x, originalLoadPos.y + 30f);
             }
 
-            // Вычищаем скрипт локализации, чтобы он не перезаписал наш текст
+            // Вычищаем игровой скрипт локализации
             LocalizationText locText = newButtonObj.GetComponentInChildren<LocalizationText>();
             if (locText != null) UnityEngine.Object.Destroy(locText);
 
-            // Настраиваем компактный шрифт под новый масштаб кнопки
+            // Настраиваем компактный шрифт
             UnityEngine.UI.Text buttonText = newButtonObj.GetComponentInChildren<UnityEngine.UI.Text>();
             if (buttonText != null)
             {
                 buttonText.text = "Initializing SDK...";
                 buttonText.color = Color.white;
-                buttonText.fontSize = 12; // Уменьшаем до 12, чтобы текст идеально влез в компактную кнопку
+                buttonText.fontSize = 12;
                 buttonText.alignment = TextAnchor.MiddleCenter;
             }
 
-            // Навешиваем событие клика
+            // 4. ЖЕЛЕЗНАЯ ЗАЧИСТКА: Навешиваем событие клика с ПОЛНЫМ ОБНУЛЕНИЕМ КЛОНИРОВАННЫХ СЛУШАТЕЛЕЙ
             UnityEngine.UI.Button buttonComp = newButtonObj.GetComponent<UnityEngine.UI.Button>();
             if (buttonComp != null)
             {
-                buttonComp.onClick.RemoveAllListeners();
+                // УЛЬТИМАТИВНЫЙ МАНЕВР: Создаем абсолютно новый, чистый эвент-листенер, 
+                // полностью уничтожая скрытые рантайм-связи с оригинальным окном Save позы игры!
+                buttonComp.onClick = new UnityEngine.UI.Button.ButtonClickedEvent();
+
                 buttonComp.onClick.AddListener(new UnityEngine.Events.UnityAction(() =>
                 {
                     PoseExporter.OnSaveInteractClicked(__instance);
                 }));
             }
 
-            // Подселяем наш оригинальный MonoBehaviour-контроллер, его поведение НЕ меняется!
+            // Подселяем наш нативный контроллер цветов
             newButtonObj.AddComponent<FurnitureSdkButtonController>().Setup(__instance);
 
             newButtonObj.SetActive(true);
