@@ -381,10 +381,8 @@ namespace FurnitureAnimationsMod
         }
     }
 
-
-
-    // === ПАТЧ 5: УЛЬТИМАТИВНАЯ ИНЖЕКЦИЯ АВТОНОМНОЙ КНОПКИ ЧЕРЕЗ MONOBEHAVIOUR ===
-    [HarmonyPatch(typeof(UIFreePose), "Open")] // Перешли на железный метод Open!
+    // === ПАТЧ 5: ПОДСЕЛЕНИЕ КНОПКИ SDK В ПРАВЫЙ НИЖНИЙ УГОЛ UI (RELEASE 0.2.0 STABLE) ===
+    [HarmonyPatch(typeof(UIFreePose), "Open")]
     public class UIFreePoseButtonPatch
     {
         [HarmonyPostfix]
@@ -392,79 +390,75 @@ namespace FurnitureAnimationsMod
         {
             if (__instance == null) return;
 
-            // Защита от дублирования кнопок при повторных открытиях меню
             Transform existingBtn = __instance.transform.Find("Button_SaveInteract");
             if (existingBtn != null) return;
 
-            Plugin.Log.LogWarning("[UI_Patch] Меню открыто. Начинаем физическую сборку автономной кнопки SDK...");
+            Plugin.Log.LogWarning("[UI_Patch] Меню открыто. Находим родную кнопку 'Button Save' для клонирования масштаба...");
 
-            // Ищем оригинальную кнопку "FreePose" на левой панели в качестве донора компонентов (Image, Button)
-            Transform templateBtn = __instance.transform.Find("FreePose");
-            if (templateBtn == null)
-            {
-                // Подстраховка: берем первую попавшуюся кнопку в иерархии окна
-                templateBtn = __instance.GetComponentInChildren<UnityEngine.UI.Button>()?.transform;
-            }
+            // 1. НАХОДИМ КОМПАКТНУЮ РОДНУЮ КНОПКУ ДИОРАМЫ КАK ЭТАЛОН РАЗМЕРА
+            Transform targetTemplateBtn = __instance.transform.Find("Button Save") ??
+                                          __instance.transform.Find("Button Load") ??
+                                          __instance.GetComponentInChildren<UnityEngine.UI.Button>()?.transform;
 
-            if (templateBtn == null)
+            if (targetTemplateBtn == null)
             {
-                Plugin.Log.LogError("[UI_Patch] Критическая ошибка: Не найден шаблон кнопки на Canvas!");
+                Plugin.Log.LogError("[UI_Patch] Ошибка: Шаблон кнопки 'Button Save' не найден на Canvas!");
                 return;
             }
 
-            // 1. Клонируем кнопку строго в корень __instance.transform, защищая от удаления другими модами
-            GameObject newButtonObj = UnityEngine.Object.Instantiate(templateBtn.gameObject, __instance.transform);
+            // 2. КЛОНИРУЕМ ЕЁ НА CANVAS
+            GameObject newButtonObj = UnityEngine.Object.Instantiate(targetTemplateBtn.gameObject, __instance.transform);
             newButtonObj.name = "Button_SaveInteract";
-
-            // Жестко сбрасываем масштаб клона до нормы, убирая баг раздувания в два раза!
             newButtonObj.transform.localScale = Vector3.one;
 
-            // 2. Выставляем фиксированные координаты в правом нижнем углу экрана монитора
+            // 3. ЮВЕЛИРНАЯ ПОСАДКА НА ВТОРУЮ ЛИНИЮ В ПРАВЫЙ УГОЛ
+            RectTransform templateRect = targetTemplateBtn.GetComponent<RectTransform>();
             RectTransform rect = newButtonObj.GetComponent<RectTransform>();
-            if (rect != null)
-            {
-                // Прижимаем якоря к правому нижнему углу экрана (x=1, y=0)
-                rect.anchorMin = new Vector2(1f, 0f); rect.anchorMax = new Vector2(1f, 0f); rect.pivot = new Vector2(1f, 0f);
 
-                // Фиксированная позиция: 40 пикселей от правого края, 230 пикселей от низа монитора
-                rect.anchoredPosition = new Vector2(-40f, 230f);
-                rect.sizeDelta = new Vector2(210f, 40f); // Красивый стандартный размер
+            if (rect != null && templateRect != null)
+            {
+                rect.anchorMin = templateRect.anchorMin;
+                rect.anchorMax = templateRect.anchorMax;
+                rect.pivot = templateRect.pivot;
+
+                // Смещаем нашу кнопку строго по вертикали ровно на 45 пикселей вверх (+45f).
+                // Она встанет аккуратным вторым этажом над стандартными кнопками Save/Load!
+                rect.anchoredPosition = new Vector2(templateRect.anchoredPosition.x, templateRect.anchoredPosition.y + 45f);
+                rect.sizeDelta = templateRect.sizeDelta; // Копируем компактный фабричный размер!
             }
 
-            // 3. Уничтожаем ванильные скрипты локализации игры, чтобы они не затерли наш текст
+            // Вычищаем скрипт локализации, чтобы он не перезаписал наш текст
             LocalizationText locText = newButtonObj.GetComponentInChildren<LocalizationText>();
             if (locText != null) UnityEngine.Object.Destroy(locText);
 
-            // 4. Первичная настройка шрифта и текста
+            // Настраиваем компактный шрифт под новый масштаб кнопки
             UnityEngine.UI.Text buttonText = newButtonObj.GetComponentInChildren<UnityEngine.UI.Text>();
             if (buttonText != null)
             {
                 buttonText.text = "Initializing SDK...";
                 buttonText.color = Color.white;
-                buttonText.fontSize = 13;
+                buttonText.fontSize = 12; // Уменьшаем до 12, чтобы текст идеально влез в компактную кнопку
                 buttonText.alignment = TextAnchor.MiddleCenter;
             }
 
-            // 5. Очищаем старые листенеры шаблона и вешаем наш метод экспорта
+            // Навешиваем событие клика
             UnityEngine.UI.Button buttonComp = newButtonObj.GetComponent<UnityEngine.UI.Button>();
             if (buttonComp != null)
             {
                 buttonComp.onClick.RemoveAllListeners();
                 buttonComp.onClick.AddListener(new UnityEngine.Events.UnityAction(() =>
                 {
-                    Plugin.Log.LogWarning("[UI_Patch] Клик по автономной кнопке 'Сохранить интерактив' зафиксирован!");
                     PoseExporter.OnSaveInteractClicked(__instance);
                 }));
             }
 
-            // 6. ХИРУРГИЧЕСКИЙ ШАГ: Подселяем наш MonoBehaviour скрипт прямо на созданную кнопку!
-            FurnitureSdkButtonController controller = newButtonObj.AddComponent<FurnitureSdkButtonController>();
-            controller.Setup(__instance);
+            // Подселяем наш оригинальный MonoBehaviour-контроллер, его поведение НЕ меняется!
+            newButtonObj.AddComponent<FurnitureSdkButtonController>().Setup(__instance);
 
             newButtonObj.SetActive(true);
-            Plugin.Log.LogWarning("[UI_Patch] Автономная кнопка SDK успешно создана и переведена на MonoBehaviour-контроль!");
         }
     }
+
 
     // ПАТЧ А: Перехватываем клик по ГОТОВОЙ позе из ванильного списка игры
     [HarmonyPatch(typeof(UIFreePose), "SelectPose")] // Метод игры при выборе иконки позы
