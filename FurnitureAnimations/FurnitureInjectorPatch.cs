@@ -342,52 +342,52 @@ namespace FurnitureAnimationsMod
         }
     }
 
-    // === ПАТЧ 2: УЛЬТИМАТИВНЫЙ ПРЕФИКС-ПЕРЕХВАТ КЛИКА (RELEASE 0.2.0 STABLE) ===
-    [HarmonyPatch(typeof(Furniture), "WarpCharacter")] // Перехватываем метод посадки
-    public class FurnitureWarpCharacterPrefixPatch
-    {
-        [HarmonyPrefix] // Срабатывает ДО оригинального кода игры!
-        public static bool Prefix(Furniture __instance, Transform character, Transform pose)
-        {
-            if (__instance == null || character == null || pose == null) return true; // true - передать управление игре
 
+    // === ПАТЧ 2: ХИРУРГИЧЕСКИЙ НАКАТ КОСТЕЙ ПОСЛЕ DOPOSE (ВЕРСИЯ 0.2.0 STABLE) ===
+    [HarmonyPatch(typeof(Furniture), "DoPose")]
+    public class FurnitureDoPoseDioramaPatch
+    {
+        [HarmonyPostfix] // Срабатывает строго ПОСЛЕ того, как игра выдала А-позу!
+        public static void Postfix(Furniture __instance, global::Pose code)
+        {
+            if (__instance == null || code == null || __instance.user == null) return;
+
+            // Логируем факт успешного зацепа за метод из dnSpy!
+            Plugin.Log.LogWarning($"[SDK_DoPose] Патч успешно перехватил активацию позы '{code.name}' на мебели '{__instance.name}'!");
+
+            Transform character = __instance.user.transform;
             string furnitureName = __instance.name.Replace("(Clone)", "").Trim();
 
-            // Ищем рантайм-конфиг для этой мебели
+            // Проверяем наличие рантайм-конфига для этой мебели
             if (ConfigManager.LoadedConfigs.TryGetValue(furnitureName, out FurnitureConfig config))
             {
-                // Находим данные позы в нашем JSON по имени объекта на сцене
-                PoseData currentPoseData = config.InteractionPoses.Find(p => p != null && p.DisplayName == pose.name);
+                // Ищем данные позы в нашем JSON по имени объекта позы на сцене
+                PoseData currentPoseData = config.InteractionPoses.Find(p => p != null && p.DisplayName == code.name);
 
-                // Если поза ванильная — возвращаем true, пусть игра крутит её своим штатным кодом!
-                if (currentPoseData == null || !currentPoseData.Type.Equals("CustomJSON", System.StringComparison.OrdinalIgnoreCase))
+                // Если поза ванильная — выходим, пусть игра крутит её своим FBX-клипом!
+                if (currentPoseData == null || !currentPoseData.Type.Equals("CustomJSON", StringComparison.OrdinalIgnoreCase))
                 {
-                    return true;
+                    return;
                 }
 
-                // === СЦЕНАРИЙ Б: МЫ КЛИКНУЛИ ПО КАСТОМНОЙ ПОЗЕ ДИОРАМЫ ===
-                Plugin.Log.LogWarning($"[SDK_Prefix] Фирменный перехват кастомной позы '{pose.name}' запущен!");
+                Plugin.Log.LogWarning($"[SDK_DoPose] Запуск раскатки бинарного слепка Диорамы: {currentPoseData.JsonFileName}");
 
                 string customAnimFullPath = Path.Combine(ConfigManager.CustomAnimsPath, currentPoseData.JsonFileName);
                 if (!File.Exists(customAnimFullPath))
                 {
-                    Plugin.Log.LogError($"[SDK_Prefix] Ошибка: Файл слепка костей не найден: {customAnimFullPath}");
-                    return true; // Срываемся в ваниль, если файла нет
+                    Plugin.Log.LogError($"[SDK_DoPose] Ошибка: Файл слепка костей не найден: {customAnimFullPath}");
+                    return;
                 }
 
                 try
                 {
-                    // 1. Принудительно телепортируем и выравниваем персонажа по координатам локатора позы мебели, как это делает игра
-                    character.position = pose.position;
-                    character.rotation = pose.rotation;
-
-                    // 2. Читаем бинарный слепок костей напрямую в модель BakedElementData
-                    string jsonBones = File.ReadAllText(customAnimFullPath);
-                    var rawBonesData = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, BakedElementData>>(jsonBones);
+                    // 1. Читаем бинарный слепок костей напрямую в нашу модель BakedElementData
+                    string jsonContent = File.ReadAllText(customAnimFullPath);
+                    var rawBonesData = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, BakedElementData>>(jsonContent);
 
                     if (rawBonesData != null)
                     {
-                        Plugin.Log.LogInfo($"[SDK_Prefix] Раскатываем {rawBonesData.Count} узлов Диорамы напрямую на скелет...");
+                        Plugin.Log.LogInfo($"[SDK_DoPose] Раскатываем {rawBonesData.Count} элементов Диорамы на скелет...");
 
                         Transform FindChildRecursive(Transform parent, string name)
                         {
@@ -401,7 +401,7 @@ namespace FurnitureAnimationsMod
                             return null;
                         }
 
-                        // ВОССТАНОВЛЕНИЕ СКЕЛЕТА И СВЕТА
+                        // 2. ВОССТАНОВЛЕНИЕ СКЕЛЕТА, ИНТИМНОЙ АНАТОМИИ И СВЕТА ДИОРАМЫ
                         foreach (var kp in rawBonesData)
                         {
                             string targetName = kp.Key;
@@ -440,22 +440,16 @@ namespace FurnitureAnimationsMod
                     {
                         anim.applyRootMotion = false;
                         anim.speed = 0f;
-                        anim.enabled = false; // Усыпляем
+                        anim.enabled = false; // Усыпляем аниматор, блокируя А-позу навсегда!
                     }
 
-                    Plugin.Log.LogWarning($"[SDK_Prefix] Поза Диорамы '{pose.name}' успешно зафиксирована! Ванильный код игры заблокирован.");
-
-                    // ГЛАВНЫЙ МАНЕВР: Возвращаем false! Мы полностью отменяем выполнение оригинального метода игры,
-                    // предотвращая краш контроллера и сброс в А-позу!
-                    return false;
+                    Plugin.Log.LogWarning($"[SDK_DoPose] Кастомная поза Диорамы '{code.name}' успешно раскатана и зафиксирована!");
                 }
                 catch (Exception ex)
                 {
-                    Plugin.Log.LogError($"[SDK_Prefix] Краш инъекции префикса: {ex.Message}");
+                    Plugin.Log.LogError($"[SDK_DoPose] Краш в Postfix DoPose: {ex.Message}");
                 }
             }
-
-            return true; // Если что-то пошло не так — отдаем управление игре
         }
     }
 
