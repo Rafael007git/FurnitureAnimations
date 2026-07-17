@@ -220,22 +220,18 @@ namespace FurnitureAnimationsMod
         }
     }
 
-    // === ПАТЧ 4: ПАТЧ АВТО-ВХОДА ПЕРЕХВАТ СОБЫТИЯ МЫШИ ONPOINTERCLICK (RELEASE 0.2.0 STABLE) ===
-    [HarmonyPatch(typeof(UnityEngine.UI.Button), "OnPointerClick")]
-    public class UnityUiOnPointerClickDioramaPatch
+    // === ПАТЧ 4: ХИРУРГИЧЕСКИЙ ПЕРЕХВАТ КЛИКА ИКОНКИ МЕБЕЛИ ЧЕРЕЗ POSEICON (RELEASE 0.2.0 RELEASE) ===
+    [HarmonyPatch(typeof(PoseIcon), "Click")] // Нацеливаемся строго на метод из dnSpy!
+    public class PoseIconClickDioramaPatch
     {
-        [HarmonyPostfix]
-        public static void Postfix(UnityEngine.UI.Button __instance)
+        [HarmonyPostfix] // Срабатывает в ту же миллисекунду, когда игрок нажал на иконку
+        public static void Postfix(PoseIcon __instance)
         {
-            // Полная защита от невидимых пробелов и капризов регистра Unity!
-            if (__instance == null || __instance.gameObject == null) return;
+            if (__instance == null || __instance.pose == null) return;
 
-            string btnName = __instance.gameObject.name.ToLower().Trim();
-            if (!btnName.Contains("pose icon") && !btnName.Contains("poseicon")) return;
+            Plugin.Log.LogWarning($"[SDK_Icon_Click] Событие Click() зафиксировано для позы: '{__instance.pose.name}'");
 
-            Plugin.Log.LogWarning($"[SDK_Mouse] Физический OnPointerClick зафиксирован!");
-
-            // 1. Ищем активное окно UIFreePose на сцене игры
+            // Ищем окно UIFreePose на сцене игры, чтобы достать активного персонажа (суккуба)
             UIFreePose uiFreePoseWindow = UnityEngine.Object.FindObjectOfType<UIFreePose>();
             if (uiFreePoseWindow == null || uiFreePoseWindow.selectedCharacter == null) return;
 
@@ -244,39 +240,21 @@ namespace FurnitureAnimationsMod
 
             string furnitureName = characterComp.interactingObject.name.Replace("(Clone)", "").Trim();
 
-            // 2. ВЫЧИСЛЯЕМ ИНДЕКС НАЖАТОЙ КНОПКИ В СПИСКЕ UI
-            // Метод GetSiblingIndex() возвращает точный порядковый номер иконки на панели (0, 1, 2...)
-            int clickedIndex = __instance.transform.GetSiblingIndex();
-            Plugin.Log.LogInfo($"[SDK_Mouse] Кликнута кнопка с порядковым индексом на панели: {clickedIndex}");
-
             // Заглядываем в наш ConfigManager мода
             if (ConfigManager.LoadedConfigs.TryGetValue(furnitureName, out FurnitureConfig config))
             {
-                // Проверяем границы массива, чтобы не поймать ArgumentOutOfRangeException
-                if (clickedIndex < 0 || clickedIndex >= config.InteractionPoses.Count)
-                {
-                    Plugin.Log.LogError($"[SDK_Mouse] Ошибка: Индекс кнопки {clickedIndex} выходит за пределы конфига мебели ({config.InteractionPoses.Count} поз)!");
-                    return;
-                }
+                // Ищем данные позы в нашем JSON по имени объекта позы (которое совпадает с __instance.pose.name)
+                PoseData currentPoseData = config.InteractionPoses.Find(p => p != null && p.DisplayName == __instance.pose.name);
 
-                // Достаем данные позы из нашего JSON-конфига строго по индексу кнопки!
-                PoseData currentPoseData = config.InteractionPoses[clickedIndex];
-                if (currentPoseData == null) return;
+                // Если поза ванильная — выходим, пусть игра крутит её своим штатным FBX-клипом
+                if (currentPoseData == null || !currentPoseData.Type.Equals("CustomJSON", StringComparison.OrdinalIgnoreCase)) return;
 
-                // Если поза ванильная — выходим, пусть игра крутит её штатно
-                if (!currentPoseData.Type.Equals("CustomJSON", StringComparison.OrdinalIgnoreCase))
-                {
-                    Plugin.Log.LogInfo($"[SDK_Mouse] Кликнута ванильная поза '{currentPoseData.DisplayName}' (Индекс: {clickedIndex}), передаем управление игре.");
-                    return;
-                }
-
-                // === МЫ КЛИКНУЛИ ПО НАШЕЙ КАСТОМНОЙ КНОПКЕ ===
-                Plugin.Log.LogWarning($"[SDK_Mouse] Точка излома пройдена! Раскатываем кастомную позу мебели: {currentPoseData.JsonFileName}");
+                Plugin.Log.LogWarning($"[SDK_Icon_Click] Точка излома пройдена! Раскатываем кастомный слепок Диорамы: {currentPoseData.JsonFileName}");
 
                 string customAnimFullPath = Path.Combine(ConfigManager.CustomAnimsPath, currentPoseData.JsonFileName);
                 if (!File.Exists(customAnimFullPath))
                 {
-                    Plugin.Log.LogError($"[SDK_Mouse] Ошибка: Файл слепка костей отсутствует: {customAnimFullPath}");
+                    Plugin.Log.LogError($"[SDK_Icon_Click] Ошибка: Файл слепка костей отсутствует: {customAnimFullPath}");
                     return;
                 }
 
@@ -284,13 +262,13 @@ namespace FurnitureAnimationsMod
                 {
                     Transform character = characterComp.transform;
 
-                    // 3. Читаем бинарный слепок костей Диорамы с диска
+                    // 1. Читаем бинарный слепок костей напрямую в модель BakedElementData
                     string jsonContent = File.ReadAllText(customAnimFullPath);
                     var rawBonesData = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, BakedElementData>>(jsonContent);
 
                     if (rawBonesData != null)
                     {
-                        Plugin.Log.LogInfo($"[SDK_Mouse] Раскатываем {rawBonesData.Count} элементов Диорамы напрямую на скелет...");
+                        Plugin.Log.LogInfo($"[SDK_Icon_Click] Раскатываем {rawBonesData.Count} элементов Диорамы напрямую на скелет...");
 
                         Transform FindChildRecursive(Transform parent, string name)
                         {
@@ -332,7 +310,7 @@ namespace FurnitureAnimationsMod
                         }
                     }
 
-                    // 4. ЖЕСТКО ЗАМОРАЖИВАЕМ АНИМАТОР КУКЛЫ
+                    // 2. ЖЕСТКО ЗАМОРАЖИВАЕМ АНИМАТОР КУКЛЫ ПРЯМО В МОМЕНТ КЛИКА ИКОНКИ UI
                     Animator anim = character.GetComponent<Animator>();
                     if (anim != null)
                     {
@@ -341,16 +319,15 @@ namespace FurnitureAnimationsMod
                         anim.enabled = false; // Намертво блокируем А-позу куклы!
                     }
 
-                    Plugin.Log.LogWarning($"[SDK_Mouse] Кастомный скелет мебели успешно зафиксирован!");
+                    Plugin.Log.LogWarning($"[SDK_Icon_Click] Кастомный скелет мебели успешно зафиксирован в обход любых модов и крашей игры!");
                 }
                 catch (Exception ex)
                 {
-                    Plugin.Log.LogError($"[SDK_Mouse] Краш инъекции в OnPointerClick: {ex.Message}");
+                    Plugin.Log.LogError($"[SDK_Icon_Click] Краш инъекции в PoseIcon: {ex.Message}");
                 }
             }
         }
     }
-
 
     // === ПАТЧ 5: УЛЬТИМАТИВНАЯ ИНЖЕКЦИЯ АВТОНОМНОЙ КНОПКИ ЧЕРЕЗ MONOBEHAVIOUR ===
     [HarmonyPatch(typeof(UIFreePose), "Open")] // Перешли на железный метод Open!
@@ -472,7 +449,6 @@ namespace FurnitureAnimationsMod
             Plugin.Log.LogInfo("[SDK_Tracker] Меню FreePose закрыто, флаги полностью очищены.");
         }
     }
-
 
     // --- ДИГНОСТИЧЕСКИЙ ШПИОН №1: СЛЕДИМ ЗА МЕТОДОМ POSE.WARP ---
     [HarmonyPatch(typeof(global::Pose), "Warp")]
