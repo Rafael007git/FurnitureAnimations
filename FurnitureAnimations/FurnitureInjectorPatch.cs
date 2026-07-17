@@ -457,5 +457,48 @@ namespace FurnitureAnimationsMod
         }
     }
 
+    // --- ДИГНОСТИЧЕСКИЙ ШПИОН №1: СЛЕДИМ ЗА МЕТОДОМ POSE.WARP ---
+    [HarmonyPatch(typeof(global::Pose), "Warp")]
+    public class DebugPoseWarpSpy
+    {
+        [HarmonyPostfix]
+        public static void Postfix(global::Pose __instance, Transform character)
+        {
+            if (__instance == null || character == null) return;
+
+            Animator anim = character.GetComponent<Animator>();
+            string ctrlName = anim?.runtimeAnimatorController?.name ?? "None";
+            bool isEnabled = anim != null && anim.enabled;
+
+            Plugin.Log.LogWarning(
+                $"[TIMING_DEBUG] -> 1. Сработал метод Pose.Warp для позы '{__instance.name}'\n" +
+                $"Персонаж: {character.name}\n" +
+                $"Animator Enabled: {isEnabled}\n" +
+                $"Controller Name: {ctrlName}"
+            );
+        }
+    }
+
+    // --- ДИГНОСТИЧЕСКИЙ ШПИОН №2: СЛЕДИМ ЗА МЕТОДОМ FURNITURE.WARPCHARACTER ---
+    [HarmonyPatch(typeof(Furniture), "WarpCharacter")]
+    public class DebugWarpCharacterSpy
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Furniture __instance, Transform character, Transform pose)
+        {
+            if (__instance == null || character == null || pose == null) return;
+
+            Animator anim = character.GetComponent<Animator>();
+            string ctrlName = anim?.runtimeAnimatorController?.name ?? "None";
+            bool isEnabled = anim != null && anim.enabled;
+
+            Plugin.Log.LogError(
+                $"[TIMING_DEBUG] -> 2. Сработал метод Furniture.WarpCharacter для мебели '{__instance.name}'\n" +
+                $"Выбранный локатор позы: {pose.name}\n" +
+                $"Animator Enabled: {isEnabled}\n" +
+                $"Controller Name: {ctrlName}"
+            );
+        }
+    }
 
 }
