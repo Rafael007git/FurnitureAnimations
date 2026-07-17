@@ -147,7 +147,6 @@ namespace FurnitureAnimationsMod
         }
     }
 
-
     // === ПАТЧ 2: АВТО-ПОЗА И ФИКСАЦИЯ КАМЕРЫ ПРИ ВХОДЕ ИНТЕРАКТИВА ===
     [HarmonyPatch(typeof(Furniture), "InitiateInteract")] // Точное имя метода по dnSpy!
     public class FurnitureAutoPosePatch
@@ -218,6 +217,139 @@ namespace FurnitureAnimationsMod
                 return false;
             }
             return true;
+        }
+    }
+
+    // === ПАТЧ 4: ПАТЧ АВТО-ВХОДА ПЕРЕХВАТ СОБЫТИЯ МЫШИ ONPOINTERCLICK (RELEASE 0.2.0 STABLE) ===
+    [HarmonyPatch(typeof(UnityEngine.UI.Button), "OnPointerClick")] // Патчим физический клик мыши Unity UI!
+    public class UnityUiOnPointerClickDioramaPatch
+    {
+        [HarmonyPostfix] // Срабатывает мгновенно, когда палец или курсор нажал на кнопку
+        public static void Postfix(UnityEngine.UI.Button __instance)
+        {
+            if (__instance == null || __instance.gameObject == null) return;
+
+            // Жесткий фильтр: Нас интересуют ТОЛЬКО круглые иконки поз из левой панели!
+            if (__instance.gameObject.name != "Pose Icon(Clone)") return;
+
+            Plugin.Log.LogWarning($"[SDK_Mouse] Физический OnPointerClick по иконке позы зафиксирован!");
+
+            // 1. Извлекаем скрытый игровой компонент Pose, который привязан к этой конкретной кнопке!
+            global::Pose poseComponent = __instance.gameObject.GetComponent<global::Pose>() ??
+                                         __instance.gameObject.GetComponentInParent<global::Pose>();
+
+            if (poseComponent == null)
+            {
+                Plugin.Log.LogError("[SDK_Mouse] Ошибка: На нажатой кнопке отсутствует компонент global::Pose!");
+                return;
+            }
+
+            // Ищем окно UIFreePose на сцене, чтобы достать активного персонажа (суккуба)
+            UIFreePose uiFreePoseWindow = UnityEngine.Object.FindObjectOfType<UIFreePose>();
+            if (uiFreePoseWindow == null || uiFreePoseWindow.selectedCharacter == null) return;
+
+            CharacterCustomization characterComp = uiFreePoseWindow.selectedCharacter.GetComponent<CharacterCustomization>();
+            if (characterComp == null || characterComp.interactingObject == null) return;
+
+            string furnitureName = characterComp.interactingObject.name.Replace("(Clone)", "").Trim();
+
+            // Заглядываем в наш ConfigManager мода
+            if (ConfigManager.LoadedConfigs.TryGetValue(furnitureName, out FurnitureConfig config))
+            {
+                // Ищем данные позы в нашем JSON по имени объекта позы (которое совпадает с DisplayName кнопки!)
+                PoseData currentPoseData = config.InteractionPoses.Find(p => p != null && p.DisplayName == poseComponent.name);
+
+                if (currentPoseData == null)
+                {
+                    Plugin.Log.LogInfo($"[SDK_Mouse] Кликнута ванильная поза '{poseComponent.name}', передаем управление игре.");
+                    return;
+                }
+
+                // Если поза ванильная — выходим, пусть игра крутит её штатно
+                if (!currentPoseData.Type.Equals("CustomJSON", StringComparison.OrdinalIgnoreCase)) return;
+
+                // === МЫ КЛИКНУЛИ ПО НАШЕЙ КАСТОМНОЙ КНОПКЕ ===
+                Plugin.Log.LogWarning($"[SDK_Mouse] Точка излома пройдена! Раскатываем кастомную позу мебели: {currentPoseData.JsonFileName}");
+
+                string customAnimFullPath = Path.Combine(ConfigManager.CustomAnimsPath, currentPoseData.JsonFileName);
+                if (!File.Exists(customAnimFullPath))
+                {
+                    Plugin.Log.LogError($"[SDK_Mouse] Ошибка: Файл слепка костей отсутствует: {customAnimFullPath}");
+                    return;
+                }
+
+                try
+                {
+                    Transform character = characterComp.transform;
+
+                    // 2. Читаем бинарный слепок костей напрямую в нашу модель BakedElementData
+                    string jsonContent = File.ReadAllText(customAnimFullPath);
+                    var rawBonesData = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, BakedElementData>>(jsonContent);
+
+                    if (rawBonesData != null)
+                    {
+                        Plugin.Log.LogInfo($"[SDK_Mouse] Раскатываем {rawBonesData.Count} элементов Диорамы напрямую на скелет...");
+
+                        Transform FindChildRecursive(Transform parent, string name)
+                        {
+                            if (parent == null) return null;
+                            if (parent.name == name) return parent;
+                            for (int i = 0; i < parent.childCount; i++)
+                            {
+                                Transform found = FindChildRecursive(parent.GetChild(i), name);
+                                if (found != null) return found;
+                            }
+                            return null;
+                        }
+
+                        // ВОССТАНОВЛЕНИЕ СКЕЛЕТА, АНАТОМИИ И СВЕТА ДИОРАМЫ
+                        foreach (var kp in rawBonesData)
+                        {
+                            string targetName = kp.Key;
+                            BakedElementData elementData = kp.Value;
+                            if (elementData == null) continue;
+
+                            Transform boneTrans = FindChildRecursive(character, targetName);
+                            if (boneTrans == null) continue;
+
+                            if ((elementData.type ?? "").Equals("Light", StringComparison.OrdinalIgnoreCase))
+                            {
+                                Light light = boneTrans.GetComponent<Light>();
+                                if (light != null)
+                                {
+                                    light.enabled = elementData.enabled;
+                                    light.intensity = elementData.intensity;
+                                    light.range = elementData.range;
+                                    if (elementData.color != null) light.color = new Color(elementData.color.r, elementData.color.g, elementData.color.b);
+                                }
+                            }
+                            else
+                            {
+                                if (elementData.rot != null) boneTrans.localEulerAngles = new Vector3(elementData.rot.x, elementData.rot.y, elementData.rot.z);
+                                if (DioramaConstants.PositionalObjectsRegistry.Contains(targetName) && elementData.pos != null)
+                                {
+                                    boneTrans.localPosition = new Vector3(elementData.pos.x, elementData.pos.y, elementData.pos.z);
+                                }
+                            }
+                        }
+                    }
+
+                    // 3. ЖЕСТКО ЗАМОРАЖИВАЕМ АНИМАТОР КУКЛЫ ПРЯМО В МОМЕНТ КЛИКА МЫШИ
+                    Animator anim = character.GetComponent<Animator>();
+                    if (anim != null)
+                    {
+                        anim.applyRootMotion = false;
+                        anim.speed = 0f;
+                        anim.enabled = false; // Намертво блокируем А-позу куклы!
+                    }
+
+                    Plugin.Log.LogWarning($"[SDK_Mouse] Кастомный скелет мебели успешно зафиксирован в обход любых модов и крашей игры!");
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Log.LogError($"[SDK_Mouse] Краш инъекции в OnPointerClick: {ex.Message}");
+                }
+            }
         }
     }
 
