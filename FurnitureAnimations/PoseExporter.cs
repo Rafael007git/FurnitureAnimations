@@ -116,7 +116,7 @@ namespace FurnitureAnimationsMod
                 if (configToSave.InteractionPoses == null) configToSave.InteractionPoses = new List<PoseData>();
 
                 // Исправлено: Красивое имя в списке
-                string generatedPoseName = isCustom ? $"Кастомная — {DateTime.Now:dd.MM HH:mm}" : $"Анимация — {controller}";
+                string generatedPoseName = isCustom ? $"Custom Pose — {DateTime.Now:dd.MM HH:mm}" : $"Animation — {controller}";
                 string customAnimFileName = isCustom ? $"{furnitureName}_{timestamp}.json" : "";
 
                 PoseData newPoseData = new PoseData

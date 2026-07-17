@@ -58,7 +58,8 @@ namespace FurnitureAnimationsMod
                 {
                     if (poseConfig == null) continue;
 
-                    bool isCustomPose = poseConfig.Type.Equals("CustomJSON", System.StringComparison.OrdinalIgnoreCase);
+                    bool isCustomPose = poseConfig.Type.Equals("CustomJSON", System.StringComparison.OrdinalIgnoreCase) ||
+                                        poseConfig.Type.Contains("Кастомная");
                     RuntimeAnimatorController targetController = null;
                     string searchName = isCustomPose ? "UnarmedController" : poseConfig.ControllerName;
 
@@ -220,55 +221,65 @@ namespace FurnitureAnimationsMod
         }
     }
 
-    // === ПАТЧ 4: ХИРУРГИЧЕСКИЙ ПЕРЕХВАТ КЛИКА ИКОНКИ МЕБЕЛИ ЧЕРЕЗ POSEICON (RELEASE 0.2.0 RELEASE) ===
-    [HarmonyPatch(typeof(PoseIcon), "Click")] // Нацеливаемся строго на метод из dnSpy!
+    // === ПАТЧ 4: УЛЬТИМАТИВНЫЙ ПРЕФИКС-ПЕРЕХВАТ С ПОДДЕРЖКОЙ ОБРАТНОЙ СОВМЕСТИМОСТИ (RELEASE 0.2.0) ===
+    [HarmonyPatch(typeof(PoseIcon), "Click")]
     public class PoseIconClickDioramaPatch
     {
-        [HarmonyPostfix] // Срабатывает в ту же миллисекунду, когда игрок нажал на иконку
-        public static void Postfix(PoseIcon __instance)
+        [HarmonyPrefix]
+        public static bool Prefix(PoseIcon __instance)
         {
-            if (__instance == null || __instance.pose == null) return;
+            if (__instance == null || __instance.pose == null) return true;
 
-            Plugin.Log.LogWarning($"[SDK_Icon_Click] Событие Click() зафиксировано для позы: '{__instance.pose.name}'");
-
-            // Ищем окно UIFreePose на сцене игры, чтобы достать активного персонажа (суккуба)
             UIFreePose uiFreePoseWindow = UnityEngine.Object.FindObjectOfType<UIFreePose>();
-            if (uiFreePoseWindow == null || uiFreePoseWindow.selectedCharacter == null) return;
+            if (uiFreePoseWindow == null || uiFreePoseWindow.selectedCharacter == null) return true;
 
             CharacterCustomization characterComp = uiFreePoseWindow.selectedCharacter.GetComponent<CharacterCustomization>();
-            if (characterComp == null || characterComp.interactingObject == null) return;
+            if (characterComp == null || characterComp.interactingObject == null) return true;
 
             string furnitureName = characterComp.interactingObject.name.Replace("(Clone)", "").Trim();
 
-            // Заглядываем в наш ConfigManager мода
             if (ConfigManager.LoadedConfigs.TryGetValue(furnitureName, out FurnitureConfig config))
             {
-                // Ищем данные позы в нашем JSON по имени объекта позы (которое совпадает с __instance.pose.name)
                 PoseData currentPoseData = config.InteractionPoses.Find(p => p != null && p.DisplayName == __instance.pose.name);
 
-                // Если поза ванильная — выходим, пусть игра крутит её своим штатным FBX-клипом
-                if (currentPoseData == null || !currentPoseData.Type.Equals("CustomJSON", StringComparison.OrdinalIgnoreCase)) return;
+                if (currentPoseData == null) return true;
 
-                Plugin.Log.LogWarning($"[SDK_Icon_Click] Точка излома пройдена! Раскатываем кастомный слепок Диорамы: {currentPoseData.JsonFileName}");
+                // УМНАЯ ДВУХЪЯЗЫЧНАЯ ПРОВЕРКА: Ловим и старый русский маркер, и новый английский!
+                bool isCustomPose = currentPoseData.Type.Equals("CustomJSON", StringComparison.OrdinalIgnoreCase) ||
+                                    currentPoseData.Type.Contains("Кастомная") ||
+                                    currentPoseData.ControllerName.Equals("CustomJSON", StringComparison.OrdinalIgnoreCase);
+
+                if (!isCustomPose) return true; // Пропускаем ванильные позы
+
+                Plugin.Log.LogWarning($"[SDK_Icon_Prefix] Перехват кастомной позы '{__instance.pose.name}' запущен!");
 
                 string customAnimFullPath = Path.Combine(ConfigManager.CustomAnimsPath, currentPoseData.JsonFileName);
                 if (!File.Exists(customAnimFullPath))
                 {
-                    Plugin.Log.LogError($"[SDK_Icon_Click] Ошибка: Файл слепка костей отсутствует: {customAnimFullPath}");
-                    return;
+                    Plugin.Log.LogError($"[SDK_Icon_Prefix] Ошибка: Файл слепка костей отсутствует: {customAnimFullPath}");
+                    return true;
                 }
 
                 try
                 {
-                    Transform character = characterComp.transform;
+                    // 1. Принудительно вызываем оригинальную логику игры (телепортация к мебели)
+                    if (Global.code.uiFreePose.gameObject.activeSelf)
+                    {
+                        Global.code.uiFreePose.PoseButtonClicked(__instance.pose);
+                    }
+                    else
+                    {
+                        Global.code.uiPose.PoseButtonClicked(__instance.pose);
+                    }
 
-                    // 1. Читаем бинарный слепок костей напрямую в модель BakedElementData
+                    // 2. МГНОВЕННЫЙ НАКАТ КОСТЕЙ ДИОРАМЫ ПОВЕРХ СБРОСА ИГРЫ И BUGERRY
+                    Transform character = characterComp.transform;
                     string jsonContent = File.ReadAllText(customAnimFullPath);
                     var rawBonesData = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, BakedElementData>>(jsonContent);
 
                     if (rawBonesData != null)
                     {
-                        Plugin.Log.LogInfo($"[SDK_Icon_Click] Раскатываем {rawBonesData.Count} элементов Диорамы напрямую на скелет...");
+                        Plugin.Log.LogInfo($"[SDK_Icon_Prefix] Раскатываем {rawBonesData.Count} элементов Диорамы поверх сброса игры...");
 
                         Transform FindChildRecursive(Transform parent, string name)
                         {
@@ -282,7 +293,6 @@ namespace FurnitureAnimationsMod
                             return null;
                         }
 
-                        // ВОССТАНОВЛЕНИЕ СКЕЛЕТА, АНАТОМИИ И СВЕТА ДИОРАМЫ
                         foreach (var kp in rawBonesData)
                         {
                             Transform boneTrans = FindChildRecursive(character, kp.Key);
@@ -310,22 +320,25 @@ namespace FurnitureAnimationsMod
                         }
                     }
 
-                    // 2. ЖЕСТКО ЗАМОРАЖИВАЕМ АНИМАТОР КУКЛЫ ПРЯМО В МОМЕНТ КЛИКА ИКОНКИ UI
+                    // 3. ЗАМОРАЖИВАЕМ АНИМАТОР КУКЛЫ
                     Animator anim = character.GetComponent<Animator>();
                     if (anim != null)
                     {
                         anim.applyRootMotion = false;
                         anim.speed = 0f;
-                        anim.enabled = false; // Намертво блокируем А-позу куклы!
+                        anim.enabled = false;
                     }
 
-                    Plugin.Log.LogWarning($"[SDK_Icon_Click] Кастомный скелет мебели успешно зафиксирован в обход любых модов и крашей игры!");
+                    Plugin.Log.LogWarning($"[SDK_Icon_Prefix] Кастомная поза Диорамы '{__instance.pose.name}' успешно зафиксирована!");
+                    return false; // Отменяем оригинальный метод клика, предотвращая А-позу
                 }
                 catch (Exception ex)
                 {
-                    Plugin.Log.LogError($"[SDK_Icon_Click] Краш инъекции в PoseIcon: {ex.Message}");
+                    Plugin.Log.LogError($"[SDK_Icon_Prefix] Краш инъекции: {ex.Message}");
                 }
             }
+
+            return true;
         }
     }
 
