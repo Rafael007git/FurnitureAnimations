@@ -225,12 +225,13 @@ namespace FurnitureAnimationsMod
     [HarmonyPatch(typeof(PoseIcon), "Click")]
     public class PoseIconClickDioramaPatch
     {
-        [HarmonyPostfix] // Возвращаем стабильный Постфикс, который читал имена!
+        [HarmonyPostfix]
         public static void Postfix(PoseIcon __instance)
         {
             if (__instance == null || __instance.pose == null) return;
 
-            Plugin.Log.LogWarning($"[SDK_Icon] Физический клик зафиксирован для позы: '{__instance.pose.name}'");
+            string uiPoseName = __instance.pose.name ?? "";
+            Plugin.Log.LogWarning($"[SDK_Icon] Физический клик зафиксирован для позы: '{uiPoseName}'");
 
             UIFreePose uiFreePoseWindow = UnityEngine.Object.FindObjectOfType<UIFreePose>();
             if (uiFreePoseWindow == null || uiFreePoseWindow.selectedCharacter == null) return;
@@ -242,22 +243,49 @@ namespace FurnitureAnimationsMod
 
             if (ConfigManager.LoadedConfigs.TryGetValue(furnitureName, out FurnitureConfig config))
             {
-                PoseData currentPoseData = config.InteractionPoses.Find(p => p != null && p.DisplayName == __instance.pose.name);
-                if (currentPoseData == null) return;
+                // ИСПРАВЛЕНО: Безопасный поиск по типу контроллера и подстроке, обходящий любые проблемы с тире/дефисами!
+                string uiCtrlNameLower = (__instance.pose.controller != null ? __instance.pose.controller.name.ToLower() : "");
+                string uiPoseNameLower = uiPoseName.ToLower();
 
-                // Двухъязычный фильтр кастомной позы
-                bool isCustomPose = currentPoseData.Type.Equals("CustomJSON", StringComparison.OrdinalIgnoreCase) ||
-                                    currentPoseData.Type.Contains("Кастомная") ||
-                                    currentPoseData.ControllerName.Equals("CustomJSON", StringComparison.OrdinalIgnoreCase);
+                // Проверяем маркеры кастомности, прилетевшие из интерфейса игры
+                bool isUiPoseCustom = uiCtrlNameLower.Contains("custom") ||
+                                     uiCtrlNameLower.Contains("unarmed") ||
+                                     uiPoseNameLower.Contains("custom");
 
-                if (!isCustomPose) return;
+                PoseData currentPoseData = null;
 
-                Plugin.Log.LogWarning($"[SDK_Icon] Запуск отложенного потока раскатки для: {currentPoseData.JsonFileName}");
+                if (isUiPoseCustom)
+                {
+                    // Если UI говорит, что это кастом — берем кастомную позу из нашего JSON-списка мебели!
+                    currentPoseData = config.InteractionPoses.Find(p => p != null &&
+                        (p.Type.Equals("CustomJSON", StringComparison.OrdinalIgnoreCase) || p.ControllerName.Contains("Custom")));
+                }
+                else
+                {
+                    // Если это ваниль — ищем по обычному DisplayName
+                    currentPoseData = config.InteractionPoses.Find(p => p != null && p.DisplayName.ToLower() == uiPoseNameLower);
+                }
 
-                // ЗАПУСКАЕМ КОРУТИНУ Unity прямо на объекте окна интерфейса!
+                if (currentPoseData == null)
+                {
+                    Plugin.Log.LogInfo($"[SDK_Icon] Поза '{uiPoseName}' не найдена в реестре мода. Передаем управление игре.");
+                    return;
+                }
+
+                // Строгий фильтр: перехватываем ТОЛЬКО статичную Диораму (тип CustomJSON)
+                if (!currentPoseData.Type.Equals("CustomJSON", StringComparison.OrdinalIgnoreCase))
+                {
+                    Plugin.Log.LogInfo($"[SDK_Icon] Поза '{uiPoseName}' имеет тип '{currentPoseData.Type}'. Накат Диорамы пропускаем.");
+                    return;
+                }
+
+                Plugin.Log.LogWarning($"[SDK_Icon] Целевой файл кастомной позы найден: {currentPoseData.JsonFileName}. Запускаем отложенный поток...");
+
+                // Запускаем корутину ожидания кадров
                 uiFreePoseWindow.StartCoroutine(ExecuteBonesInjectionDelayed(characterComp, currentPoseData.JsonFileName));
             }
         }
+
 
         // Наша корутина-шпион: ждет завершения сброса игры и бьет на следующем кадре!
         private static System.Collections.IEnumerator ExecuteBonesInjectionDelayed(CharacterCustomization characterComp, string jsonFileName)
