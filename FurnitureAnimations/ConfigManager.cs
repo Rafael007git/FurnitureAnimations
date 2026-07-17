@@ -35,6 +35,9 @@ namespace FurnitureAnimationsMod
                 if (!Directory.Exists(CustomAnimsPath)) Directory.CreateDirectory(CustomAnimsPath);
                 if (!Directory.Exists(IconsPath)) Directory.CreateDirectory(IconsPath);
 
+                // Запускаем диагностику: смотрим, какие моды внедрились в мебель!
+                CheckDoPoseInterceptors();
+
                 Plugin.Log.LogWarning($"[ConfigManager] Истинные пути SDK мода установлены: {PluginDirectory}");
 
                 LoadAllConfigs();
@@ -71,5 +74,49 @@ namespace FurnitureAnimationsMod
             }
             Plugin.Log.LogWarning($"[ConfigManager] Всего проиндексировано префабов мебели в памяти: {LoadedConfigs.Count}");
         }
+
+        public static void CheckDoPoseInterceptors()
+        {
+            try
+            {
+                var originalMethod = typeof(Furniture).GetMethod("DoPose", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                if (originalMethod == null) return;
+
+                var patchInfo = HarmonyLib.Harmony.GetPatchInfo(originalMethod);
+                if (patchInfo == null)
+                {
+                    Plugin.Log.LogWarning("[SDK_Registry] Метод Furniture.DoPose абсолютно чист от чужих патчей.");
+                    return;
+                }
+
+                Plugin.Log.LogError($"[SDK_Registry] === КАРТА ВОЙНЫ МОДОВ ДЛЯ Furniture.DoPose ===");
+
+                // ИСПРАВЛЕНО: Используем правильные свойства PatchMethod и owner из актуального HarmonyЛиб
+                if (patchInfo.Prefixes != null)
+                {
+                    foreach (var p in patchInfo.Prefixes)
+                    {
+                        string ownerName = p.owner ?? "UnknownMod";
+                        string methodName = p.PatchMethod != null ? p.PatchMethod.Name : "UnknownMethod";
+                        Plugin.Log.LogError($" -> КРИТИЧЕСКИЙ ПЕРЕХВАТ (Prefix): Мод: {ownerName} | Метод: {methodName}");
+                    }
+                }
+                if (patchInfo.Postfixes != null)
+                {
+                    foreach (var p in patchInfo.Postfixes)
+                    {
+                        string ownerName = p.owner ?? "UnknownMod";
+                        string methodName = p.PatchMethod != null ? p.PatchMethod.Name : "UnknownMethod";
+                        Plugin.Log.LogWarning($" -> Постфикс мода: {ownerName} | Метод: {methodName}");
+                    }
+                }
+                Plugin.Log.LogError("=================================================");
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"Ошибка сканера: {ex.Message}");
+            }
+        }
+
     }
 }
