@@ -235,31 +235,34 @@ namespace FurnitureAnimationsMod
 
             Plugin.Log.LogWarning($"[SDK_Icon] Клик зафиксирован! Поза: '{uiPoseName}' | Контроллер: '{uiCtrlName}'");
 
-            // Ищем объект мебели, к которому физически принадлежит эта кнопка позы
+            // Ищем объект мебели через иерархию Canvas
             Furniture parentFurniture = __instance.GetComponentInParent<Furniture>() ??
                                          __instance.pose.GetComponentInParent<Furniture>();
 
-            // Если через иерархию не нашли, ищем ближайшую мебель на сцене
             if (parentFurniture == null)
             {
                 Furniture[] allFurniture = UnityEngine.Object.FindObjectsOfType<Furniture>();
                 if (allFurniture != null && allFurniture.Length > 0)
                 {
-                    // Берем первый попавшийся активный проп для подстраховки
-                    parentFurniture = allFurniture[0];
+                    parentFurniture = allFurniture[0]; // Берем первый активный проп
                 }
             }
 
-            if (parentFurniture == null || parentFurniture.user == null)
-            {
-                Plugin.Log.LogError("[SDK_Icon] Ошибка: Не удалось найти мебель или активного пользователя (user == null)!");
-                return;
-            }
+            if (parentFurniture == null || parentFurniture.user == null) return;
 
-            // Достаем персонажа напрямую из родного поля мебели (user), которое мы выверили по dnSpy!
             CharacterCustomization activeChar = parentFurniture.user;
 
-            // Запускаем обработку, передавая куклу напрямую
+            // =========================================================================
+            // КРИТИЧЕСКИЙ ВЫПРЯМИТЕЛЬ ВАНИЛИ: Оживляем аниматор при абсолютно ЛЮБОМ клике!
+            // Это мгновенно выведет куклу из комы, если до этого была включена Диорама.
+            if (activeChar != null && activeChar.anim != null)
+            {
+                activeChar.anim.enabled = true;  // Пробуждаем компонент!
+                activeChar.anim.speed = 1f;      // Возвращаем стандартную скорость ванильным танцам!
+            }
+            // =========================================================================
+
+            // Передаем персонажа на эластичную фильтрацию типов повадок
             ProcessPoseClick(activeChar, uiPoseName, uiCtrlName);
         }
 
