@@ -554,6 +554,9 @@ namespace FurnitureAnimationsMod
                 if (!Directory.Exists(CustomAnimsPath)) Directory.CreateDirectory(CustomAnimsPath);
                 if (!Directory.Exists(IconsPath)) Directory.CreateDirectory(IconsPath);
 
+                // Запускаем диагностику: смотрим, какие моды внедрились в мебель!
+                CheckDoPoseInterceptors();
+
                 Plugin.Log.LogWarning($"[ConfigManager] Истинные пути SDK мода установлены: {PluginDirectory}");
 
                 LoadAllConfigs();
@@ -590,6 +593,50 @@ namespace FurnitureAnimationsMod
             }
             Plugin.Log.LogWarning($"[ConfigManager] Всего проиндексировано префабов мебели в памяти: {LoadedConfigs.Count}");
         }
+
+        public static void CheckDoPoseInterceptors()
+        {
+            try
+            {
+                var originalMethod = typeof(Furniture).GetMethod("DoPose", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                if (originalMethod == null) return;
+
+                var patchInfo = HarmonyLib.Harmony.GetPatchInfo(originalMethod);
+                if (patchInfo == null)
+                {
+                    Plugin.Log.LogWarning("[SDK_Registry] Метод Furniture.DoPose абсолютно чист от чужих патчей.");
+                    return;
+                }
+
+                Plugin.Log.LogError($"[SDK_Registry] === КАРТА ВОЙНЫ МОДОВ ДЛЯ Furniture.DoPose ===");
+
+                // ИСПРАВЛЕНО: Используем правильные свойства PatchMethod и owner из актуального HarmonyЛиб
+                if (patchInfo.Prefixes != null)
+                {
+                    foreach (var p in patchInfo.Prefixes)
+                    {
+                        string ownerName = p.owner ?? "UnknownMod";
+                        string methodName = p.PatchMethod != null ? p.PatchMethod.Name : "UnknownMethod";
+                        Plugin.Log.LogError($" -> КРИТИЧЕСКИЙ ПЕРЕХВАТ (Prefix): Мод: {ownerName} | Метод: {methodName}");
+                    }
+                }
+                if (patchInfo.Postfixes != null)
+                {
+                    foreach (var p in patchInfo.Postfixes)
+                    {
+                        string ownerName = p.owner ?? "UnknownMod";
+                        string methodName = p.PatchMethod != null ? p.PatchMethod.Name : "UnknownMethod";
+                        Plugin.Log.LogWarning($" -> Постфикс мода: {ownerName} | Метод: {methodName}");
+                    }
+                }
+                Plugin.Log.LogError("=================================================");
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"Ошибка сканера: {ex.Message}");
+            }
+        }
+
     }
 }
 
@@ -1038,7 +1085,6 @@ namespace FurnitureAnimationsMod
         }
     }
 
-
     // === ПАТЧ 2: АВТО-ПОЗА И ФИКСАЦИЯ КАМЕРЫ ПРИ ВХОДЕ ИНТЕРАКТИВА ===
     [HarmonyPatch(typeof(Furniture), "InitiateInteract")] // Точное имя метода по dnSpy!
     public class FurnitureAutoPosePatch
@@ -1109,6 +1155,139 @@ namespace FurnitureAnimationsMod
                 return false;
             }
             return true;
+        }
+    }
+
+    // === ПАТЧ 4: ПАТЧ АВТО-ВХОДА ПЕРЕХВАТ СОБЫТИЯ МЫШИ ONPOINTERCLICK (RELEASE 0.2.0 STABLE) ===
+    [HarmonyPatch(typeof(UnityEngine.UI.Button), "OnPointerClick")] // Патчим физический клик мыши Unity UI!
+    public class UnityUiOnPointerClickDioramaPatch
+    {
+        [HarmonyPostfix] // Срабатывает мгновенно, когда палец или курсор нажал на кнопку
+        public static void Postfix(UnityEngine.UI.Button __instance)
+        {
+            if (__instance == null || __instance.gameObject == null) return;
+
+            // Жесткий фильтр: Нас интересуют ТОЛЬКО круглые иконки поз из левой панели!
+            if (__instance.gameObject.name != "Pose Icon(Clone)") return;
+
+            Plugin.Log.LogWarning($"[SDK_Mouse] Физический OnPointerClick по иконке позы зафиксирован!");
+
+            // 1. Извлекаем скрытый игровой компонент Pose, который привязан к этой конкретной кнопке!
+            global::Pose poseComponent = __instance.gameObject.GetComponent<global::Pose>() ??
+                                         __instance.gameObject.GetComponentInParent<global::Pose>();
+
+            if (poseComponent == null)
+            {
+                Plugin.Log.LogError("[SDK_Mouse] Ошибка: На нажатой кнопке отсутствует компонент global::Pose!");
+                return;
+            }
+
+            // Ищем окно UIFreePose на сцене, чтобы достать активного персонажа (суккуба)
+            UIFreePose uiFreePoseWindow = UnityEngine.Object.FindObjectOfType<UIFreePose>();
+            if (uiFreePoseWindow == null || uiFreePoseWindow.selectedCharacter == null) return;
+
+            CharacterCustomization characterComp = uiFreePoseWindow.selectedCharacter.GetComponent<CharacterCustomization>();
+            if (characterComp == null || characterComp.interactingObject == null) return;
+
+            string furnitureName = characterComp.interactingObject.name.Replace("(Clone)", "").Trim();
+
+            // Заглядываем в наш ConfigManager мода
+            if (ConfigManager.LoadedConfigs.TryGetValue(furnitureName, out FurnitureConfig config))
+            {
+                // Ищем данные позы в нашем JSON по имени объекта позы (которое совпадает с DisplayName кнопки!)
+                PoseData currentPoseData = config.InteractionPoses.Find(p => p != null && p.DisplayName == poseComponent.name);
+
+                if (currentPoseData == null)
+                {
+                    Plugin.Log.LogInfo($"[SDK_Mouse] Кликнута ванильная поза '{poseComponent.name}', передаем управление игре.");
+                    return;
+                }
+
+                // Если поза ванильная — выходим, пусть игра крутит её штатно
+                if (!currentPoseData.Type.Equals("CustomJSON", StringComparison.OrdinalIgnoreCase)) return;
+
+                // === МЫ КЛИКНУЛИ ПО НАШЕЙ КАСТОМНОЙ КНОПКЕ ===
+                Plugin.Log.LogWarning($"[SDK_Mouse] Точка излома пройдена! Раскатываем кастомную позу мебели: {currentPoseData.JsonFileName}");
+
+                string customAnimFullPath = Path.Combine(ConfigManager.CustomAnimsPath, currentPoseData.JsonFileName);
+                if (!File.Exists(customAnimFullPath))
+                {
+                    Plugin.Log.LogError($"[SDK_Mouse] Ошибка: Файл слепка костей отсутствует: {customAnimFullPath}");
+                    return;
+                }
+
+                try
+                {
+                    Transform character = characterComp.transform;
+
+                    // 2. Читаем бинарный слепок костей напрямую в нашу модель BakedElementData
+                    string jsonContent = File.ReadAllText(customAnimFullPath);
+                    var rawBonesData = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, BakedElementData>>(jsonContent);
+
+                    if (rawBonesData != null)
+                    {
+                        Plugin.Log.LogInfo($"[SDK_Mouse] Раскатываем {rawBonesData.Count} элементов Диорамы напрямую на скелет...");
+
+                        Transform FindChildRecursive(Transform parent, string name)
+                        {
+                            if (parent == null) return null;
+                            if (parent.name == name) return parent;
+                            for (int i = 0; i < parent.childCount; i++)
+                            {
+                                Transform found = FindChildRecursive(parent.GetChild(i), name);
+                                if (found != null) return found;
+                            }
+                            return null;
+                        }
+
+                        // ВОССТАНОВЛЕНИЕ СКЕЛЕТА, АНАТОМИИ И СВЕТА ДИОРАМЫ
+                        foreach (var kp in rawBonesData)
+                        {
+                            string targetName = kp.Key;
+                            BakedElementData elementData = kp.Value;
+                            if (elementData == null) continue;
+
+                            Transform boneTrans = FindChildRecursive(character, targetName);
+                            if (boneTrans == null) continue;
+
+                            if ((elementData.type ?? "").Equals("Light", StringComparison.OrdinalIgnoreCase))
+                            {
+                                Light light = boneTrans.GetComponent<Light>();
+                                if (light != null)
+                                {
+                                    light.enabled = elementData.enabled;
+                                    light.intensity = elementData.intensity;
+                                    light.range = elementData.range;
+                                    if (elementData.color != null) light.color = new Color(elementData.color.r, elementData.color.g, elementData.color.b);
+                                }
+                            }
+                            else
+                            {
+                                if (elementData.rot != null) boneTrans.localEulerAngles = new Vector3(elementData.rot.x, elementData.rot.y, elementData.rot.z);
+                                if (DioramaConstants.PositionalObjectsRegistry.Contains(targetName) && elementData.pos != null)
+                                {
+                                    boneTrans.localPosition = new Vector3(elementData.pos.x, elementData.pos.y, elementData.pos.z);
+                                }
+                            }
+                        }
+                    }
+
+                    // 3. ЖЕСТКО ЗАМОРАЖИВАЕМ АНИМАТОР КУКЛЫ ПРЯМО В МОМЕНТ КЛИКА МЫШИ
+                    Animator anim = character.GetComponent<Animator>();
+                    if (anim != null)
+                    {
+                        anim.applyRootMotion = false;
+                        anim.speed = 0f;
+                        anim.enabled = false; // Намертво блокируем А-позу куклы!
+                    }
+
+                    Plugin.Log.LogWarning($"[SDK_Mouse] Кастомный скелет мебели успешно зафиксирован в обход любых модов и крашей игры!");
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Log.LogError($"[SDK_Mouse] Краш инъекции в OnPointerClick: {ex.Message}");
+                }
+            }
         }
     }
 
@@ -1233,120 +1412,6 @@ namespace FurnitureAnimationsMod
         }
     }
 
-    // === ПАТЧ 2: ПЕРЕХВАТ КЛИКА И НАКАТЫВАНИЕ КОСТЕЙ ДИОРАМЫ ПРИ ИНТЕРАКТИВЕ (БЕЗ JOBJECT) ===
-    [HarmonyPatch(typeof(global::Pose), "Warp")]
-    public class PoseWarpDioramaPatch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(global::Pose __instance, Transform character)
-        {
-            if (__instance == null || character == null) return;
-
-            Furniture parentFurniture = __instance.GetComponentInParent<Furniture>();
-            if (parentFurniture == null) return;
-
-            string furnitureName = parentFurniture.name.Replace("(Clone)", "").Trim();
-
-            if (ConfigManager.LoadedConfigs.TryGetValue(furnitureName, out FurnitureConfig config))
-            {
-                PoseData currentPoseData = config.InteractionPoses.Find(p => p != null && p.DisplayName == __instance.name);
-
-                if (currentPoseData == null || !currentPoseData.Type.Equals("CustomJSON", System.StringComparison.OrdinalIgnoreCase)) return;
-
-                Plugin.Log.LogWarning($"[Runtime_Injector] Обнаружен клик по кастомной позе мебели! Файл: {currentPoseData.JsonFileName}");
-
-                string customAnimFullPath = Path.Combine(ConfigManager.CustomAnimsPath, currentPoseData.JsonFileName);
-
-                if (!File.Exists(customAnimFullPath))
-                {
-                    Plugin.Log.LogError($"[Runtime_Injector] Ошибка: Файл слепка костей не найден: {customAnimFullPath}");
-                    return;
-                }
-
-                try
-                {
-                    // Читаем бинарный слепок костей напрямую в нашу строго типизированную модель!
-                    string jsonBones = File.ReadAllText(customAnimFullPath);
-                    var rawBonesData = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, BakedElementData>>(jsonBones);
-
-                    if (rawBonesData == null) return;
-
-                    Plugin.Log.LogInfo($"[Runtime_Injector] Начинаем раскатку {rawBonesData.Count} элементов Диорамы на скелет...");
-
-                    Transform FindChildRecursive(Transform parent, string name)
-                    {
-                        if (parent == null) return null;
-                        if (parent.name == name) return parent;
-                        for (int i = 0; i < parent.childCount; i++)
-                        {
-                            Transform found = FindChildRecursive(parent.GetChild(i), name);
-                            if (found != null) return found;
-                        }
-                        return null;
-                    }
-
-                    foreach (var kp in rawBonesData)
-                    {
-                        string targetName = kp.Key;
-                        BakedElementData elementData = kp.Value;
-                        if (elementData == null) continue;
-
-                        Transform boneTrans = FindChildRecursive(character, targetName);
-                        if (boneTrans == null) continue;
-
-                        string type = elementData.type ?? "Bone";
-
-                        if (type.Equals("Light", StringComparison.OrdinalIgnoreCase))
-                        {
-                            Light lightComponent = boneTrans.GetComponent<Light>();
-                            if (lightComponent != null)
-                            {
-                                lightComponent.enabled = elementData.enabled;
-                                lightComponent.intensity = elementData.intensity;
-                                lightComponent.range = elementData.range;
-
-                                if (elementData.color != null)
-                                {
-                                    lightComponent.color = new Color(elementData.color.r, elementData.color.g, elementData.color.b);
-                                }
-                            }
-
-                            if (elementData.pos != null)
-                            {
-                                boneTrans.localPosition = new Vector3(elementData.pos.x, elementData.pos.y, elementData.pos.z);
-                            }
-                        }
-                        else
-                        {
-                            if (elementData.rot != null)
-                            {
-                                boneTrans.localEulerAngles = new Vector3(elementData.rot.x, elementData.rot.y, elementData.rot.z);
-                            }
-
-                            if (DioramaConstants.PositionalObjectsRegistry.Contains(targetName) && elementData.pos != null)
-                            {
-                                boneTrans.localPosition = new Vector3(elementData.pos.x, elementData.pos.y, elementData.pos.z);
-                            }
-                        }
-                    }
-
-                    Animator anim = character.GetComponent<Animator>();
-                    if (anim != null)
-                    {
-                        anim.applyRootMotion = false;
-                        anim.speed = 0f;
-                        anim.enabled = false;
-                    }
-
-                    Plugin.Log.LogWarning($"[Runtime_Injector] Кастомная поза Диорамы '{__instance.name}' успешно раскатана на скелет {character.name}!");
-                }
-                catch (Exception ex)
-                {
-                    Plugin.Log.LogError($"[Runtime_Injector] Критическая ошибка инъекции слепка костей: {ex.Message}");
-                }
-            }
-        }
-    }
 
     // --- ДИГНОСТИЧЕСКИЙ ШПИОН №1: СЛЕДИМ ЗА МЕТОДОМ POSE.WARP ---
     [HarmonyPatch(typeof(global::Pose), "Warp")]
@@ -1402,7 +1467,7 @@ using System.IO;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
-using RuntimeGizmos; // Подключаем пространство имен гизмо из нашего PDF!
+using RuntimeGizmos;
 
 namespace FurnitureAnimationsMod
 {
@@ -1418,14 +1483,14 @@ namespace FurnitureAnimationsMod
             _uiInstance = ui;
             _mainButton = GetComponent<UnityEngine.UI.Button>();
             _buttonText = GetComponentInChildren<UnityEngine.UI.Text>();
-            Plugin.Log.LogInfo("[SDK_Controller] Нативный Update-трекер успешно запущен напрямую.");
+            Plugin.Log.LogInfo("[SDK_Controller] Нативный Update-трекер запущен в дипломатическом режиме.");
         }
 
         private void Update()
         {
             if (_uiInstance == null || _mainButton == null || _buttonText == null) return;
 
-            // Опрашиваем состояние 5 раз в секунду для идеальной оптимизации
+            // Оптимизация: опрашиваем движок 5 раз в секунду
             _updateTimer += Time.deltaTime;
             if (_updateTimer < 0.2f) return;
             _updateTimer = 0f;
@@ -1439,65 +1504,137 @@ namespace FurnitureAnimationsMod
             {
                 string currentCtrlName = (characterComp.anim.runtimeAnimatorController?.name ?? "").ToLower();
 
-                // 1. ЖЕЛЕЗОБЕТОННЫЙ ПЕРЕХВАТ НА ОСНОВЕ ДАННЫХ ИЗ PDF
+                // 1. КОНТРОЛЬ ГИЗМО BUGERRY
                 bool isGizmoActiveOnScene = false;
                 bool isUserActivelyRotating = false;
 
-                // Обращаемся напрямую к статическому синглтону из строки 1521 нашего PDF!
                 if (TransformGizmo.transformGizmo_ != null)
                 {
-                    // Проверяем, запущен ли режим гизмо для костей (строка 1476)
                     isGizmoActiveOnScene = TransformGizmo.transformGizmo_.runTransformGizmo;
-
-                    // Проверяем рантайм-событие: крутит ли пользователь кость прямо СЕЙЧАС (строка 22)
                     isUserActivelyRotating = TransformGizmo.transformGizmo_.isTransforming;
                 }
 
-                // Взводим режим кастомной позы, если гизмо активны на экране или имя контроллера сменилось
-                bool isHandEditingActive = currentCtrlName.Contains("custom") ||
-                                           _uiInstance.isCustomPoseMode == true ||
-                                           isGizmoActiveOnScene;
-
-                // Базовое состояние Idle покоя персонажа
-                bool isDefaultIdleActive = currentCtrlName.Contains("idle") ||
-                                           currentCtrlName.Contains("unarmed") ||
-                                           string.IsNullOrEmpty(currentCtrlName);
-
-                // Поза мебели активна, если аниматор выключен игрой или контроллер ушел с Idle стойки
-                bool isAnyPresetPoseActive = characterComp.anim.enabled == false || !isDefaultIdleActive;
-
-                // Если поймали событие физического вращения осей мышкою — логируем!
-                if (isUserActivelyRotating)
+                // 2. ДИПЛОМАТИЧЕСКИЙ РАНТАЙМ-ПЕРЕХВАТ А-ПОЗЫ В ОБХОД ВСЕХ МОДОВ
+                // Если персонаж взаимодействует с мебелью, и на экране ЕЩЕ открыто наше меню...
+                if (characterComp.interactingObject != null)
                 {
-                    Plugin.Log.LogWarning("[SDK_Gizmo] LIVE EVENT: Обнаружено вращение кости куклы в реальном времени!");
+                    string furnitureName = characterComp.interactingObject.name.Replace("(Clone)", "").Trim();
+
+                    if (ConfigManager.LoadedConfigs.TryGetValue(furnitureName, out FurnitureConfig config))
+                    {
+                        // Смотрим, какая именно иконка позы сейчас выбрана в интерфейсе игры (через uiPose.curpose)
+                        if (Global.code != null && Global.code.uiPose != null && Global.code.uiPose.curpose != null)
+                        {
+                            string activePoseNameInUi = Global.code.uiPose.curpose.name;
+
+                            // Ищем данные этой позы в нашем JSON
+                            PoseData currentPoseData = config.InteractionPoses.Find(p => p != null && p.DisplayName == activePoseNameInUi);
+
+                            // СРАБАТЫВАЕТ НАШ ТРИГГЕР: Если это наша кастомная поза, а аниматор еще не усыплен!
+                            if (currentPoseData != null &&
+                                currentPoseData.Type.Equals("CustomJSON", StringComparison.OrdinalIgnoreCase) &&
+                                characterComp.anim.enabled == true) // Если аниматор включен — значит игра держит А-позу!
+                            {
+                                Plugin.Log.LogWarning($"[SDK_Mono_Bypass] Обнаружена А-поза для '{activePoseNameInUi}'. Исправляем скелет напрямую из MonoBehaviour...");
+                                ApplyCustomBonesDirect(characterComp.transform, currentPoseData.JsonFileName);
+                            }
+                        }
+                    }
                 }
 
-                // 2. ДИНАМИЧЕСКОЕ ИЗМЕНЕНИЕ ИНТЕРФЕЙСА КНОПКИ SDK
+                // 3. АВТО-ПЕРЕКЛЮЧЕНИЕ ЦВЕТА И ТЕКСТА КНОПКИ SDK
+                bool isHandEditingActive = currentCtrlName.Contains("custom") || _uiInstance.isCustomPoseMode == true || isGizmoActiveOnScene;
+                bool isDefaultIdleActive = currentCtrlName.Contains("idle") || currentCtrlName.Contains("unarmed") || string.IsNullOrEmpty(currentCtrlName);
+                bool isAnyPresetPoseActive = characterComp.anim.enabled == false || !isDefaultIdleActive;
+
                 if (isHandEditingActive)
                 {
-                    // СОСТОЯНИЕ 3: АКТИВЕН РЕЖИМ ADVANCED FREE POSE
                     _buttonText.text = "Save Custom Pose for Furniture";
-                    _buttonText.color = Color.cyan; // Фирменный бирюзовый SDK
+                    _buttonText.color = Color.cyan;
                     _mainButton.interactable = true;
                 }
                 else if (isAnyPresetPoseActive)
                 {
-                    // СОСТОЯНИЕ 2 и 4: ВЫБРАНА ВАНИЛЬНАЯ ПОЗА ИЗ СПИСКА
                     _buttonText.text = "Link Preset Pose for Furniture";
-                    _buttonText.color = Color.green; // Зеленый цвет связи
+                    _buttonText.color = Color.green;
                     _mainButton.interactable = true;
                 }
                 else
                 {
-                    // СОСТОЯНИЕ 1: МЕНЮ ПУСТОЕ (Поза мебели не выбрана)
                     _buttonText.text = "No Furniture Pose";
-                    _buttonText.color = Color.gray; // Серый цвет блокировки
+                    _buttonText.color = Color.gray;
                     _mainButton.interactable = false;
                 }
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogError($"[SDK_Controller] Ошибка прямого трекинга: {ex.Message}");
+                Plugin.Log.LogError($"[SDK_Controller] Ошибка автономного цикла: {ex.Message}");
+            }
+        }
+
+        // Автономный изолированный метод раскатки Диорамы на скелет куклы
+        private void ApplyCustomBonesDirect(Transform character, string jsonFileName)
+        {
+            string customAnimFullPath = Path.Combine(ConfigManager.CustomAnimsPath, jsonFileName);
+            if (!File.Exists(customAnimFullPath)) return;
+
+            try
+            {
+                string jsonContent = File.ReadAllText(customAnimFullPath);
+                var rawBonesData = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, BakedElementData>>(jsonContent);
+                if (rawBonesData == null) return;
+
+                Transform FindChildRecursive(Transform parent, string name)
+                {
+                    if (parent == null) return null;
+                    if (parent.name == name) return parent;
+                    for (int i = 0; i < parent.childCount; i++)
+                    {
+                        Transform found = FindChildRecursive(parent.GetChild(i), name);
+                        if (found != null) return found;
+                    }
+                    return null;
+                }
+
+                foreach (var kp in rawBonesData)
+                {
+                    Transform boneTrans = FindChildRecursive(character, kp.Key);
+                    if (boneTrans == null || kp.Value == null) continue;
+
+                    if ((kp.Value.type ?? "").Equals("Light", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Light light = boneTrans.GetComponent<Light>();
+                        if (light != null)
+                        {
+                            light.enabled = kp.Value.enabled;
+                            light.intensity = kp.Value.intensity;
+                            light.range = kp.Value.range;
+                            if (kp.Value.color != null) light.color = new Color(kp.Value.color.r, kp.Value.color.g, kp.Value.color.b);
+                        }
+                    }
+                    else
+                    {
+                        if (kp.Value.rot != null) boneTrans.localEulerAngles = new Vector3(kp.Value.rot.x, kp.Value.rot.y, kp.Value.rot.z);
+                        if (DioramaConstants.PositionalObjectsRegistry.Contains(kp.Key) && kp.Value.pos != null)
+                        {
+                            boneTrans.localPosition = new Vector3(kp.Value.pos.x, kp.Value.pos.y, kp.Value.pos.z);
+                        }
+                    }
+                }
+
+                // Замораживаем аниматор куклы прямо на выходе из цикла
+                Animator anim = character.GetComponent<Animator>();
+                if (anim != null)
+                {
+                    anim.applyRootMotion = false;
+                    anim.speed = 0f;
+                    anim.enabled = false; // Усыпляем А-позу намертво!
+                }
+                Plugin.Log.LogWarning($"[SDK_Mono_Bypass] Кастомный скелет из файла {jsonFileName} успешно раскатан в обход Harmony!");
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"[SDK_Mono_Bypass] Ошибка инъекции костей: {ex.Message}");
             }
         }
     }
