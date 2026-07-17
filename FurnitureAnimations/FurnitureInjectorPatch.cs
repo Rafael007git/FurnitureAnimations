@@ -227,8 +227,11 @@ namespace FurnitureAnimationsMod
         [HarmonyPostfix]
         public static void Postfix(UnityEngine.UI.Button __instance)
         {
+            // Полная защита от невидимых пробелов и капризов регистра Unity!
             if (__instance == null || __instance.gameObject == null) return;
-            if (__instance.gameObject.name != "Pose Icon(Clone)") return;
+
+            string btnName = __instance.gameObject.name.ToLower().Trim();
+            if (!btnName.Contains("pose icon") && !btnName.Contains("poseicon")) return;
 
             Plugin.Log.LogWarning($"[SDK_Mouse] Физический OnPointerClick зафиксирован!");
 
