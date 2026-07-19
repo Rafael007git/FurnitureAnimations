@@ -59,7 +59,6 @@ namespace FurnitureAnimationsMod
 
 
         // Сделайте метод статическим, чтобы вызывать его напрямую через имя класса
-        // Храним ссылку на созданный нами клон панели
         private static GameObject _myCustomDialogInstance = null;
 
         public static void ShowNativeStyleDialog(UIFreePose uiFreePose, string messageText, Texture2D previewTexture, System.Action onConfirm)
@@ -68,83 +67,66 @@ namespace FurnitureAnimationsMod
             {
                 if (uiFreePose == null || uiFreePose.savePosePanel == null) return;
 
-                // Если вдруг предыдущее наше окно не закрылось, уничтожаем его перед созданием нового
                 if (_myCustomDialogInstance != null) GameObject.Destroy(_myCustomDialogInstance);
 
-                // 1. СНАЧАЛА вызываем родной метод игры. 
-                // Он сделает скриншот и обновит внутренние переменные оригинала, но само окно мы тут же перехватим.
+                // 1. Вызываем родной метод игры для обновления внутренних данных и скриншота
                 uiFreePose.OpenSaveFreePosePanel();
+                uiFreePose.savePosePanel.SetActive(false); // Прячем оригинал от греха подальше
 
-                // Сразу ВЫКЛЮЧАЕМ оригинал игры, чтобы он не маячил на экране и не конфликтовал с нами
-                uiFreePose.savePosePanel.SetActive(false);
-
-                // 2. СОЗДАЕМ ГЛУБОКИЙ КЛОН ОРИГИНАЛЬНОГО ОКНА ИГРЫ
-                // Наш клон получит все те же текстуры, рамки и красивый визуал, но станет полностью НЕЗАВИСИМЫМ.
+                // 2. Создаем независимый клон панели
                 _myCustomDialogInstance = GameObject.Instantiate(uiFreePose.savePosePanel, uiFreePose.savePosePanel.transform.parent);
                 _myCustomDialogInstance.name = "Mod_CustomFurnitureSaveDialog";
 
-                // Удаляем оригинальный скрипт UIFreePose с НАШЕГО КЛОНА, чтобы игра не могла им управлять и сбрасывать тексты!
+                // Удаляем скрипт игры с клона, лишая игру контроля над ним
                 var duplicatedGameScript = _myCustomDialogInstance.GetComponent<UIFreePose>();
                 if (duplicatedGameScript != null) GameObject.Destroy(duplicatedGameScript);
 
-                // 3. МОДИФИЦИРУЕМ НАШ КЛОН (Оригинал игры теперь в полной безопасности!)
-
-                // Меняем текст заголовка "name" на наше трехстрочное сообщение
+                // 3. ПОЛНАЯ НЕЙТРАЛИЗАЦИЯ ИГРОВЫХ ТЕКСТОВ И ИНПУТОВ
+                // Вместо редактирования мы просто ГАСИМ старый заголовок, чтобы он нам не мешал
                 Transform nameTrans = _myCustomDialogInstance.transform.Find("name");
-                if (nameTrans != null)
-                {
-                    var titleText = nameTrans.GetComponent<UnityEngine.UI.Text>();
-                    if (titleText != null)
-                    {
-                        titleText.text = messageText;
-                        titleText.fontSize = 16; // Сделали чуть меньше (16 вместо 18/20), чтобы не был огромным
-                        titleText.supportRichText = true;
-                        titleText.horizontalOverflow = HorizontalWrapMode.Overflow;
-                        titleText.verticalOverflow = VerticalWrapMode.Overflow;
-                    }
-                }
+                if (nameTrans != null) nameTrans.gameObject.SetActive(false);
 
-                // Прячем надпись "txt created by (1)" на клоне
+                // Прячем "Created By" и дату
                 Transform createdByTrans = _myCustomDialogInstance.transform.Find("txt created by (1)");
-                if (createdByTrans != null)
-                {
-                    var txt = createdByTrans.GetComponent<UnityEngine.UI.Text>();
-                    if (txt != null) txt.color = new Color(0, 0, 0, 0);
-                }
+                if (createdByTrans != null) createdByTrans.gameObject.SetActive(false);
 
-                // Прячем нижнюю дату "name (1)" и рамку "fram (3)" на клоне
                 Transform dateTextTrans = _myCustomDialogInstance.transform.Find("name (1)");
-                if (dateTextTrans != null)
-                {
-                    var txt = dateTextTrans.GetComponent<UnityEngine.UI.Text>();
-                    if (txt != null) txt.color = new Color(0, 0, 0, 0);
-                }
+                if (dateTextTrans != null) dateTextTrans.gameObject.SetActive(false);
+
                 Transform dateFramTrans = _myCustomDialogInstance.transform.Find("fram (3)");
                 if (dateFramTrans != null) dateFramTrans.gameObject.SetActive(false);
 
-                // Ищем и очищаем поля ввода на клоне (убираем белые рамки InputField)
-                var inputFields = _myCustomDialogInstance.GetComponentsInChildren<UnityEngine.UI.InputField>(true);
-                foreach (var input in inputFields)
-                {
-                    if (input == null) continue;
-                    input.text = "";
-                    if (input.placeholder != null) input.placeholder.gameObject.SetActive(false);
-                    var img = input.GetComponent<UnityEngine.UI.Image>();
-                    if (img != null) img.color = new Color(0, 0, 0, 0); // Прозрачность
-                    input.interactable = false; // Блокируем клики по ним
-                }
+                // Гасим поля ввода (InputField), чтобы убрать пустые белые рамки
+                Transform inputPoseTrans = _myCustomDialogInstance.transform.Find("[3] InputField Pose");
+                if (inputPoseTrans != null) inputPoseTrans.gameObject.SetActive(false);
 
-                // 4. ПОДМЕНЯЕМ ИКОНКУ НА КЛОНЕ (Если передали текстуру из плагина)
-                if (previewTexture != null)
-                {
-                    // Ищем RawImage на клоне панели
-                    var rawImageComp = _myCustomDialogInstance.GetComponentInChildren<UnityEngine.UI.RawImage>(true);
-                    if (rawImageComp != null) rawImageComp.texture = previewTexture;
-                }
+                Transform inputCreatorTrans = _myCustomDialogInstance.transform.Find("[3] InputField creator");
+                if (inputCreatorTrans != null) inputCreatorTrans.gameObject.SetActive(false);
 
-                // 5. НАСТРАИВАЕМ КНОПКИ НА КЛОНЕ
+                // 4. СОЗДАЕМ НАШ СОБСТВЕННЫЙ ТЕКСТ С НУЛЯ (ИГРА ЕГО НЕ ТРОНЕТ!)
+                GameObject myTextGo = new GameObject("Mod_CustomMessageText", typeof(RectTransform), typeof(UnityEngine.UI.Text));
+                myTextGo.transform.SetParent(_myCustomDialogInstance.transform, false);
 
-                // Кнопка сохранения " Button Save"
+                UnityEngine.UI.Text myTextComp = myTextGo.GetComponent<UnityEngine.UI.Text>();
+                myTextComp.text = messageText;
+                myTextComp.fontSize = 16; // Идеальный средний размер
+                myTextComp.color = Color.white;
+                myTextComp.supportRichText = true; // Наша желтая мебель будет работать на 100%!
+                myTextComp.alignment = TextAnchor.UpperLeft;
+                myTextComp.horizontalOverflow = HorizontalWrapMode.Overflow;
+                myTextComp.verticalOverflow = VerticalWrapMode.Overflow;
+
+                // Настраиваем координаты нашего текста. Мы вешаем его ровно туда, где была правая панель
+                RectTransform textRect = myTextGo.GetComponent<RectTransform>();
+                textRect.anchorMin = new Vector2(0.42f, 0.35f); // Смещение вправо и вверх относительно рамки иконки
+                textRect.anchorMax = new Vector2(0.95f, 0.90f);
+                textRect.offsetMin = textRect.offsetMax = Vector2.zero;
+
+                // Если в игре используется кастомный шрифт, попробуем стянуть его у оригинальной кнопки, чтобы сохранить стиль
+                var sampleText = _myCustomDialogInstance.GetComponentInChildren<UnityEngine.UI.Text>(true);
+                if (sampleText != null && sampleText.font != null) myTextComp.font = sampleText.font;
+
+                // 5. НАСТРОЙКА КНОПКИ " Button Save"
                 Transform saveBtnTrans = _myCustomDialogInstance.transform.Find(" Button Save");
                 if (saveBtnTrans != null)
                 {
@@ -154,9 +136,9 @@ namespace FurnitureAnimationsMod
                         saveBtn.onClick.RemoveAllListeners();
                         saveBtn.onClick.AddListener(() =>
                         {
-                            Plugin.Log.LogInfo("[EditorUiManager] Клон: Нажата кнопка 'Save'.");
-                            onConfirm?.Invoke(); // Выполняем ваше сохранение плагина
-                            GameObject.Destroy(_myCustomDialogInstance); // Полностью уничтожаем наше окно
+                            Plugin.Log.LogInfo("[EditorUiManager] Клон: Сохранение подтверждено.");
+                            onConfirm?.Invoke();
+                            GameObject.Destroy(_myCustomDialogInstance);
                         });
 
                         var btnImg = saveBtn.GetComponent<UnityEngine.UI.Image>();
@@ -173,8 +155,6 @@ namespace FurnitureAnimationsMod
                 }
 
                 // Кнопка закрытия "Btn Close (4)"
-                // Мы ВООБЩЕ НЕ ТРОГАЕМ её Listeners! Мы просто вешаем НАШЕ зарытие поверх, 
-                // чтобы при клике наш созданный клон уничтожался и не зависал.
                 Transform closeBtnTrans = _myCustomDialogInstance.transform.Find("Btn Close (4)");
                 if (closeBtnTrans != null)
                 {
@@ -183,18 +163,24 @@ namespace FurnitureAnimationsMod
                     {
                         closeBtn.onClick.AddListener(() =>
                         {
-                            Plugin.Log.LogInfo("[EditorUiManager] Клон: Окно закрыто пользователем.");
+                            Plugin.Log.LogInfo("[EditorUiManager] Клон: Окно закрыто.");
                             GameObject.Destroy(_myCustomDialogInstance);
                         });
                     }
                 }
 
-                // Включаем наше красивое кастомное окно на экране
+                // ПОДСТАНОВКА ИКОНКИ (Слева)
+                if (previewTexture != null)
+                {
+                    var rawImageComp = _myCustomDialogInstance.GetComponentInChildren<UnityEngine.UI.RawImage>(true);
+                    if (rawImageComp != null) rawImageComp.texture = previewTexture;
+                }
+
                 _myCustomDialogInstance.SetActive(true);
             }
             catch (System.Exception ex)
             {
-                Plugin.Log.LogError($"[EditorUiManager] Критическая ошибка клонирования: {ex}");
+                Plugin.Log.LogError($"[EditorUiManager] Ошибка тотальной изоляции окна: {ex}");
             }
         }
 
