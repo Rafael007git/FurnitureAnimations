@@ -73,7 +73,7 @@ namespace FurnitureAnimationsMod
             GUILayout.Space(10);
 
             // Выводим текст сообщения
-            GUILayout.Label(_dialogText, GUILayout.ExpandWidth(true));
+            GUILayout.Label(_dialogText, GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true));
             GUILayout.Space(10);
 
             // Отрисовываем превью-иконку
