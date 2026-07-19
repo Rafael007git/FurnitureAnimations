@@ -81,24 +81,18 @@ namespace FurnitureAnimationsMod
                 var duplicatedGameScript = _myCustomDialogInstance.GetComponent<UIFreePose>();
                 if (duplicatedGameScript != null) GameObject.Destroy(duplicatedGameScript);
 
-                // Переменная для хранения оригинального цвета шрифта игры
-                Color gameTextColor = new Color(0.8f, 0.8f, 0.8f, 1f); // Дефолтный бежево-серый на случай, если не найдем
-                bool foundOriginalColor = false;
+                Color gameTextColor = new Color(0.8f, 0.8f, 0.8f, 1f); // Бежево-серый дефолт
 
                 // 3. БЕЗОПАСНЫЙ ПОИСК И НАСТРОЙКА ОБЪЕКТОВ
                 foreach (Transform child in _myCustomDialogInstance.transform)
                 {
                     string childNameClean = child.name.Trim();
 
-                    // Извлекаем оригинальный цвет игры из заголовка до того, как выключить его!
+                    // Извлекаем цвет игры и гасим старый заголовок "name"
                     if (childNameClean == "name")
                     {
                         var originalText = child.GetComponent<UnityEngine.UI.Text>();
-                        if (originalText != null)
-                        {
-                            gameTextColor = originalText.color;
-                            foundOriginalColor = true;
-                        }
+                        if (originalText != null) gameTextColor = originalText.color;
                         child.gameObject.SetActive(false);
                     }
 
@@ -111,7 +105,9 @@ namespace FurnitureAnimationsMod
                     // ОСТАВЛЯЕМ рамку панели
                     if (childNameClean == "fram (3)") child.gameObject.SetActive(true);
 
-                    // НЕЙТРАЛИЗУЕМ поля ввода (InputField), но сохраняем их рамки
+                    // НЕЙТРАЛИЗУЕМ поля ввода (InputField)
+                    // Мы ОСТАВЛЯЕМ картинки активными (чтобы рамка панели не исчезала),
+                    // но полностью выключаем их текстовые внутренности, чтобы они не мозолили глаза
                     if (childNameClean == "InputField Pose" || childNameClean == "InputField creator")
                     {
                         var inputComp = child.GetComponent<UnityEngine.UI.InputField>();
@@ -125,42 +121,37 @@ namespace FurnitureAnimationsMod
                     }
                 }
 
-                // Если цвет заголовка найти не удалось, попробуем взять его у любого другого текста на панели
-                if (!foundOriginalColor)
-                {
-                    var sampleText = _myCustomDialogInstance.GetComponentInChildren<UnityEngine.UI.Text>(true);
-                    if (sampleText != null) gameTextColor = sampleText.color;
-                }
-
-                // 4. НАСТРОЙКА НАШЕГО КАСТОМНОГО ТЕКСТА (Уменьшаем размер и красим в цвет игры)
+                // 4. НАСТРОЙКА НАШЕГО КАСТОМНОГО ТЕКСТА
                 GameObject myTextGo = new GameObject("Mod_CustomMessageText", typeof(RectTransform), typeof(UnityEngine.UI.Text));
                 myTextGo.transform.SetParent(_myCustomDialogInstance.transform, false);
 
                 UnityEngine.UI.Text myTextComp = myTextGo.GetComponent<UnityEngine.UI.Text>();
                 myTextComp.text = messageText;
-                myTextComp.fontSize = 13;       // УМЕНЬШИЛИ РАЗМЕР (13 вместо 16) для максимальной аккуратности
-                myTextComp.color = gameTextColor; // ПРИМЕНИЛИ РОДНОЙ ЦВЕТ ИГРЫ (бежевый/серый)
+                myTextComp.fontSize = 11;       // ЕЩЕ НЕМНОГО УМЕНЬШИЛИ (с 13 до 11) для идеальной компактности
+                myTextComp.color = gameTextColor;
                 myTextComp.supportRichText = true;
                 myTextComp.alignment = TextAnchor.UpperLeft;
                 myTextComp.horizontalOverflow = HorizontalWrapMode.Wrap;
                 myTextComp.verticalOverflow = VerticalWrapMode.Overflow;
 
-                // Сетка координат (Anchor) — текст будет сидеть идеально в границах правой панели
+                // КОРРЕКТИРУЕМ ОТСТУПЫ:
+                // anchorMin.x = 0.35f (сдвинули левее, убрали отступ слева)
+                // anchorMax.y = 0.93f (подняли выше, убрали пустой отступ сверху)
                 RectTransform textRect = myTextGo.GetComponent<RectTransform>();
-                textRect.anchorMin = new Vector2(0.38f, 0.35f);
-                textRect.anchorMax = new Vector2(0.90f, 0.90f);
+                textRect.anchorMin = new Vector2(0.35f, 0.35f);
+                textRect.anchorMax = new Vector2(0.92f, 0.93f);
                 textRect.offsetMin = textRect.offsetMax = Vector2.zero;
 
                 // Подтягиваем шрифт игры
                 var fontSample = _myCustomDialogInstance.GetComponentInChildren<UnityEngine.UI.Text>(true);
                 if (fontSample != null && fontSample.font != null) myTextComp.font = fontSample.font;
 
-                // 5. ИСПРАВЛЕННАЯ НАСТРОЙКА КНОПОК
+                // 5. НАСТРОЙКА КНОПОК ПО ИНДЕКСАМ
                 var buttons = _myCustomDialogInstance.GetComponentsInChildren<UnityEngine.UI.Button>(true);
 
                 if (buttons != null && buttons.Length >= 2)
                 {
-                    // [0] ЛЕВАЯ КНОПКА (Save)
+                    // ЛЕВАЯ КНОПКА (Темно-красная Save)
                     var saveBtn = buttons[0];
                     if (saveBtn != null)
                     {
@@ -172,39 +163,36 @@ namespace FurnitureAnimationsMod
                             GameObject.Destroy(_myCustomDialogInstance);
                         });
 
-                        var btnImg = saveBtn.GetComponent<UnityEngine.UI.Image>();
-                        if (btnImg != null) btnImg.color = Color.white;
+                        // ОСТАВЛЯЕМ родной темно-красный цвет кнопки игры (не перекрашиваем в Color.white)
+                        // Но УВЕЛИЧИВАЕМ ширину кнопки, чтобы длинный текст гарантированно поместился
+                        RectTransform saveBtnRect = saveBtn.GetComponent<RectTransform>();
+                        if (saveBtnRect != null)
+                        {
+                            // Расширяем кнопку вправо (изменяем anchorMax или добавляем размер в пикселях)
+                            Vector2 currentSize = saveBtnRect.sizeDelta;
+                            saveBtnRect.sizeDelta = new Vector2(currentSize.x + 60f, currentSize.y); // Добавили 60 пикселей к ширине
+                        }
 
                         var btnText = saveBtn.GetComponentInChildren<UnityEngine.UI.Text>(true);
                         if (btnText != null)
                         {
+                            btnText.gameObject.SetActive(true);
                             btnText.text = "Save Furniture Pose";
-                            btnText.fontSize = 13;
-                            btnText.color = Color.black;
+                            btnText.fontSize = 11; // УМЕНЬШИЛИ шрифт на кнопке, чтобы надпись точно влезла
+                            btnText.color = gameTextColor; // СДЕЛАЛИ ТЕКСТ БЕЖЕВО-СЕРЫМ (под цвет шрифтов игры), чтобы он отлично читался на красном!
                         }
                     }
 
-                    // [1] ПРАВАЯ КНОПКА (Cancel / Close) — теперь берется строго по индексу и не пропадет!
+                    // ПРАВАЯ КНОПКА (Крестик закрытия)
                     var cancelBtn = buttons[1];
                     if (cancelBtn != null)
                     {
-                        cancelBtn.onClick.RemoveAllListeners(); // На всякий случай очищаем старое поведение клона
+                        cancelBtn.onClick.RemoveAllListeners();
                         cancelBtn.onClick.AddListener(() =>
                         {
                             Plugin.Log.LogInfo("[EditorUiManager] Клон: Окно закрыто.");
                             GameObject.Destroy(_myCustomDialogInstance);
                         });
-
-                        var cancelImg = cancelBtn.GetComponent<UnityEngine.UI.Image>();
-                        if (cancelImg != null) cancelImg.color = Color.white;
-
-                        var cancelBtnText = cancelBtn.GetComponentInChildren<UnityEngine.UI.Text>(true);
-                        if (cancelBtnText != null)
-                        {
-                            cancelBtnText.text = "Cancel";
-                            cancelBtnText.fontSize = 13;
-                            cancelBtnText.color = Color.black;
-                        }
                     }
                 }
 
@@ -219,7 +207,7 @@ namespace FurnitureAnimationsMod
             }
             catch (System.Exception ex)
             {
-                Plugin.Log.LogError($"[EditorUiManager] Ошибка финальной сборки: {ex}");
+                Plugin.Log.LogError($"[EditorUiManager] Ошибка финальной микро-настройки: {ex}");
             }
         }
 
