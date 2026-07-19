@@ -69,68 +69,99 @@ namespace FurnitureAnimationsMod
 
                 if (_myCustomDialogInstance != null) GameObject.Destroy(_myCustomDialogInstance);
 
-                // 1. Вызываем родной метод игры для обновления внутренних данных и скриншота
+                // 1. Вызываем родной метод игры
                 uiFreePose.OpenSaveFreePosePanel();
-                uiFreePose.savePosePanel.SetActive(false); // Прячем оригинал от греха подальше
+                uiFreePose.savePosePanel.SetActive(false); // Прячем оригинал
 
                 // 2. Создаем независимый клон панели
                 _myCustomDialogInstance = GameObject.Instantiate(uiFreePose.savePosePanel, uiFreePose.savePosePanel.transform.parent);
                 _myCustomDialogInstance.name = "Mod_CustomFurnitureSaveDialog";
 
-                // Удаляем скрипт игры с клона, лишая игру контроля над ним
+                // Удаляем скрипт игры с клона
                 var duplicatedGameScript = _myCustomDialogInstance.GetComponent<UIFreePose>();
                 if (duplicatedGameScript != null) GameObject.Destroy(duplicatedGameScript);
 
-                // 3. ПОЛНАЯ НЕЙТРАЛИЗАЦИЯ ИГРОВЫХ ТЕКСТОВ И ИНПУТОВ
-                // Вместо редактирования мы просто ГАСИМ старый заголовок, чтобы он нам не мешал
-                Transform nameTrans = _myCustomDialogInstance.transform.Find("name");
-                if (nameTrans != null) nameTrans.gameObject.SetActive(false);
+                // Переменная для хранения оригинального цвета шрифта игры
+                Color gameTextColor = new Color(0.8f, 0.8f, 0.8f, 1f); // Дефолтный бежево-серый на случай, если не найдем
+                bool foundOriginalColor = false;
 
-                // Прячем "Created By" и дату
-                Transform createdByTrans = _myCustomDialogInstance.transform.Find("txt created by (1)");
-                if (createdByTrans != null) createdByTrans.gameObject.SetActive(false);
+                // 3. БЕЗОПАСНЫЙ ПОИСК И НАСТРОЙКА ОБЪЕКТОВ
+                foreach (Transform child in _myCustomDialogInstance.transform)
+                {
+                    string childNameClean = child.name.Trim();
 
-                Transform dateTextTrans = _myCustomDialogInstance.transform.Find("name (1)");
-                if (dateTextTrans != null) dateTextTrans.gameObject.SetActive(false);
+                    // Извлекаем оригинальный цвет игры из заголовка до того, как выключить его!
+                    if (childNameClean == "name")
+                    {
+                        var originalText = child.GetComponent<UnityEngine.UI.Text>();
+                        if (originalText != null)
+                        {
+                            gameTextColor = originalText.color;
+                            foundOriginalColor = true;
+                        }
+                        child.gameObject.SetActive(false);
+                    }
 
-                Transform dateFramTrans = _myCustomDialogInstance.transform.Find("fram (3)");
-                if (dateFramTrans != null) dateFramTrans.gameObject.SetActive(false);
+                    // Прячем "Created By"
+                    if (childNameClean == "txt created by (1)") child.gameObject.SetActive(false);
 
-                // Гасим поля ввода (InputField), чтобы убрать пустые белые рамки
-                Transform inputPoseTrans = _myCustomDialogInstance.transform.Find("[3] InputField Pose");
-                if (inputPoseTrans != null) inputPoseTrans.gameObject.SetActive(false);
+                    // Прячем нижнюю дату "name (1)"
+                    if (childNameClean == "name (1)") child.gameObject.SetActive(false);
 
-                Transform inputCreatorTrans = _myCustomDialogInstance.transform.Find("[3] InputField creator");
-                if (inputCreatorTrans != null) inputCreatorTrans.gameObject.SetActive(false);
+                    // ОСТАВЛЯЕМ рамку панели
+                    if (childNameClean == "fram (3)") child.gameObject.SetActive(true);
 
-                // 4. СОЗДАЕМ НАШ СОБСТВЕННЫЙ ТЕКСТ С НУЛЯ (ИГРА ЕГО НЕ ТРОНЕТ!)
+                    // НЕЙТРАЛИЗУЕМ поля ввода (InputField), но сохраняем их рамки
+                    if (childNameClean == "InputField Pose" || childNameClean == "InputField creator")
+                    {
+                        var inputComp = child.GetComponent<UnityEngine.UI.InputField>();
+                        if (inputComp != null)
+                        {
+                            inputComp.text = "";
+                            if (inputComp.placeholder != null) inputComp.placeholder.gameObject.SetActive(false);
+                            if (inputComp.textComponent != null) inputComp.textComponent.gameObject.SetActive(false);
+                            inputComp.interactable = false;
+                        }
+                    }
+                }
+
+                // Если цвет заголовка найти не удалось, попробуем взять его у любого другого текста на панели
+                if (!foundOriginalColor)
+                {
+                    var sampleText = _myCustomDialogInstance.GetComponentInChildren<UnityEngine.UI.Text>(true);
+                    if (sampleText != null) gameTextColor = sampleText.color;
+                }
+
+                // 4. НАСТРОЙКА НАШЕГО КАСТОМНОГО ТЕКСТА (Уменьшаем размер и красим в цвет игры)
                 GameObject myTextGo = new GameObject("Mod_CustomMessageText", typeof(RectTransform), typeof(UnityEngine.UI.Text));
                 myTextGo.transform.SetParent(_myCustomDialogInstance.transform, false);
 
                 UnityEngine.UI.Text myTextComp = myTextGo.GetComponent<UnityEngine.UI.Text>();
                 myTextComp.text = messageText;
-                myTextComp.fontSize = 16; // Идеальный средний размер
-                myTextComp.color = Color.white;
-                myTextComp.supportRichText = true; // Наша желтая мебель будет работать на 100%!
+                myTextComp.fontSize = 13;       // УМЕНЬШИЛИ РАЗМЕР (13 вместо 16) для максимальной аккуратности
+                myTextComp.color = gameTextColor; // ПРИМЕНИЛИ РОДНОЙ ЦВЕТ ИГРЫ (бежевый/серый)
+                myTextComp.supportRichText = true;
                 myTextComp.alignment = TextAnchor.UpperLeft;
-                myTextComp.horizontalOverflow = HorizontalWrapMode.Overflow;
+                myTextComp.horizontalOverflow = HorizontalWrapMode.Wrap;
                 myTextComp.verticalOverflow = VerticalWrapMode.Overflow;
 
-                // Настраиваем координаты нашего текста. Мы вешаем его ровно туда, где была правая панель
+                // Сетка координат (Anchor) — текст будет сидеть идеально в границах правой панели
                 RectTransform textRect = myTextGo.GetComponent<RectTransform>();
-                textRect.anchorMin = new Vector2(0.42f, 0.35f); // Смещение вправо и вверх относительно рамки иконки
-                textRect.anchorMax = new Vector2(0.95f, 0.90f);
+                textRect.anchorMin = new Vector2(0.38f, 0.35f);
+                textRect.anchorMax = new Vector2(0.90f, 0.90f);
                 textRect.offsetMin = textRect.offsetMax = Vector2.zero;
 
-                // Если в игре используется кастомный шрифт, попробуем стянуть его у оригинальной кнопки, чтобы сохранить стиль
-                var sampleText = _myCustomDialogInstance.GetComponentInChildren<UnityEngine.UI.Text>(true);
-                if (sampleText != null && sampleText.font != null) myTextComp.font = sampleText.font;
+                // Подтягиваем шрифт игры
+                var fontSample = _myCustomDialogInstance.GetComponentInChildren<UnityEngine.UI.Text>(true);
+                if (fontSample != null && fontSample.font != null) myTextComp.font = fontSample.font;
 
-                // 5. НАСТРОЙКА КНОПКИ " Button Save"
-                Transform saveBtnTrans = _myCustomDialogInstance.transform.Find(" Button Save");
-                if (saveBtnTrans != null)
+                // 5. ИСПРАВЛЕННАЯ НАСТРОЙКА КНОПОК
+                var buttons = _myCustomDialogInstance.GetComponentsInChildren<UnityEngine.UI.Button>(true);
+
+                if (buttons != null && buttons.Length >= 2)
                 {
-                    var saveBtn = saveBtnTrans.GetComponent<UnityEngine.UI.Button>();
+                    // [0] ЛЕВАЯ КНОПКА (Save)
+                    var saveBtn = buttons[0];
                     if (saveBtn != null)
                     {
                         saveBtn.onClick.RemoveAllListeners();
@@ -144,7 +175,7 @@ namespace FurnitureAnimationsMod
                         var btnImg = saveBtn.GetComponent<UnityEngine.UI.Image>();
                         if (btnImg != null) btnImg.color = Color.white;
 
-                        var btnText = saveBtnTrans.GetComponentInChildren<UnityEngine.UI.Text>(true);
+                        var btnText = saveBtn.GetComponentInChildren<UnityEngine.UI.Text>(true);
                         if (btnText != null)
                         {
                             btnText.text = "Save Furniture Pose";
@@ -152,24 +183,32 @@ namespace FurnitureAnimationsMod
                             btnText.color = Color.black;
                         }
                     }
-                }
 
-                // Кнопка закрытия "Btn Close (4)"
-                Transform closeBtnTrans = _myCustomDialogInstance.transform.Find("Btn Close (4)");
-                if (closeBtnTrans != null)
-                {
-                    var closeBtn = closeBtnTrans.GetComponent<UnityEngine.UI.Button>();
-                    if (closeBtn != null)
+                    // [1] ПРАВАЯ КНОПКА (Cancel / Close) — теперь берется строго по индексу и не пропадет!
+                    var cancelBtn = buttons[1];
+                    if (cancelBtn != null)
                     {
-                        closeBtn.onClick.AddListener(() =>
+                        cancelBtn.onClick.RemoveAllListeners(); // На всякий случай очищаем старое поведение клона
+                        cancelBtn.onClick.AddListener(() =>
                         {
                             Plugin.Log.LogInfo("[EditorUiManager] Клон: Окно закрыто.");
                             GameObject.Destroy(_myCustomDialogInstance);
                         });
+
+                        var cancelImg = cancelBtn.GetComponent<UnityEngine.UI.Image>();
+                        if (cancelImg != null) cancelImg.color = Color.white;
+
+                        var cancelBtnText = cancelBtn.GetComponentInChildren<UnityEngine.UI.Text>(true);
+                        if (cancelBtnText != null)
+                        {
+                            cancelBtnText.text = "Cancel";
+                            cancelBtnText.fontSize = 13;
+                            cancelBtnText.color = Color.black;
+                        }
                     }
                 }
 
-                // ПОДСТАНОВКА ИКОНКИ (Слева)
+                // 6. ПОДСТАНОВКА ИКОНКИ
                 if (previewTexture != null)
                 {
                     var rawImageComp = _myCustomDialogInstance.GetComponentInChildren<UnityEngine.UI.RawImage>(true);
@@ -180,7 +219,7 @@ namespace FurnitureAnimationsMod
             }
             catch (System.Exception ex)
             {
-                Plugin.Log.LogError($"[EditorUiManager] Ошибка тотальной изоляции окна: {ex}");
+                Plugin.Log.LogError($"[EditorUiManager] Ошибка финальной сборки: {ex}");
             }
         }
 
