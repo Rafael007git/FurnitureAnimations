@@ -61,90 +61,129 @@ namespace FurnitureAnimationsMod
         // Сделайте метод статическим, чтобы вызывать его напрямую через имя класса
         public static void ShowNativeStyleDialog(UIFreePose uiFreePose, string messageText, Texture2D previewTexture, System.Action onConfirm)
         {
-            if (uiFreePose == null || uiFreePose.savePosePanel == null) return;
-
-            // Включаем панель игры точно так же, как в том самом рабочем шаге
-            GameObject dialogPanel = uiFreePose.savePosePanel;
-            dialogPanel.SetActive(true);
-
-            // --- ФИКС ТЕКСТА И КРУПНОГО ШРИФТА ---
-            // Чтобы игра не сходила с ума и не прятала окно, мы ОСТАВЛЯЕМ поля ввода активными,
-            // но просто стираем из них текст, чтобы они не перекрывали наше сообщение.
-            if (uiFreePose.poseNameText != null) uiFreePose.poseNameText.text = "";
-            if (uiFreePose.creatorText != null) uiFreePose.creatorText.text = "";
-
-            // Находим ВСЕ тексты на панели, чтобы точечно управлять ими, а не портить всё скопом
-            var allTexts = dialogPanel.GetComponentsInChildren<UnityEngine.UI.Text>(true);
-
-            foreach (var txt in allTexts)
+            try
             {
-                if (txt == null) continue;
+                if (uiFreePose == null || uiFreePose.savePosePanel == null) return;
 
-                // 1. Ищем главный заголовок панели (обычно там написано "Save Pose" или "Saving...")
-                // и заменяем его на ваше кастомное трехстрочное сообщение
-                if (txt.name.ToLower().Contains("title") || txt.text.Contains("Save") || txt.text.Contains("Поза"))
+                // 1. Вызываем родной метод игры (он сам включит панель, настроит слои и сделает скриншот)
+                uiFreePose.OpenSaveFreePosePanel();
+                Plugin.Log.LogInfo("[EditorUiManager] Вызван родной метод OpenSaveFreePosePanel().");
+
+                GameObject dialogPanel = uiFreePose.savePosePanel;
+
+                // ЖЕСТКИЙ ХАК ДЛЯ ПРОВЕРКИ ИГРЫ:
+                // В оригинальном методе ButtonSaveCharacterPreset() стоит проверка if (this.poseName != "" && this.creatorName != "")
+                // Заполняем эти внутренние переменные игры заглушками, чтобы проверка железно проходила!
+                uiFreePose.poseName = "Furniture_Custom_Pose";
+                uiFreePose.creatorName = "ModUser";
+
+                // 2. РАБОТАЕМ С ОБЪЕКТАМИ ПО ИХ ТОЧНЫМ ИМЕНАМ
+
+                // Меняем верхний текст "Pose name" на ваше крупное сообщение
+                Transform nameTrans = dialogPanel.transform.Find("name");
+                if (nameTrans != null)
                 {
-                    txt.text = messageText;
-                    txt.fontSize = 20; // Делаем его КРУПНЫМ, как вы и хотели!
-                    txt.supportRichText = true; // Чтобы работал желтый цвет <color=yellow>
-                    txt.horizontalOverflow = HorizontalWrapMode.Overflow;
-                    txt.verticalOverflow = VerticalWrapMode.Overflow;
+                    var titleText = nameTrans.GetComponent<UnityEngine.UI.Text>();
+                    if (titleText != null)
+                    {
+                        titleText.text = messageText; // Ваше трехстрочное сообщение с желтой мебелью
+                        titleText.fontSize = 18;      // Крупный читаемый размер
+                        titleText.supportRichText = true;
+                        titleText.horizontalOverflow = HorizontalWrapMode.Overflow;
+                        titleText.verticalOverflow = VerticalWrapMode.Overflow;
+                    }
                 }
 
-                // 2. Скрываем текст даты "2023/06/12", просто сделав его полностью прозрачным
-                if (txt.text.Contains("2023") || txt.text.Contains("/") || txt.name.ToLower().Contains("date"))
+                // Прячем надпись "Created By" через прозрачность
+                Transform createdByTrans = dialogPanel.transform.Find("txt created by (1)");
+                if (createdByTrans != null)
                 {
-                    txt.color = new Color(0, 0, 0, 0); // Прозрачный цвет
+                    var createdText = createdByTrans.GetComponent<UnityEngine.UI.Text>();
+                    if (createdText != null) createdText.color = new Color(0, 0, 0, 0);
                 }
 
-                // 3. Скрываем надпись "Created By"
-                if (txt.text.ToLower().Contains("created") || txt.text.ToLower().Contains("author") || txt.text.Contains("Автор"))
+                // Прячем нижнюю дату/текст name (1) и её рамку fram (3)
+                Transform dateTextTrans = dialogPanel.transform.Find("name (1)");
+                if (dateTextTrans != null)
                 {
-                    txt.color = new Color(0, 0, 0, 0); // Прозрачный цвет
+                    var dateText = dateTextTrans.GetComponent<UnityEngine.UI.Text>();
+                    if (dateText != null) dateText.color = new Color(0, 0, 0, 0);
+                }
+                Transform dateFramTrans = dialogPanel.transform.Find("fram (3)");
+                if (dateFramTrans != null) dateFramTrans.gameObject.SetActive(false); // Рамку даты можно выключить безопасно
+
+                // 3. СКРЫВАЕМ ПОЛЯ ВВОДА (InputField) ЧЕРЕЗ ПРОЗРАЧНОСТЬ
+                // Оставляем объекты активными для скриптов игры, но невидимыми для игрока
+                if (uiFreePose.poseNameText != null)
+                {
+                    var img = uiFreePose.poseNameText.GetComponent<UnityEngine.UI.Image>();
+                    if (img != null) img.color = new Color(0, 0, 0, 0); // Прозрачный фон инпута
+                    if (uiFreePose.poseNameText.placeholder != null) uiFreePose.poseNameText.placeholder.gameObject.SetActive(false);
+                }
+
+                if (uiFreePose.creatorText != null)
+                {
+                    var img = uiFreePose.creatorText.GetComponent<UnityEngine.UI.Image>();
+                    if (img != null) img.color = new Color(0, 0, 0, 0); // Прозрачный фон инпута
+                    if (uiFreePose.creatorText.placeholder != null) uiFreePose.creatorText.placeholder.gameObject.SetActive(false);
+                }
+
+                // 4. ПОДМЕНЯЕМ ИКОНКУ (Слева, если плагин передал свою текстуру)
+                if (previewTexture != null && uiFreePose.iconOfPose != null)
+                {
+                    uiFreePose.iconOfPose.texture = previewTexture;
+                }
+
+                // 5. НАСТРАИВАЕМ КНОПКУ СОХРАНЕНИЯ "[1] Button Save"
+                Transform saveBtnTrans = dialogPanel.transform.Find("[1] Button Save");
+                if (saveBtnTrans != null)
+                {
+                    var saveBtn = saveBtnTrans.GetComponent<UnityEngine.UI.Button>();
+                    if (saveBtn != null)
+                    {
+                        saveBtn.onClick.RemoveAllListeners(); // Отвязываем сохранение игры
+                        saveBtn.onClick.AddListener(() =>
+                        {
+                            Plugin.Log.LogInfo("[EditorUiManager] Нажата кнопка 'Save Furniture Pose'. Запуск записи файлов...");
+                            onConfirm?.Invoke(); // Вызываем ваше сохранение плагина
+                            dialogPanel.SetActive(false); // Закрываем окно
+                        });
+
+                        // Возвращаем кнопке нормальный цвет (убираем красный сжатый вид)
+                        var btnImg = saveBtn.GetComponent<UnityEngine.UI.Image>();
+                        if (btnImg != null) btnImg.color = Color.white;
+
+                        // Настраиваем текст на кнопке
+                        var btnText = saveBtnTrans.GetComponentInChildren<UnityEngine.UI.Text>(true);
+                        if (btnText != null)
+                        {
+                            btnText.gameObject.SetActive(true);
+                            btnText.text = "Save Furniture Pose";
+                            btnText.fontSize = 14;
+                            btnText.color = Color.black; // Или Color.white в зависимости от стиля игры
+                        }
+                    }
+                }
+
+                // Настраиваем кнопку закрытия "Btn Close (4)" на обычный выход без сохранения
+                Transform closeBtnTrans = dialogPanel.transform.Find("Btn Close (4)");
+                if (closeBtnTrans != null)
+                {
+                    var closeBtn = closeBtnTrans.GetComponent<UnityEngine.UI.Button>();
+                    if (closeBtn != null)
+                    {
+                        closeBtn.onClick.RemoveAllListeners();
+                        closeBtn.onClick.AddListener(() =>
+                        {
+                            Plugin.Log.LogInfo("[EditorUiManager] Диалог закрыт без сохранения.");
+                            dialogPanel.SetActive(false);
+                        });
+                    }
                 }
             }
-
-            // --- ПОДСТАНОВКА ИКОНКИ ---
-            if (previewTexture != null && uiFreePose.iconOfPose != null)
+            catch (System.Exception ex)
             {
-                uiFreePose.iconOfPose.texture = previewTexture;
-                uiFreePose.iconOfPose.gameObject.SetActive(true);
-            }
-
-            // --- НАСТРОЙКА КНОПОК ---
-            var buttons = dialogPanel.GetComponentsInChildren<UnityEngine.UI.Button>(true);
-            if (buttons != null && buttons.Length >= 2)
-            {
-                // Левая кнопка (Сохранить)
-                var saveBtn = buttons[0];
-                saveBtn.onClick.RemoveAllListeners();
-                saveBtn.onClick.AddListener(() =>
-                {
-                    onConfirm?.Invoke();
-                    dialogPanel.SetActive(false);
-                });
-
-                // Меняем текст на левой кнопке
-                var saveBtnText = saveBtn.GetComponentInChildren<UnityEngine.UI.Text>();
-                if (saveBtnText != null)
-                {
-                    saveBtnText.text = "Save Furniture Pose";
-                    saveBtnText.fontSize = 14; // Комфортный размер для кнопки
-                }
-
-                // Правая кнопка (Отмена)
-                var cancelBtn = buttons[1];
-                cancelBtn.onClick.RemoveAllListeners();
-                cancelBtn.onClick.AddListener(() =>
-                {
-                    dialogPanel.SetActive(false);
-                });
-
-                var cancelBtnText = cancelBtn.GetComponentInChildren<UnityEngine.UI.Text>();
-                if (cancelBtnText != null)
-                {
-                    cancelBtnText.fontSize = 14;
-                }
+                Plugin.Log.LogError($"[EditorUiManager] Ошибка в точечном ShowNativeStyleDialog: {ex}");
             }
         }
 
