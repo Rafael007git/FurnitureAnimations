@@ -40,9 +40,9 @@ namespace FurnitureAnimationsMod
             // Центрируем окно на экране в зависимости от текущего разрешения игрока
             _instance._windowRect = new Rect(
                 (Screen.width / 2) - 200,
-                (Screen.height / 2) - 125,
+                (Screen.height / 2) - 140,
                 400,
-                260
+                280
             );
 
             _instance._isShowingDialog = true;
