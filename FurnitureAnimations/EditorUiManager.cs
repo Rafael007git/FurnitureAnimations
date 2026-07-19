@@ -59,23 +59,30 @@ namespace FurnitureAnimationsMod
 
         private void DrawDialogWindow(int windowID)
         {
+            // 1. Сохраняем исходные настройки, чтобы не испортить другие окна Unity
+            int defaultLabelSize = GUI.skin.label.fontSize;
+            int defaultButtonSize = GUI.skin.button.fontSize;
+            int defaultWindowSize = GUI.skin.window.fontSize;
+
+            // 2. Выставляем увеличенный размер (+20% от стандартного)
+            GUI.skin.label.fontSize = 16;
+            GUI.skin.button.fontSize = 16;
+            GUI.skin.window.fontSize = 16; // Это увеличит заголовок "Saving Furniture Pose..."
+
             GUILayout.BeginVertical();
             GUILayout.Space(10);
 
-            // 1. Выводим текст сообщения (Название мебели, тип позы, координаты)
+            // Выводим текст сообщения
             GUILayout.Label(_dialogText, GUILayout.ExpandWidth(true));
             GUILayout.Space(10);
 
-            // 2. Отрисовываем превью-иконку (скриншот или родную картинку), если она есть
+            // Отрисовываем превью-иконку
             if (_previewIcon != null)
             {
                 GUILayout.BeginHorizontal();
-                GUILayout.FlexibleSpace(); // Центрируем картинку по горизонтали
-
-                // Рисуем квадратную иконку 80x80 пикселей
-                Rect textureRect = GUILayoutUtility.GetRect(80, 80);
+                GUILayout.FlexibleSpace();
+                Rect textureRect = GUILayoutUtility.GetRect(120, 120);
                 GUI.DrawTexture(textureRect, _previewIcon, ScaleMode.ScaleToFit);
-
                 GUILayout.FlexibleSpace();
                 GUILayout.EndHorizontal();
                 GUILayout.Space(15);
@@ -83,20 +90,20 @@ namespace FurnitureAnimationsMod
 
             GUILayout.FlexibleSpace();
 
-            // 3. Строка с кнопками управления
+            // Строка с кнопками управления (высоту увеличили с 35 до 42 под новый шрифт)
             GUILayout.BeginHorizontal();
 
             // Кнопка ДА
             GUI.backgroundColor = Color.green;
-            if (GUILayout.Button("Save", GUILayout.Height(35)))
+            if (GUILayout.Button("Save", GUILayout.Height(42)))
             {
                 _isShowingDialog = false;
-                _onConfirmAction?.Invoke(); // Вызываем метод записи в JSON
+                _onConfirmAction?.Invoke();
             }
 
             // Кнопка ОТМЕНА
             GUI.backgroundColor = Color.red;
-            if (GUILayout.Button("Cancel", GUILayout.Height(35)))
+            if (GUILayout.Button("Cancel", GUILayout.Height(42)))
             {
                 _isShowingDialog = false;
                 Plugin.Log.LogInfo("[EditorUiManager] Сохранение позы отменено пользователем.");
@@ -105,8 +112,14 @@ namespace FurnitureAnimationsMod
             GUILayout.EndHorizontal();
             GUILayout.EndVertical();
 
-            // Разрешаем игроку перетаскивать окошко мышкой за заголовок
-            GUI.DragWindow(new Rect(0, 0, 400, 20));
+            // Перетаскивание окна за заголовок (зону клика увеличили до 25 из-за крупного шрифта)
+            GUI.DragWindow(new Rect(0, 0, 480, 25));
+
+            // 3. ОБЯЗАТЕЛЬНО возвращаем всё как было
+            GUI.skin.label.fontSize = defaultLabelSize;
+            GUI.skin.button.fontSize = defaultButtonSize;
+            GUI.skin.window.fontSize = defaultWindowSize;
         }
+
     }
 }
