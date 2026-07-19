@@ -61,98 +61,93 @@ namespace FurnitureAnimationsMod
         // Сделайте метод статическим, чтобы вызывать его напрямую через имя класса
         public static void ShowNativeStyleDialog(UIFreePose uiFreePose, string messageText, Texture2D previewTexture, System.Action onConfirm)
         {
-            try
+            if (uiFreePose == null || uiFreePose.savePosePanel == null) return;
+
+            // Включаем панель игры точно так же, как в том самом рабочем шаге
+            GameObject dialogPanel = uiFreePose.savePosePanel;
+            dialogPanel.SetActive(true);
+
+            // --- ФИКС ТЕКСТА И КРУПНОГО ШРИФТА ---
+            // Чтобы игра не сходила с ума и не прятала окно, мы ОСТАВЛЯЕМ поля ввода активными,
+            // но просто стираем из них текст, чтобы они не перекрывали наше сообщение.
+            if (uiFreePose.poseNameText != null) uiFreePose.poseNameText.text = "";
+            if (uiFreePose.creatorText != null) uiFreePose.creatorText.text = "";
+
+            // Находим ВСЕ тексты на панели, чтобы точечно управлять ими, а не портить всё скопом
+            var allTexts = dialogPanel.GetComponentsInChildren<UnityEngine.UI.Text>(true);
+
+            foreach (var txt in allTexts)
             {
-                if (uiFreePose == null || uiFreePose.savePosePanel == null) return;
+                if (txt == null) continue;
 
-                GameObject dialogPanel = uiFreePose.savePosePanel;
-                dialogPanel.SetActive(true); // Включаем окно, как это успешно работало раньше
-
-                // 1. Прячем поле автора ("Created By") полностью
-                if (uiFreePose.creatorText != null)
+                // 1. Ищем главный заголовок панели (обычно там написано "Save Pose" или "Saving...")
+                // и заменяем его на ваше кастомное трехстрочное сообщение
+                if (txt.name.ToLower().Contains("title") || txt.text.Contains("Save") || txt.text.Contains("Поза"))
                 {
-                    uiFreePose.creatorText.gameObject.SetActive(false);
-                    if (uiFreePose.creatorText.transform.parent != null)
-                    {
-                        uiFreePose.creatorText.transform.parent.gameObject.SetActive(false);
-                    }
+                    txt.text = messageText;
+                    txt.fontSize = 20; // Делаем его КРУПНЫМ, как вы и хотели!
+                    txt.supportRichText = true; // Чтобы работал желтый цвет <color=yellow>
+                    txt.horizontalOverflow = HorizontalWrapMode.Overflow;
+                    txt.verticalOverflow = VerticalWrapMode.Overflow;
                 }
 
-                // 2. Выключаем текстовое поле с датой
-                var allTexts = dialogPanel.GetComponentsInChildren<UnityEngine.UI.Text>(true);
-                foreach (var txt in allTexts)
+                // 2. Скрываем текст даты "2023/06/12", просто сделав его полностью прозрачным
+                if (txt.text.Contains("2023") || txt.text.Contains("/") || txt.name.ToLower().Contains("date"))
                 {
-                    if (txt != null && txt.text != null && (txt.text.Contains("2023") || txt.text.Contains("/") || txt.name.ToLower().Contains("date")))
-                    {
-                        txt.gameObject.SetActive(false);
-                    }
+                    txt.color = new Color(0, 0, 0, 0); // Прозрачный цвет
                 }
 
-                // 3. Выводим наше сообщение в поле названия позы
-                if (uiFreePose.poseNameText != null)
+                // 3. Скрываем надпись "Created By"
+                if (txt.text.ToLower().Contains("created") || txt.text.ToLower().Contains("author") || txt.text.Contains("Автор"))
                 {
-                    uiFreePose.poseNameText.gameObject.SetActive(true);
-
-                    // Убираем рамку поля ввода, чтобы текст выглядел как обычная надпись
-                    var inputImage = uiFreePose.poseNameText.GetComponent<UnityEngine.UI.Image>();
-                    if (inputImage != null) inputImage.enabled = false;
-
-                    // Запрещаем игроку кликать по тексту и редактировать его
-                    uiFreePose.poseNameText.interactable = false;
-
-                    // Передаем текст напрямую в InputField! Игра сама отобразит его крупным шрифтом
-                    uiFreePose.poseNameText.text = messageText;
-
-                    // Включаем поддержку RichText (для желтого цвета мебели) на внутреннем компоненте текста
-                    if (uiFreePose.poseNameText.textComponent != null)
-                    {
-                        uiFreePose.poseNameText.textComponent.supportRichText = true;
-                    }
-                }
-
-                // 4. Подставляем картинку превью
-                if (previewTexture != null && uiFreePose.iconOfPose != null)
-                {
-                    uiFreePose.iconOfPose.texture = previewTexture;
-                    uiFreePose.iconOfPose.gameObject.SetActive(true);
-                }
-
-                // 5. Перенастраиваем кнопки "Save" и "Cancel"
-                var buttons = dialogPanel.GetComponentsInChildren<UnityEngine.UI.Button>(true);
-                if (buttons != null && buttons.Length >= 2)
-                {
-                    // Кнопка сохранения
-                    var saveBtn = buttons[0];
-                    saveBtn.onClick.RemoveAllListeners();
-                    saveBtn.onClick.AddListener(() =>
-                    {
-                        onConfirm?.Invoke();
-                        RestoreInputFields(uiFreePose);
-                        dialogPanel.SetActive(false);
-                    });
-
-                    // Меняем текст на кнопке
-                    var saveBtnText = saveBtn.GetComponentInChildren<UnityEngine.UI.Text>();
-                    if (saveBtnText != null)
-                    {
-                        saveBtnText.text = "Save Furniture Pose";
-                    }
-
-                    // Кнопка отмены
-                    var cancelBtn = buttons[1];
-                    cancelBtn.onClick.RemoveAllListeners();
-                    cancelBtn.onClick.AddListener(() =>
-                    {
-                        RestoreInputFields(uiFreePose);
-                        dialogPanel.SetActive(false);
-                    });
+                    txt.color = new Color(0, 0, 0, 0); // Прозрачный цвет
                 }
             }
-            catch (System.Exception ex)
+
+            // --- ПОДСТАНОВКА ИКОНКИ ---
+            if (previewTexture != null && uiFreePose.iconOfPose != null)
             {
-                Plugin.Log.LogError($"[EditorUiManager] Ошибка в ShowNativeStyleDialog: {ex}");
+                uiFreePose.iconOfPose.texture = previewTexture;
+                uiFreePose.iconOfPose.gameObject.SetActive(true);
+            }
+
+            // --- НАСТРОЙКА КНОПОК ---
+            var buttons = dialogPanel.GetComponentsInChildren<UnityEngine.UI.Button>(true);
+            if (buttons != null && buttons.Length >= 2)
+            {
+                // Левая кнопка (Сохранить)
+                var saveBtn = buttons[0];
+                saveBtn.onClick.RemoveAllListeners();
+                saveBtn.onClick.AddListener(() =>
+                {
+                    onConfirm?.Invoke();
+                    dialogPanel.SetActive(false);
+                });
+
+                // Меняем текст на левой кнопке
+                var saveBtnText = saveBtn.GetComponentInChildren<UnityEngine.UI.Text>();
+                if (saveBtnText != null)
+                {
+                    saveBtnText.text = "Save Furniture Pose";
+                    saveBtnText.fontSize = 14; // Комфортный размер для кнопки
+                }
+
+                // Правая кнопка (Отмена)
+                var cancelBtn = buttons[1];
+                cancelBtn.onClick.RemoveAllListeners();
+                cancelBtn.onClick.AddListener(() =>
+                {
+                    dialogPanel.SetActive(false);
+                });
+
+                var cancelBtnText = cancelBtn.GetComponentInChildren<UnityEngine.UI.Text>();
+                if (cancelBtnText != null)
+                {
+                    cancelBtnText.fontSize = 14;
+                }
             }
         }
+
 
         private static void RestoreInputFields(UIFreePose uiFreePose)
         {
