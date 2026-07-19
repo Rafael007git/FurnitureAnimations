@@ -57,6 +57,126 @@ namespace FurnitureAnimationsMod
             _windowRect = GUILayout.Window(99, _windowRect, DrawDialogWindow, "Saving Furniture Pose/Animation");
         }
 
+
+        // Сделайте метод статическим, чтобы вызывать его напрямую через имя класса
+        public static void ShowNativeStyleDialog(UIFreePose uiFreePose, string messageText, Texture2D previewTexture, System.Action onConfirm)
+        {
+            if (uiFreePose == null || uiFreePose.savePosePanel == null) return;
+
+            GameObject dialogPanel = uiFreePose.savePosePanel;
+            dialogPanel.SetActive(true);
+
+            // 1. Прячем поля ввода текста, как и раньше
+            if (uiFreePose.poseNameText != null) uiFreePose.poseNameText.gameObject.SetActive(false);
+            if (uiFreePose.creatorText != null) uiFreePose.creatorText.gameObject.SetActive(false);
+
+            // 2. Убираем надпись "Created By" и дату
+            // Ищем объект подписи создателя. Обычно он находится рядом или является родителем для creatorText
+            if (uiFreePose.creatorText != null && uiFreePose.creatorText.transform.parent != null)
+            {
+                // Отключаем весь блок (вместе с надписью "Created By")
+                uiFreePose.creatorText.transform.parent.gameObject.SetActive(false);
+            }
+
+            // Ищем текстовое поле даты. В структуре uGUI игры оно часто лежит внутри панели.
+            // Пройдёмся по текстам и отключим тот, который содержит цифры даты или похож на неё
+            var allTexts = dialogPanel.GetComponentsInChildren<UnityEngine.UI.Text>(true);
+            foreach (var txt in allTexts)
+            {
+                if (txt.text.Contains("2023") || txt.text.Contains("/") || txt.name.ToLower().Contains("date"))
+                {
+                    txt.gameObject.SetActive(false);
+                }
+            }
+
+            // 3. Выводим наш текст в главное поле названия позы
+            // Разработчики игры уже сделали его крупным (для ввода названия). Мы просто подставим туда наш текст!
+            if (uiFreePose.poseNameText != null)
+            {
+                // Нам нужно текстовое поле, которое показывает текст внутри InputField (обычно это компонент Text на дочернем объекте Text)
+                var mainTextComp = uiFreePose.poseNameText.textComponent;
+                if (mainTextComp != null)
+                {
+                    // Включаем обратно саму область текста (но не инпут!), чтобы её было видно
+                    uiFreePose.poseNameText.gameObject.SetActive(true);
+
+                    // Отключаем фоновую картинку инпута, чтобы остался только чистый текст
+                    var inputImage = uiFreePose.poseNameText.GetComponent<UnityEngine.UI.Image>();
+                    if (inputImage != null) inputImage.enabled = false;
+
+                    // Блокируем ввод, делая его чисто информационным
+                    uiFreePose.poseNameText.interactable = false;
+
+                    mainTextComp.text = messageText;
+                    mainTextComp.supportRichText = true; // Чтобы работал жёлтый цвет мебели
+                                                         // НЕ меняем fontSize, пусть применится родной крупный размер игры!
+                }
+            }
+
+            // 4. Подставляем превью-иконку
+            if (previewTexture != null && uiFreePose.iconOfPose != null)
+            {
+                uiFreePose.iconOfPose.texture = previewTexture;
+                uiFreePose.iconOfPose.gameObject.SetActive(true);
+            }
+
+            // 5. Перенастраиваем кнопки
+            var buttons = dialogPanel.GetComponentsInChildren<UnityEngine.UI.Button>(true);
+
+            if (buttons.Length >= 2)
+            {
+                // Левая кнопка (Сохранить)
+                var saveBtn = buttons[0];
+                saveBtn.onClick.RemoveAllListeners();
+                saveBtn.onClick.AddListener(() =>
+                {
+                    onConfirm?.Invoke();
+                    RestoreInputFields(uiFreePose);
+                    dialogPanel.SetActive(false);
+                });
+
+                // Меняем текст на левой кнопке
+                var saveBtnText = saveBtn.GetComponentInChildren<UnityEngine.UI.Text>();
+                if (saveBtnText != null)
+                {
+                    saveBtnText.text = "Save Furniture Pose";
+                }
+
+                // Правая кнопка (Отмена)
+                var cancelBtn = buttons[1];
+                cancelBtn.onClick.RemoveAllListeners();
+                cancelBtn.onClick.AddListener(() =>
+                {
+                    RestoreInputFields(uiFreePose);
+                    dialogPanel.SetActive(false);
+                });
+            }
+        }
+
+        // Метод восстановления при закрытии окна
+        private static void RestoreInputFields(UIFreePose uiFreePose)
+        {
+            if (uiFreePose == null) return;
+
+            if (uiFreePose.poseNameText != null)
+            {
+                uiFreePose.poseNameText.gameObject.SetActive(true);
+                uiFreePose.poseNameText.interactable = true;
+                var inputImage = uiFreePose.poseNameText.GetComponent<UnityEngine.UI.Image>();
+                if (inputImage != null) inputImage.enabled = true;
+            }
+
+            if (uiFreePose.creatorText != null)
+            {
+                uiFreePose.creatorText.gameObject.SetActive(true);
+                if (uiFreePose.creatorText.transform.parent != null)
+                {
+                    uiFreePose.creatorText.transform.parent.gameObject.SetActive(true);
+                }
+            }
+        }
+
+
         private void DrawDialogWindow(int windowID)
         {
             // 1. Сохраняем исходные настройки, чтобы не испортить другие окна Unity

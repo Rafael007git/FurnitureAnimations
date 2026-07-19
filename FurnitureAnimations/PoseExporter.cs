@@ -80,17 +80,26 @@ namespace FurnitureAnimationsMod
             Quaternion localQuaternion = Quaternion.Inverse(closestFurniture.transform.rotation) * uiInstance.selectedCharacter.rotation;
             Vector3 exactLocRot = localQuaternion.eulerAngles;
 
+            // Формируем текст сообщения
             string promptText = $"Do you want to save this pose for <color=yellow>{furnitureName}</color>?\n" +
                                 $"Type: {(isCustomBakeMode ? "User-made Custom Pose" : "Pose/Animation from the game library")}\n" +
                                 $"Identifier: {controllerName}";
 
-            // Вызываем GUI диалог подтверждения
-            EditorUiManager.ShowConfirmationDialog(promptText, _lastCapturedIcon, () =>
-            {
-                // При нажатии "ДА" передаем флаг isCustomBakeMode на физическую запись файлов
-                SavePoseToDataFolder(furnitureName, controllerName, exactLocPos, exactLocRot, isCustomBakeMode, characterComp);
-            });
+            // Передаем нашу текстуру напрямую без каких-либо проверок и приведений типов
+            Texture2D previewTexture = _lastCapturedIcon;
+
+            // Вызываем статический метод напрямую через класс без .Instance
+            EditorUiManager.ShowNativeStyleDialog(
+                uiInstance,
+                promptText,
+                previewTexture,
+                () => {
+                    // При нажатии "ДА" передаем флаг isCustomBakeMode на физическую запись файлов
+                    SavePoseToDataFolder(furnitureName, controllerName, exactLocPos, exactLocRot, isCustomBakeMode, characterComp);
+                }
+            );
         }
+
 
 
         private static void SavePoseToDataFolder(string furnitureName, string controller, Vector3 pos, Vector3 rot, bool isCustom, CharacterCustomization character)
