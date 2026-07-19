@@ -61,97 +61,130 @@ namespace FurnitureAnimationsMod
         // Сделайте метод статическим, чтобы вызывать его напрямую через имя класса
         public static void ShowNativeStyleDialog(UIFreePose uiFreePose, string messageText, Texture2D previewTexture, System.Action onConfirm)
         {
-            if (uiFreePose == null || uiFreePose.savePosePanel == null) return;
-
-            GameObject dialogPanel = uiFreePose.savePosePanel;
-            dialogPanel.SetActive(true);
-
-            // 1. Прячем поля ввода текста, как и раньше
-            if (uiFreePose.poseNameText != null) uiFreePose.poseNameText.gameObject.SetActive(false);
-            if (uiFreePose.creatorText != null) uiFreePose.creatorText.gameObject.SetActive(false);
-
-            // 2. Убираем надпись "Created By" и дату
-            // Ищем объект подписи создателя. Обычно он находится рядом или является родителем для creatorText
-            if (uiFreePose.creatorText != null && uiFreePose.creatorText.transform.parent != null)
+            try
             {
-                // Отключаем весь блок (вместе с надписью "Created By")
-                uiFreePose.creatorText.transform.parent.gameObject.SetActive(false);
-            }
-
-            // Ищем текстовое поле даты. В структуре uGUI игры оно часто лежит внутри панели.
-            // Пройдёмся по текстам и отключим тот, который содержит цифры даты или похож на неё
-            var allTexts = dialogPanel.GetComponentsInChildren<UnityEngine.UI.Text>(true);
-            foreach (var txt in allTexts)
-            {
-                if (txt.text.Contains("2023") || txt.text.Contains("/") || txt.name.ToLower().Contains("date"))
+                if (uiFreePose == null)
                 {
-                    txt.gameObject.SetActive(false);
+                    Plugin.Log.LogError("[EditorUiManager] Ошибка: uiFreePose равен null!");
+                    return;
                 }
-            }
-
-            // 3. Выводим наш текст в главное поле названия позы
-            // Разработчики игры уже сделали его крупным (для ввода названия). Мы просто подставим туда наш текст!
-            if (uiFreePose.poseNameText != null)
-            {
-                // Нам нужно текстовое поле, которое показывает текст внутри InputField (обычно это компонент Text на дочернем объекте Text)
-                var mainTextComp = uiFreePose.poseNameText.textComponent;
-                if (mainTextComp != null)
+                if (uiFreePose.savePosePanel == null)
                 {
-                    // Включаем обратно саму область текста (но не инпут!), чтобы её было видно
-                    uiFreePose.poseNameText.gameObject.SetActive(true);
-
-                    // Отключаем фоновую картинку инпута, чтобы остался только чистый текст
-                    var inputImage = uiFreePose.poseNameText.GetComponent<UnityEngine.UI.Image>();
-                    if (inputImage != null) inputImage.enabled = false;
-
-                    // Блокируем ввод, делая его чисто информационным
-                    uiFreePose.poseNameText.interactable = false;
-
-                    mainTextComp.text = messageText;
-                    mainTextComp.supportRichText = true; // Чтобы работал жёлтый цвет мебели
-                                                         // НЕ меняем fontSize, пусть применится родной крупный размер игры!
-                }
-            }
-
-            // 4. Подставляем превью-иконку
-            if (previewTexture != null && uiFreePose.iconOfPose != null)
-            {
-                uiFreePose.iconOfPose.texture = previewTexture;
-                uiFreePose.iconOfPose.gameObject.SetActive(true);
-            }
-
-            // 5. Перенастраиваем кнопки
-            var buttons = dialogPanel.GetComponentsInChildren<UnityEngine.UI.Button>(true);
-
-            if (buttons.Length >= 2)
-            {
-                // Левая кнопка (Сохранить)
-                var saveBtn = buttons[0];
-                saveBtn.onClick.RemoveAllListeners();
-                saveBtn.onClick.AddListener(() =>
-                {
-                    onConfirm?.Invoke();
-                    RestoreInputFields(uiFreePose);
-                    dialogPanel.SetActive(false);
-                });
-
-                // Меняем текст на левой кнопке
-                var saveBtnText = saveBtn.GetComponentInChildren<UnityEngine.UI.Text>();
-                if (saveBtnText != null)
-                {
-                    saveBtnText.text = "Save Furniture Pose";
+                    Plugin.Log.LogError("[EditorUiManager] Ошибка: savePosePanel равен null в игре!");
+                    return;
                 }
 
-                // Правая кнопка (Отмена)
-                var cancelBtn = buttons[1];
-                cancelBtn.onClick.RemoveAllListeners();
-                cancelBtn.onClick.AddListener(() =>
+                GameObject dialogPanel = uiFreePose.savePosePanel;
+                dialogPanel.SetActive(true);
+                Plugin.Log.LogInfo("[EditorUiManager] Панель savePosePanel успешно активирована.");
+
+                // 1. Прячем текстовые инпуты
+                if (uiFreePose.poseNameText != null) uiFreePose.poseNameText.gameObject.SetActive(false);
+                if (uiFreePose.creatorText != null) uiFreePose.creatorText.gameObject.SetActive(false);
+
+                // 2. Убираем блок "Created By"
+                if (uiFreePose.creatorText != null && uiFreePose.creatorText.transform.parent != null)
                 {
-                    RestoreInputFields(uiFreePose);
-                    dialogPanel.SetActive(false);
-                });
+                    uiFreePose.creatorText.transform.parent.gameObject.SetActive(false);
+                }
+
+                // Убираем дату
+                var allTexts = dialogPanel.GetComponentsInChildren<UnityEngine.UI.Text>(true);
+                foreach (var txt in allTexts)
+                {
+                    if (txt != null && txt.text != null && (txt.text.Contains("2023") || txt.text.Contains("/") || txt.name.ToLower().Contains("date")))
+                    {
+                        txt.gameObject.SetActive(false);
+                    }
+                }
+
+                // 3. Выводим текст. Ищем встроенный текст внутри InputField безопасным путем
+                if (uiFreePose.poseNameText != null)
+                {
+                    // Безопасно ищем компонент Text на дочерних объектах инпута (обычно объект называется Text или Placeholder)
+                    var mainTextComp = uiFreePose.poseNameText.GetComponentInChildren<UnityEngine.UI.Text>(true);
+                    if (mainTextComp == null && uiFreePose.poseNameText.placeholder != null)
+                    {
+                        mainTextComp = uiFreePose.poseNameText.placeholder.GetComponent<UnityEngine.UI.Text>();
+                    }
+
+                    if (mainTextComp != null)
+                    {
+                        uiFreePose.poseNameText.gameObject.SetActive(true);
+
+                        var inputImage = uiFreePose.poseNameText.GetComponent<UnityEngine.UI.Image>();
+                        if (inputImage != null) inputImage.enabled = false;
+
+                        uiFreePose.poseNameText.interactable = false;
+
+                        mainTextComp.text = messageText;
+                        mainTextComp.supportRichText = true;
+                        Plugin.Log.LogInfo("[EditorUiManager] Текст сообщения успешно установлен в поле позы.");
+                    }
+                    else
+                    {
+                        Plugin.Log.LogWarning("[EditorUiManager] Не удалось найти текстовый компонент внутри poseNameText.");
+                    }
+                }
+
+                // 4. Картинка превью
+                if (previewTexture != null && uiFreePose.iconOfPose != null)
+                {
+                    uiFreePose.iconOfPose.texture = previewTexture;
+                    uiFreePose.iconOfPose.gameObject.SetActive(true);
+                }
+
+                // 5. Настройка кнопок (Исправленный синтаксис массивов C#)
+                var buttons = dialogPanel.GetComponentsInChildren<UnityEngine.UI.Button>(true);
+                Plugin.Log.LogInfo($"[EditorUiManager] Найдено кнопок на панели: {buttons.Length}");
+
+                if (buttons != null && buttons.Length >= 2)
+                {
+                    // Левая кнопка (Сохранить) — индекс [0]
+                    var saveBtn = buttons[0];
+                    if (saveBtn != null)
+                    {
+                        saveBtn.onClick.RemoveAllListeners();
+                        saveBtn.onClick.AddListener(() =>
+                        {
+                            Plugin.Log.LogInfo("[EditorUiManager] Нажата кнопка подтверждения (Save).");
+                            onConfirm?.Invoke();
+                            RestoreInputFields(uiFreePose);
+                            dialogPanel.SetActive(false);
+                        });
+
+                        var saveBtnText = saveBtn.GetComponentInChildren<UnityEngine.UI.Text>();
+                        if (saveBtnText != null)
+                        {
+                            saveBtnText.text = "Save Furniture Pose";
+                        }
+                    }
+
+                    // Правая кнопка (Отмена) — индекс [1]
+                    var cancelBtn = buttons[1];
+                    if (cancelBtn != null)
+                    {
+                        cancelBtn.onClick.RemoveAllListeners();
+                        cancelBtn.onClick.AddListener(() =>
+                        {
+                            Plugin.Log.LogInfo("[EditorUiManager] Нажата кнопка отмены.");
+                            RestoreInputFields(uiFreePose);
+                            dialogPanel.SetActive(false);
+                        });
+                    }
+                }
+                else
+                {
+                    Plugin.Log.LogWarning("[EditorUiManager] На панели найдено меньше двух кнопок. Перехват кликов невозможен.");
+                }
+            }
+            catch (System.Exception ex)
+            {
+                // Если внутри метода произойдет любая ошибка, она железно запишется в лог BepInEx
+                Plugin.Log.LogError($"[EditorUiManager] КРИТИЧЕСКОЕ ИСКЛЮЧЕНИЕ В ShowNativeStyleDialog: {ex}");
             }
         }
+
 
         // Метод восстановления при закрытии окна
         private static void RestoreInputFields(UIFreePose uiFreePose)
