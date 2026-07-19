@@ -54,7 +54,7 @@ namespace FurnitureAnimationsMod
             if (!_isShowingDialog) return;
 
             // Отрисовываем окно с заголовком
-            _windowRect = GUILayout.Window(99, _windowRect, DrawDialogWindow, "Сохранение интерактива мебели");
+            _windowRect = GUILayout.Window(99, _windowRect, DrawDialogWindow, "Saving Furniture Pose/Animation");
         }
 
         private void DrawDialogWindow(int windowID)
@@ -88,7 +88,7 @@ namespace FurnitureAnimationsMod
 
             // Кнопка ДА
             GUI.backgroundColor = Color.green;
-            if (GUILayout.Button("ДА, СОХРАНИТЬ", GUILayout.Height(35)))
+            if (GUILayout.Button("Save", GUILayout.Height(35)))
             {
                 _isShowingDialog = false;
                 _onConfirmAction?.Invoke(); // Вызываем метод записи в JSON
@@ -96,7 +96,7 @@ namespace FurnitureAnimationsMod
 
             // Кнопка ОТМЕНА
             GUI.backgroundColor = Color.red;
-            if (GUILayout.Button("ОТМЕНА", GUILayout.Height(35)))
+            if (GUILayout.Button("Cancel", GUILayout.Height(35)))
             {
                 _isShowingDialog = false;
                 Plugin.Log.LogInfo("[EditorUiManager] Сохранение позы отменено пользователем.");

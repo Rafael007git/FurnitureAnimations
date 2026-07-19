@@ -80,8 +80,8 @@ namespace FurnitureAnimationsMod
             Quaternion localQuaternion = Quaternion.Inverse(closestFurniture.transform.rotation) * uiInstance.selectedCharacter.rotation;
             Vector3 exactLocRot = localQuaternion.eulerAngles;
 
-            string promptText = $"Do you want to save this pose for {furnitureName}?\n" +
-                                $"Type: {(isCustomBakeMode ? "Baked Custom Pose" : "Preset Animation Link")}\n" +
+            string promptText = $"Do you want to save this pose for <color=yellow>{furnitureName}</color>?\n" +
+                                $"Type: {(isCustomBakeMode ? "User-made Custom Pose" : "Pose/Animation from the game library")}\n" +
                                 $"Identifier: {controllerName}";
 
             // Вызываем GUI диалог подтверждения
