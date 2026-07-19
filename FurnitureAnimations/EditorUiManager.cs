@@ -102,22 +102,13 @@ namespace FurnitureAnimationsMod
                     // Прячем нижнюю дату "name (1)"
                     if (childNameClean == "name (1)") child.gameObject.SetActive(false);
 
-                    // ОСТАВЛЯЕМ рамку панели
+                    // ОСТАВЛЯЕМ красивую общую рамку панели
                     if (childNameClean == "fram (3)") child.gameObject.SetActive(true);
 
-                    // НЕЙТРАЛИЗУЕМ поля ввода (InputField)
-                    // Мы ОСТАВЛЯЕМ картинки активными (чтобы рамка панели не исчезала),
-                    // но полностью выключаем их текстовые внутренности, чтобы они не мозолили глаза
+                    // ПОЛНОСТЬЮ ВЫКЛЮЧАЕМ ПОЛЯ ВВОДА (Это уберет их ненужные контуры, как в первом варианте!)
                     if (childNameClean == "InputField Pose" || childNameClean == "InputField creator")
                     {
-                        var inputComp = child.GetComponent<UnityEngine.UI.InputField>();
-                        if (inputComp != null)
-                        {
-                            inputComp.text = "";
-                            if (inputComp.placeholder != null) inputComp.placeholder.gameObject.SetActive(false);
-                            if (inputComp.textComponent != null) inputComp.textComponent.gameObject.SetActive(false);
-                            inputComp.interactable = false;
-                        }
+                        child.gameObject.SetActive(false);
                     }
                 }
 
@@ -127,16 +118,14 @@ namespace FurnitureAnimationsMod
 
                 UnityEngine.UI.Text myTextComp = myTextGo.GetComponent<UnityEngine.UI.Text>();
                 myTextComp.text = messageText;
-                myTextComp.fontSize = 11;       // ЕЩЕ НЕМНОГО УМЕНЬШИЛИ (с 13 до 11) для идеальной компактности
+                myTextComp.fontSize = 11;
                 myTextComp.color = gameTextColor;
                 myTextComp.supportRichText = true;
                 myTextComp.alignment = TextAnchor.UpperLeft;
                 myTextComp.horizontalOverflow = HorizontalWrapMode.Wrap;
                 myTextComp.verticalOverflow = VerticalWrapMode.Overflow;
 
-                // КОРРЕКТИРУЕМ ОТСТУПЫ:
-                // anchorMin.x = 0.35f (сдвинули левее, убрали отступ слева)
-                // anchorMax.y = 0.93f (подняли выше, убрали пустой отступ сверху)
+                // Позиционируем текст на правой панели
                 RectTransform textRect = myTextGo.GetComponent<RectTransform>();
                 textRect.anchorMin = new Vector2(0.35f, 0.35f);
                 textRect.anchorMax = new Vector2(0.92f, 0.93f);
@@ -146,7 +135,7 @@ namespace FurnitureAnimationsMod
                 var fontSample = _myCustomDialogInstance.GetComponentInChildren<UnityEngine.UI.Text>(true);
                 if (fontSample != null && fontSample.font != null) myTextComp.font = fontSample.font;
 
-                // 5. НАСТРОЙКА КНОПОК ПО ИНДЕКСАМ
+                // 5. ИСПРАВЛЕННАЯ НАСТРОЙКА КНОПОК
                 var buttons = _myCustomDialogInstance.GetComponentsInChildren<UnityEngine.UI.Button>(true);
 
                 if (buttons != null && buttons.Length >= 2)
@@ -163,23 +152,24 @@ namespace FurnitureAnimationsMod
                             GameObject.Destroy(_myCustomDialogInstance);
                         });
 
-                        // ОСТАВЛЯЕМ родной темно-красный цвет кнопки игры (не перекрашиваем в Color.white)
-                        // Но УВЕЛИЧИВАЕМ ширину кнопки, чтобы длинный текст гарантированно поместился
-                        RectTransform saveBtnRect = saveBtn.GetComponent<RectTransform>();
-                        if (saveBtnRect != null)
-                        {
-                            // Расширяем кнопку вправо (изменяем anchorMax или добавляем размер в пикселях)
-                            Vector2 currentSize = saveBtnRect.sizeDelta;
-                            saveBtnRect.sizeDelta = new Vector2(currentSize.x + 60f, currentSize.y); // Добавили 60 пикселей к ширине
-                        }
+                        // Возвращаем кнопку на её РОДНОЕ ванильное место (убираем некорректное расширение влево)
+                        // Оставляем цвет по умолчанию (темно-красный)
+                        var btnImg = saveBtn.GetComponent<UnityEngine.UI.Image>();
+                        if (btnImg != null) btnImg.color = Color.white; // Белый восстановит оригинальный спрайт кнопки игры
 
                         var btnText = saveBtn.GetComponentInChildren<UnityEngine.UI.Text>(true);
                         if (btnText != null)
                         {
                             btnText.gameObject.SetActive(true);
                             btnText.text = "Save Furniture Pose";
-                            btnText.fontSize = 11; // УМЕНЬШИЛИ шрифт на кнопке, чтобы надпись точно влезла
-                            btnText.color = gameTextColor; // СДЕЛАЛИ ТЕКСТ БЕЖЕВО-СЕРЫМ (под цвет шрифтов игры), чтобы он отлично читался на красном!
+                            btnText.fontSize = 11;
+                            btnText.color = Color.white; // Белый текст идеально читается на темно-красном фоне
+
+                            // ЖЕЛЕЗНЫЙ ХАК ДЛЯ ОТОБРАЖЕНИЯ: Разрешаем тексту выходить за границы кнопки, 
+                            // чтобы он гарантированно отрендерился и не исчезал, если кнопка слишком узкая!
+                            btnText.horizontalOverflow = HorizontalWrapMode.Overflow;
+                            btnText.verticalOverflow = VerticalWrapMode.Overflow;
+                            btnText.alignment = TextAnchor.MiddleCenter; // Центрируем текст на кнопке
                         }
                     }
 
@@ -207,10 +197,9 @@ namespace FurnitureAnimationsMod
             }
             catch (System.Exception ex)
             {
-                Plugin.Log.LogError($"[EditorUiManager] Ошибка финальной микро-настройки: {ex}");
+                Plugin.Log.LogError($"[EditorUiManager] Ошибка финальной очистки: {ex}");
             }
         }
-
 
         private void DrawDialogWindow(int windowID)
         {
