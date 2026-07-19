@@ -63,32 +63,22 @@ namespace FurnitureAnimationsMod
         {
             try
             {
-                if (uiFreePose == null)
-                {
-                    Plugin.Log.LogError("[EditorUiManager] Ошибка: uiFreePose равен null!");
-                    return;
-                }
-                if (uiFreePose.savePosePanel == null)
-                {
-                    Plugin.Log.LogError("[EditorUiManager] Ошибка: savePosePanel равен null в игре!");
-                    return;
-                }
+                if (uiFreePose == null || uiFreePose.savePosePanel == null) return;
 
                 GameObject dialogPanel = uiFreePose.savePosePanel;
-                dialogPanel.SetActive(true);
-                Plugin.Log.LogInfo("[EditorUiManager] Панель savePosePanel успешно активирована.");
+                dialogPanel.SetActive(true); // Включаем окно, как это успешно работало раньше
 
-                // 1. Прячем текстовые инпуты
-                if (uiFreePose.poseNameText != null) uiFreePose.poseNameText.gameObject.SetActive(false);
-                if (uiFreePose.creatorText != null) uiFreePose.creatorText.gameObject.SetActive(false);
-
-                // 2. Убираем блок "Created By"
-                if (uiFreePose.creatorText != null && uiFreePose.creatorText.transform.parent != null)
+                // 1. Прячем поле автора ("Created By") полностью
+                if (uiFreePose.creatorText != null)
                 {
-                    uiFreePose.creatorText.transform.parent.gameObject.SetActive(false);
+                    uiFreePose.creatorText.gameObject.SetActive(false);
+                    if (uiFreePose.creatorText.transform.parent != null)
+                    {
+                        uiFreePose.creatorText.transform.parent.gameObject.SetActive(false);
+                    }
                 }
 
-                // Убираем дату
+                // 2. Выключаем текстовое поле с датой
                 var allTexts = dialogPanel.GetComponentsInChildren<UnityEngine.UI.Text>(true);
                 foreach (var txt in allTexts)
                 {
@@ -98,102 +88,79 @@ namespace FurnitureAnimationsMod
                     }
                 }
 
-                // 3. Выводим текст. Ищем встроенный текст внутри InputField безопасным путем
+                // 3. Выводим наше сообщение в поле названия позы
                 if (uiFreePose.poseNameText != null)
                 {
-                    // Безопасно ищем компонент Text на дочерних объектах инпута (обычно объект называется Text или Placeholder)
-                    var mainTextComp = uiFreePose.poseNameText.GetComponentInChildren<UnityEngine.UI.Text>(true);
-                    if (mainTextComp == null && uiFreePose.poseNameText.placeholder != null)
+                    uiFreePose.poseNameText.gameObject.SetActive(true);
+
+                    // Убираем рамку поля ввода, чтобы текст выглядел как обычная надпись
+                    var inputImage = uiFreePose.poseNameText.GetComponent<UnityEngine.UI.Image>();
+                    if (inputImage != null) inputImage.enabled = false;
+
+                    // Запрещаем игроку кликать по тексту и редактировать его
+                    uiFreePose.poseNameText.interactable = false;
+
+                    // Передаем текст напрямую в InputField! Игра сама отобразит его крупным шрифтом
+                    uiFreePose.poseNameText.text = messageText;
+
+                    // Включаем поддержку RichText (для желтого цвета мебели) на внутреннем компоненте текста
+                    if (uiFreePose.poseNameText.textComponent != null)
                     {
-                        mainTextComp = uiFreePose.poseNameText.placeholder.GetComponent<UnityEngine.UI.Text>();
-                    }
-
-                    if (mainTextComp != null)
-                    {
-                        uiFreePose.poseNameText.gameObject.SetActive(true);
-
-                        var inputImage = uiFreePose.poseNameText.GetComponent<UnityEngine.UI.Image>();
-                        if (inputImage != null) inputImage.enabled = false;
-
-                        uiFreePose.poseNameText.interactable = false;
-
-                        mainTextComp.text = messageText;
-                        mainTextComp.supportRichText = true;
-                        Plugin.Log.LogInfo("[EditorUiManager] Текст сообщения успешно установлен в поле позы.");
-                    }
-                    else
-                    {
-                        Plugin.Log.LogWarning("[EditorUiManager] Не удалось найти текстовый компонент внутри poseNameText.");
+                        uiFreePose.poseNameText.textComponent.supportRichText = true;
                     }
                 }
 
-                // 4. Картинка превью
+                // 4. Подставляем картинку превью
                 if (previewTexture != null && uiFreePose.iconOfPose != null)
                 {
                     uiFreePose.iconOfPose.texture = previewTexture;
                     uiFreePose.iconOfPose.gameObject.SetActive(true);
                 }
 
-                // 5. Настройка кнопок (Исправленный синтаксис массивов C#)
+                // 5. Перенастраиваем кнопки "Save" и "Cancel"
                 var buttons = dialogPanel.GetComponentsInChildren<UnityEngine.UI.Button>(true);
-                Plugin.Log.LogInfo($"[EditorUiManager] Найдено кнопок на панели: {buttons.Length}");
-
                 if (buttons != null && buttons.Length >= 2)
                 {
-                    // Левая кнопка (Сохранить) — индекс [0]
+                    // Кнопка сохранения
                     var saveBtn = buttons[0];
-                    if (saveBtn != null)
+                    saveBtn.onClick.RemoveAllListeners();
+                    saveBtn.onClick.AddListener(() =>
                     {
-                        saveBtn.onClick.RemoveAllListeners();
-                        saveBtn.onClick.AddListener(() =>
-                        {
-                            Plugin.Log.LogInfo("[EditorUiManager] Нажата кнопка подтверждения (Save).");
-                            onConfirm?.Invoke();
-                            RestoreInputFields(uiFreePose);
-                            dialogPanel.SetActive(false);
-                        });
+                        onConfirm?.Invoke();
+                        RestoreInputFields(uiFreePose);
+                        dialogPanel.SetActive(false);
+                    });
 
-                        var saveBtnText = saveBtn.GetComponentInChildren<UnityEngine.UI.Text>();
-                        if (saveBtnText != null)
-                        {
-                            saveBtnText.text = "Save Furniture Pose";
-                        }
+                    // Меняем текст на кнопке
+                    var saveBtnText = saveBtn.GetComponentInChildren<UnityEngine.UI.Text>();
+                    if (saveBtnText != null)
+                    {
+                        saveBtnText.text = "Save Furniture Pose";
                     }
 
-                    // Правая кнопка (Отмена) — индекс [1]
+                    // Кнопка отмены
                     var cancelBtn = buttons[1];
-                    if (cancelBtn != null)
+                    cancelBtn.onClick.RemoveAllListeners();
+                    cancelBtn.onClick.AddListener(() =>
                     {
-                        cancelBtn.onClick.RemoveAllListeners();
-                        cancelBtn.onClick.AddListener(() =>
-                        {
-                            Plugin.Log.LogInfo("[EditorUiManager] Нажата кнопка отмены.");
-                            RestoreInputFields(uiFreePose);
-                            dialogPanel.SetActive(false);
-                        });
-                    }
-                }
-                else
-                {
-                    Plugin.Log.LogWarning("[EditorUiManager] На панели найдено меньше двух кнопок. Перехват кликов невозможен.");
+                        RestoreInputFields(uiFreePose);
+                        dialogPanel.SetActive(false);
+                    });
                 }
             }
             catch (System.Exception ex)
             {
-                // Если внутри метода произойдет любая ошибка, она железно запишется в лог BepInEx
-                Plugin.Log.LogError($"[EditorUiManager] КРИТИЧЕСКОЕ ИСКЛЮЧЕНИЕ В ShowNativeStyleDialog: {ex}");
+                Plugin.Log.LogError($"[EditorUiManager] Ошибка в ShowNativeStyleDialog: {ex}");
             }
         }
 
-
-        // Метод восстановления при закрытии окна
         private static void RestoreInputFields(UIFreePose uiFreePose)
         {
             if (uiFreePose == null) return;
 
             if (uiFreePose.poseNameText != null)
             {
-                uiFreePose.poseNameText.gameObject.SetActive(true);
+                uiFreePose.poseNameText.text = ""; // Очищаем наш текст перед возвратом игре
                 uiFreePose.poseNameText.interactable = true;
                 var inputImage = uiFreePose.poseNameText.GetComponent<UnityEngine.UI.Image>();
                 if (inputImage != null) inputImage.enabled = true;
