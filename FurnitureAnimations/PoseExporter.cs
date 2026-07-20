@@ -82,7 +82,7 @@ namespace FurnitureAnimationsMod
 
             // Формируем текст сообщения
             string promptText = $"Do you want to save this pose for <color=yellow>{furnitureName}</color>?\n" +
-                                $"Type: {(isCustomBakeMode ? "User-made Custom Pose" : "Pose/Animation from the game library")}\n" +
+                                $"Type: {(isCustomBakeMode ? "User-made Custom Pose" : "Pose/Animation from the game")}\n" +
                                 $"Identifier: {controllerName}";
 
             // Передаем нашу текстуру напрямую без каких-либо проверок и приведений типов
