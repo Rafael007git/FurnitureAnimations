@@ -128,7 +128,7 @@ namespace FurnitureAnimationsMod
                 // Позиционируем текст на правой панели
                 RectTransform textRect = myTextGo.GetComponent<RectTransform>();
                 textRect.anchorMin = new Vector2(0.35f, 0.35f);
-                textRect.anchorMax = new Vector2(0.92f, 0.93f);
+                textRect.anchorMax = new Vector2(0.96f, 0.96f);
                 textRect.offsetMin = textRect.offsetMax = Vector2.zero;
 
                 // Подтягиваем шрифт игры
