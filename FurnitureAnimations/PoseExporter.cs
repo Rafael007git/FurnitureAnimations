@@ -37,29 +37,61 @@ namespace FurnitureAnimationsMod
             bool isCustomBakeMode = currentButtonText == "Save Custom Pose for Furniture";
 
             string controllerName = "None";
-            _lastCapturedIcon = null; // Обнуляем перед выбором
+            _lastCapturedIcon = null;
+
+            Plugin.Log.LogWarning($"[DEBUG_ICON] === СТАРТ ТРАССИРОВКИ ИКОНКИ ===");
+            Plugin.Log.LogInfo($"[DEBUG_ICON] Выбранный режим: isCustomBakeMode = {isCustomBakeMode}");
+            Plugin.Log.LogInfo($"[DEBUG_ICON] Текст кнопки на сцене: '{currentButtonText}'");
 
             if (!isCustomBakeMode)
             {
                 // Сценарий А: Link Preset Pose (Зеленый режим кнопки)
                 controllerName = (characterComp?.anim?.runtimeAnimatorController?.name ?? "None");
-                Plugin.Log.LogInfo($"[PoseExporter] Текст кнопки: '{currentButtonText}'. Запуск Сценария А (Preset Link) для {controllerName}...");
+                Plugin.Log.LogWarning($"[DEBUG_ICON] Запуск Сценария А (Preset Link). Целевое имя контроллера: '{controllerName}'");
 
-                // Вытаскиваем родную иконку из игры
-                if (RM.code != null && RM.code.allFreePoses != null)
+                // Проверяем доступность игровых реестров
+                if (RM.code == null) Plugin.Log.LogError("[DEBUG_ICON] Ошибка: RM.code равен null!");
+                else if (RM.code.allFreePoses == null) Plugin.Log.LogError("[DEBUG_ICON] Ошибка: RM.code.allFreePoses равен null!");
+                else
                 {
+                    Plugin.Log.LogInfo($"[DEBUG_ICON] Успешно зашли в RM.allFreePoses. Всего элементов для перебора: {RM.code.allFreePoses.items.Count}");
+
+                    int checkedPosesCount = 0;
+                    bool foundMatch = false;
+
                     foreach (Transform t in RM.code.allFreePoses.items)
                     {
+                        if (t == null) continue;
+                        checkedPosesCount++;
+
                         var p = t.GetComponent<global::Pose>();
-                        if (p != null && p.controller != null && p.controller.name == controllerName)
+                        if (p == null) continue;
+
+                        string currentPoseName = p.name ?? "NULL";
+                        string currentPoseCtrlName = p.controller != null ? p.controller.name : "NULL";
+
+                        // Спамим в лог каждые несколько поз, чтобы увидеть реальные имена контроллеров в игре
+                        if (checkedPosesCount <= 5 || currentPoseCtrlName.ToLower() == controllerName.ToLower())
                         {
-                            // 🔥 ИСПРАВЛЕНИЕ: Извлекаем физическую Texture2D из игрового Sprite!
-                            if (p.icon != null)
-                            {
-                                _lastCapturedIcon = p.icon;
-                            }
+                            Plugin.Log.LogInfo($"    -> Проверка позы №{checkedPosesCount}: Имя='{currentPoseName}' | Контроллер в игре='{currentPoseCtrlName}'");
+                        }
+
+                        if (p.controller != null && p.controller.name == controllerName)
+                        {
+                            Plugin.Log.LogWarning($"[DEBUG_ICON] 🎉 СОВПАДЕНИЕ НАЙДЕНО! Поза: '{currentPoseName}'. Извлекаем родную иконку...");
+                            _lastCapturedIcon = p.icon;
+
+                            if (_lastCapturedIcon == null) Plugin.Log.LogError("[DEBUG_ICON] Критично: p.icon у этой позы равен null!");
+                            else Plugin.Log.LogInfo($"[DEBUG_ICON] Успешно записали p.icon в _lastCapturedIcon. Размеры: {_lastCapturedIcon.width}x{_lastCapturedIcon.height}");
+
+                            foundMatch = true;
                             break;
                         }
+                    }
+
+                    if (!foundMatch)
+                    {
+                        Plugin.Log.LogError($"[DEBUG_ICON] ❌ Сбой: Цикл завершился, но ни один контроллер в игре не совпал с целевым '{controllerName}'!");
                     }
                 }
             }
@@ -67,16 +99,24 @@ namespace FurnitureAnimationsMod
             {
                 // Сценарий Б: Save Custom Pose (Бирюзовый режим кнопки)
                 controllerName = "CustomJSON";
-                Plugin.Log.LogInfo($"[PoseExporter] Текст кнопки: '{currentButtonText}'. Запуск Сценария Б (Bake Custom Skeleton)...");
+                Plugin.Log.LogWarning("[DEBUG_ICON] Запуск Сценария Б (Кастомная поза). Сейчас будет скриншот!");
 
-                // Генерируем скриншот-иконку нашей камерой
                 var photoComp = uiInstance.GetComponent<TakePhotos>();
+                if (photoComp == null) Plugin.Log.LogError("[DEBUG_ICON] Ошибка: Компонент TakePhotos не найден на uiInstance!");
+
                 if (photoComp != null && Global.code != null && Global.code.freeCamera != null)
                 {
                     Camera cam = Global.code.freeCamera.GetComponent<Camera>();
                     _lastCapturedIcon = photoComp.CameraCapture(cam, new Rect(0f, 0f, 300f, 300f), "");
+
+                    if (_lastCapturedIcon == null) Plugin.Log.LogError("[DEBUG_ICON] Ошибка: Метод CameraCapture вернул null!");
+                    else Plugin.Log.LogInfo($"[DEBUG_ICON] Скриншот успешно сгенерирован. Размеры: {_lastCapturedIcon.width}x{_lastCapturedIcon.height}");
                 }
             }
+
+            Plugin.Log.LogWarning($"[DEBUG_ICON] Финальный статус _lastCapturedIcon перед отправкой в UI: {(_lastCapturedIcon != null ? "НЕ NULL (Есть картинка)" : "NULL (Пусто)")}");
+            Plugin.Log.LogWarning($"[DEBUG_ICON] === КОНЕЦ ТРАССИРОВКИ ИКОНКИ ===");
+
 
             // Расчет локального смещения относительно мебели (Как на стр 19)
             Vector3 exactLocPos = closestFurniture.transform.InverseTransformPoint(playerPos);
