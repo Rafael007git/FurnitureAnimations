@@ -84,23 +84,23 @@ namespace FurnitureAnimationsMod
 
             // ИСПРАВЛЕННЫЙ ВЫЗОВ ДИАЛОГА ОКНА СОХРАНЕНИЯ
 
-            // Шаг A: Заполняем скрытые переменные игры, чтобы пробить валидацию "if (poseName != "")"
+            // Шаг A: Заполняем скрытые переменные игры, чтобы пробить валидацию
             if (uiInstance != null)
             {
                 uiInstance.poseName = "FurniturePose";
                 uiInstance.creatorName = "ModAuthor";
             }
 
-            // Шаг Б: Вызываем статический метод напрямую через класс с 2 нужными аргументами
-            EditorUiManager.ShowNativeStyleDialog(promptText, () =>
+            // Передаем нашу текстуру напрямую
+            Texture2D previewTexture = _lastCapturedIcon;
+
+            // Шаг Б: Теперь передаем promptText, саму иконку превью, и экшен сохранения!
+            EditorUiManager.ShowNativeStyleDialog(promptText, previewTexture, () =>
             {
                 Plugin.Log.LogWarning("[PoseExporter] Клик подтвержден пользователем. Запуск физической записи JSON...");
-
-                // При нажатии кнопки на кастомном UI передаем все параметры на физическую запись файлов
                 SavePoseToDataFolder(furnitureName, controllerName, exactLocPos, exactLocRot, isCustomBakeMode, characterComp);
             });
         }
-
 
 
         private static void SavePoseToDataFolder(string furnitureName, string controller, Vector3 pos, Vector3 rot, bool isCustom, CharacterCustomization character)

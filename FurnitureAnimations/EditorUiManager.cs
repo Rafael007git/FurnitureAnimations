@@ -61,95 +61,81 @@ namespace FurnitureAnimationsMod
         // Сделайте метод статическим, чтобы вызывать его напрямую через имя класса
         private static GameObject _myCustomDialogInstance = null;
 
-        public static void ShowNativeStyleDialog(string title, System.Action onConfirm)
+        public static void ShowNativeStyleDialog(string title, Texture2D previewTexture, System.Action onConfirm)
         {
-            Plugin.Log.LogWarning("[TRACE] 1. Метод ShowNativeStyleDialog запущен.");
-
             var uiFreePose = GameObject.FindObjectOfType<UIFreePose>();
-            if (uiFreePose == null)
-            {
-                Plugin.Log.LogError("[TRACE] КРИТИЧЕСКАЯ ОШИБКА: Компонент UIFreePose не найден на сцене!");
-                return;
-            }
-            Plugin.Log.LogInfo("[TRACE] 2. Компонент UIFreePose успешно найден.");
+            if (uiFreePose == null || uiFreePose.savePosePanel == null) return;
 
-            if (uiFreePose.savePosePanel == null)
-            {
-                Plugin.Log.LogError("[TRACE] КРИТИЧЕСКАЯ ОШИБКА: uiFreePose.savePosePanel равен null!");
-                return;
-            }
-            Plugin.Log.LogInfo($"[TRACE] 3. Донорская панель определена: {uiFreePose.savePosePanel.name}");
-
-            // Создаем клон панели
+            // Клонируем донорскую панель
             _myCustomDialogInstance = GameObject.Instantiate(uiFreePose.savePosePanel, uiFreePose.savePosePanel.transform.parent);
-            if (_myCustomDialogInstance == null)
-            {
-                Plugin.Log.LogError("[TRACE] КРИТИЧЕСКАЯ ОШИБКА: Не удалось склонировать панель!");
-                return;
-            }
+            if (_myCustomDialogInstance == null) return;
+
             _myCustomDialogInstance.name = "Mod_CustomFurnitureSaveDialog";
             _myCustomDialogInstance.SetActive(true);
-            Plugin.Log.LogInfo("[TRACE] 4. Клон панели успешно создан, переименован и активирован.");
 
-            // Дампим все дочерние объекты для проверки иерархии
-            Plugin.Log.LogWarning("=== НАЧАЛО ДАМПА ИЕРАРХИИ КЛОНА ===");
+            // ==========================================================
+            // 🛠️ ЖЕСТКАЯ ЧИСТКА ВЁРСТКИ ОТ ДЕФОЛТНЫХ ЭЛЕМЕНТОВ ИГРЫ
+            // ==========================================================
             var allTransforms = _myCustomDialogInstance.GetComponentsInChildren<Transform>(true);
             foreach (var t in allTransforms)
             {
-                Plugin.Log.LogInfo($" -> Элемент: {t.name} | Активен: {t.gameObject.activeSelf}");
-            }
-            Plugin.Log.LogWarning("=== КОНЕЦ ДАМПА ИЕРАРХИИ КЛОНА ===");
+                if (t == null) continue;
+                string name = t.name.Trim();
 
-            // Скрываем ненужные оригинальные инпуты
-            int hiddenCount = 0;
-            foreach (Transform child in _myCustomDialogInstance.transform)
-            {
-                if (child.name.Contains("InputField Pose") || child.name.Contains("InputField creator"))
+                // Скрываем инпуты, ванильные тексты подсказок и плашку с датой
+                if (name.Contains("InputField Pose") ||
+                    name.Contains("InputField creator") ||
+                    name.Contains("Pose Name") ||
+                    name.Contains("Created By") ||
+                    name.Contains("2023/06/12") || // Скрываем строку даты
+                    name == "date" || // Защита, если объект называется просто date
+                    name.Contains("Text Date"))
                 {
-                    child.gameObject.SetActive(false);
-                    hiddenCount++;
+                    t.gameObject.SetActive(false);
                 }
             }
-            Plugin.Log.LogInfo($"[TRACE] 5. Скрыто оригинальных полей ввода: {hiddenCount}");
 
-            // Меняем заголовок окна
+            // Устанавливаем кастомный заголовок ("Do you want to save this pose...")
             var titleText = _myCustomDialogInstance.GetComponentInChildren<UnityEngine.UI.Text>(true);
             if (titleText != null)
             {
                 titleText.text = title;
-                Plugin.Log.LogInfo($"[TRACE] 6. Изменен заголовок окна на: '{title}'");
-            }
-            else
-            {
-                Plugin.Log.LogWarning("[TRACE] Предупреждение: Компонент Text для заголовка не найден в корне.");
             }
 
-            // Ищем и настраиваем кнопки
-            Plugin.Log.LogInfo("[TRACE] 7. Начинаем поиск кнопок...");
+            // ==========================================================
+            // 🖼️ ВОССТАНОВЛЕНИЕ ИКОНКИ ПРЕВЬЮ
+            // ==========================================================
+            if (previewTexture != null)
+            {
+                var rawImageComp = _myCustomDialogInstance.GetComponentInChildren<UnityEngine.UI.RawImage>(true);
+                if (rawImageComp != null)
+                {
+                    rawImageComp.gameObject.SetActive(true);
+                    rawImageComp.texture = previewTexture; // Заменяем дефолт на нашу текстуру мебели!
+                }
+            }
+
+            // ==========================================================
+            // 🎛️ НАСТРОЙКА КНОПОК И ТЕКСТА НА КНОПКЕ
+            // ==========================================================
             UnityEngine.UI.Button nativeSaveBtn = null;
             UnityEngine.UI.Button nativeCloseBtn = null;
 
             var allButtonsInClone = _myCustomDialogInstance.GetComponentsInChildren<UnityEngine.UI.Button>(true);
-            Plugin.Log.LogInfo($"[TRACE] Всего найдено компонентов Button в клоне: {allButtonsInClone.Length}");
-
             foreach (var btn in allButtonsInClone)
             {
                 if (btn == null) continue;
                 string btnName = btn.name.Trim();
-                Plugin.Log.LogInfo($"    * Найдена кнопка с именем: '{btnName}'");
-
                 if (btnName == "Button Save") nativeSaveBtn = btn;
                 if (btnName == "Btn Close (4)") nativeCloseBtn = btn;
             }
 
-            // Настройка кнопки Save
+            // Меняем надпись и действие на главной кнопке
             if (nativeSaveBtn != null)
             {
-                Plugin.Log.LogWarning($"[TRACE] 8А. Кнопка 'Button Save' успешно привязана.");
                 nativeSaveBtn.onClick.RemoveAllListeners();
                 nativeSaveBtn.onClick.AddListener(() =>
                 {
-                    Plugin.Log.LogWarning("[КЛИК] Кнопка Save нажата!");
                     onConfirm?.Invoke();
                     GameObject.Destroy(_myCustomDialogInstance);
                 });
@@ -157,40 +143,27 @@ namespace FurnitureAnimationsMod
                 nativeSaveBtn.gameObject.SetActive(true);
                 nativeSaveBtn.interactable = true;
 
+                // Перекрашиваем текст на кнопке на наш лад!
                 var btnText = nativeSaveBtn.GetComponentInChildren<UnityEngine.UI.Text>(true);
                 if (btnText != null)
                 {
                     btnText.gameObject.SetActive(true);
-                    btnText.text = "Save Furniture Pose";
-                    Plugin.Log.LogInfo("[TRACE] Текст на кнопке изменен на 'Save Furniture Pose'.");
+                    btnText.text = "Save Furniture Pose"; // Наша надпись
+                    btnText.fontSize = 11;
+                    btnText.color = Color.white;
+                    btnText.alignment = TextAnchor.MiddleCenter;
                 }
-                else
-                {
-                    Plugin.Log.LogError("[TRACE] ОШИБКА: Внутри 'Button Save' не найден дочерний компонент Text!");
-                }
-            }
-            else
-            {
-                Plugin.Log.LogError("[TRACE] ОШИБКА: 'Button Save' НЕ НАЙДЕНА в цикле перебора!");
             }
 
-            // Настройка кнопки Close
+            // Настройка крестика закрытия
             if (nativeCloseBtn != null)
             {
-                Plugin.Log.LogInfo("[TRACE] 8Б. Крестик 'Btn Close (4)' успешно привязан.");
                 nativeCloseBtn.onClick.RemoveAllListeners();
                 nativeCloseBtn.onClick.AddListener(() =>
                 {
-                    Plugin.Log.LogWarning("[КЛИК] Крестик Close нажат!");
                     GameObject.Destroy(_myCustomDialogInstance);
                 });
             }
-            else
-            {
-                Plugin.Log.LogError("[TRACE] ОШИБКА: 'Btn Close (4)' НЕ НАЙДЕНА в цикле перебора!");
-            }
-
-            Plugin.Log.LogWarning("[TRACE] Метод ShowNativeStyleDialog успешно завершил работу.");
         }
 
 
