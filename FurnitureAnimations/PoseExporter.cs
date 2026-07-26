@@ -17,6 +17,7 @@ namespace FurnitureAnimationsMod
             // 1. Проверяем дистанцию до мебели (5 метров)
             Vector3 playerPos = uiInstance.selectedCharacter.position;
             Furniture closestFurniture = FindClosestFurniture(playerPos, 5f);
+
             if (closestFurniture == null)
             {
                 if (Global.code != null && Global.code.uiCombat != null)
@@ -34,8 +35,9 @@ namespace FurnitureAnimationsMod
 
             // Железно определяем режим на основе текста кнопки, который выбрал пользователь!
             bool isCustomBakeMode = currentButtonText == "Save Custom Pose for Furniture";
+
             string controllerName = "None";
-            _lastCapturedIcon = null;
+            _lastCapturedIcon = null; // Обнуляем перед выбором
 
             if (!isCustomBakeMode)
             {
@@ -51,7 +53,11 @@ namespace FurnitureAnimationsMod
                         var p = t.GetComponent<global::Pose>();
                         if (p != null && p.controller != null && p.controller.name == controllerName)
                         {
-                            _lastCapturedIcon = p.icon;
+                            // 🔥 ИСПРАВЛЕНИЕ: Извлекаем физическую Texture2D из игрового Sprite!
+                            if (p.icon != null)
+                            {
+                                _lastCapturedIcon = p.icon;
+                            }
                             break;
                         }
                     }
@@ -82,22 +88,23 @@ namespace FurnitureAnimationsMod
                                 $"Type: {(isCustomBakeMode ? "User-made Custom Pose" : "Pose/Animation from the game")}\n" +
                                 $"Identifier: {controllerName}";
 
-            // ИСПРАВЛЕННЫЙ ВЫЗОВ ДИАЛОГА ОКНА СОХРАНЕНИЯ
-
-            // Шаг A: Заполняем переменные оригинального скрипта, чтобы пробить валидацию
+            // Шаг A: Заполняем скрытые переменные оригинального скрипта игры, чтобы пробить валидацию "if (poseName != "")"
             if (uiInstance != null)
             {
                 uiInstance.poseName = "FurniturePose";
                 uiInstance.creatorName = "ModAuthor";
             }
 
-            // Шаг Б: Вызываем ваш классический метод (возвращаем uiInstance, promptText и previewTexture!)
+            // Передаем нашу текстуру (которая теперь гарантированно содержит либо иконку позы, либо скриншот)
+            Texture2D previewTexture = _lastCapturedIcon;
+
+            // Шаг Б: Вызываем метод с наложенным UI (передаем uiInstance, promptText, previewTexture и экшен сохранения)
             EditorUiManager.ShowNativeStyleDialog(
                 uiInstance,
                 promptText,
-                _lastCapturedIcon,
+                previewTexture,
                 () => {
-                    // При нажатии "ДА" запускаем физическую запись файлов
+                    // При нажатии запускаем физическую запись файлов конфига мода
                     SavePoseToDataFolder(furnitureName, controllerName, exactLocPos, exactLocRot, isCustomBakeMode, characterComp);
                 }
             );
