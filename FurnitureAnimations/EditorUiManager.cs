@@ -70,42 +70,51 @@ namespace FurnitureAnimationsMod
                 if (_myCustomDialogInstance != null)
                     GameObject.Destroy(_myCustomDialogInstance);
 
-                // 1. Открываем оригинальное окно
+                // 1. Открываем оригинальное окно (как в вашем оригинальном коде)
                 uiFreePose.OpenSaveFreePosePanel();
-                uiFreePose.savePosePanel.SetActive(false);
+                uiFreePose.savePosePanel.SetActive(false); // Прячем оригинал
 
-                // 2. Создаем клон панели
+                // 2. Создаем независимый клон панели
                 _myCustomDialogInstance = GameObject.Instantiate(uiFreePose.savePosePanel, uiFreePose.savePosePanel.transform.parent);
                 _myCustomDialogInstance.name = "Mod_CustomFurnitureSaveDialog";
 
-                // Отрезаем скрипт игры от клона
+                // Удаляем скрипт игры с клона, чтобы он не сбрасывал вёрстку кадр за кадром
                 var duplicatedGameScript = _myCustomDialogInstance.GetComponent<UIFreePose>();
                 if (duplicatedGameScript != null)
                     GameObject.Destroy(duplicatedGameScript);
 
-                Color gameTextColor = new Color(0.8f, 0.8f, 0.8f, 1f);
+                Color gameTextColor = new Color(0.8f, 0.8f, 0.8f, 1f); // Бежево-серый дефолт
 
-                // 3. Чистим ванильный мусор (Ваш оригинальный цикл)
+                // 3. БЕЗОПАСНЫЙ ПОИСК И НАСТРОЙКА ОБЪЕКТОВ (Ваш оригинальный цикл чистки)
                 foreach (Transform child in _myCustomDialogInstance.transform)
                 {
                     string childNameClean = child.name.Trim();
+
+                    // Извлекаем цвет игры и гасим старый заголовок "name"
                     if (childNameClean == "name")
                     {
                         var originalText = child.GetComponent<UnityEngine.UI.Text>();
                         if (originalText != null) gameTextColor = originalText.color;
                         child.gameObject.SetActive(false);
                     }
+
+                    // Прячем "Created By"
                     if (childNameClean == "txt created by (1)") child.gameObject.SetActive(false);
+
+                    // Прячем нижнюю дату "name (1)"
                     if (childNameClean == "name (1)") child.gameObject.SetActive(false);
+
+                    // ОСТАВЛЯЕМ красивую общую рамку панели
                     if (childNameClean == "fram (3)") child.gameObject.SetActive(true);
 
+                    // ПОЛНОСТЬЮ ВЫКЛЮЧАЕМ ПОЛЯ ВВОДА
                     if (childNameClean == "InputField Pose" || childNameClean == "InputField creator")
                     {
                         child.gameObject.SetActive(false);
                     }
                 }
 
-                // 4. Верстка нашего кастомного текста (Ваш идеальный блок)
+                // 4. НАСТРОЙКА НАШЕГО КАСТОМНОГО ТЕКСТА (Ваш идеальный блок верстки)
                 GameObject myTextGo = new GameObject("Mod_CustomMessageText", typeof(RectTransform), typeof(UnityEngine.UI.Text));
                 myTextGo.transform.SetParent(_myCustomDialogInstance.transform, false);
 
@@ -118,70 +127,91 @@ namespace FurnitureAnimationsMod
                 myTextComp.horizontalOverflow = HorizontalWrapMode.Wrap;
                 myTextComp.verticalOverflow = VerticalWrapMode.Overflow;
 
+                // Позиционируем текст на правой панели окна
                 RectTransform textRect = myTextGo.GetComponent<RectTransform>();
                 textRect.anchorMin = new Vector2(0.35f, 0.35f);
                 textRect.anchorMax = new Vector2(0.96f, 0.96f);
                 textRect.offsetMin = textRect.offsetMax = Vector2.zero;
 
+                // Подтягиваем шрифт игры
                 var fontSample = _myCustomDialogInstance.GetComponentInChildren<UnityEngine.UI.Text>(true);
                 if (fontSample != null && fontSample.font != null) myTextComp.font = fontSample.font;
 
 
                 // ==========================================================
-                // 💥 СОЗДАНИЕ КНОПКИ ПОВЕРХ ВАНИЛЬНОЙ С ТОЧНЫМ ПОЗИЦИОНИРОВАНИЕМ
+                // 💥 5. НАЛОЖЕНИЕ НОВОЙ КНОПКИ С ЗАКРЫТИЕМ СТАРОГО ТЕКСТА
                 // ==========================================================
 
-                // Находим оригинальную кнопку, чтобы считать её координаты
+                // Сначала находим оригинальные кнопки в клоне
                 var vanillaButtons = _myCustomDialogInstance.GetComponentsInChildren<UnityEngine.UI.Button>(true);
                 UnityEngine.UI.Button oldGameSaveBtn = null;
+                UnityEngine.UI.Button oldGameCloseBtn = null;
 
                 foreach (var b in vanillaButtons)
                 {
-                    if (b != null && b.name.Trim() == "Button Save")
-                    {
-                        oldGameSaveBtn = b;
-                        break;
-                    }
+                    if (b == null) continue;
+                    string bName = b.name.Trim();
+                    if (bName == "Button Save") oldGameSaveBtn = b;
+                    if (bName == "Btn Close (4)") oldGameCloseBtn = b;
                 }
 
-                // Создаем абсолютно чистую кнопку-пустышку (без картинки, прозрачную)
-                GameObject customBtnGo = new GameObject("Mod_UltimateSaveBtnOverlay", typeof(RectTransform), typeof(UnityEngine.UI.Button));
+                // Настраиваем крестик закрытия окна (чтобы работал штатно как отмена)
+                if (oldGameCloseBtn != null)
+                {
+                    oldGameCloseBtn.onClick.RemoveAllListeners();
+                    oldGameCloseBtn.onClick.AddListener(() => GameObject.Destroy(_myCustomDialogInstance));
+                }
 
-                // Вешаем её на того же родителя, где лежит старая кнопка
+                // Создаем нашу кастомную кнопку ОБЯЗАТЕЛЬНО с Image подложкой
+                GameObject customBtnGo = new GameObject("Mod_UltimateSaveBtnOverlay", typeof(RectTransform), typeof(UnityEngine.UI.Button), typeof(UnityEngine.UI.Image));
+
                 if (oldGameSaveBtn != null)
                 {
+                    // Сажаем на того же родителя в контейнер, где лежала старая кнопка
                     customBtnGo.transform.SetParent(oldGameSaveBtn.transform.parent, false);
 
-                    // Копируем геометрию один в один, чтобы лечь ровно поверх
                     RectTransform targetRect = customBtnGo.GetComponent<RectTransform>();
                     RectTransform sourceRect = oldGameSaveBtn.GetComponent<RectTransform>();
 
+                    // Копируем базовую геометрию и привязки
                     targetRect.anchorMin = sourceRect.anchorMin;
                     targetRect.anchorMax = sourceRect.anchorMax;
                     targetRect.pivot = sourceRect.pivot;
-                    targetRect.anchoredPosition = sourceRect.anchoredPosition;
-                    targetRect.sizeDelta = sourceRect.sizeDelta;
+
+                    // 📐 СМЕЩЕНИЕ И ШИРИНА: Сдвигаем на 30 пикселей вправо, делаем шире на 40 пикселей
+                    targetRect.anchoredPosition = new Vector2(sourceRect.anchoredPosition.x + 30f, sourceRect.anchoredPosition.y);
+                    targetRect.sizeDelta = new Vector2(sourceRect.sizeDelta.x + 40f, sourceRect.sizeDelta.y);
+
+                    // 🎨 КОПИРУЕМ РОДНОЙ СТИЛЬ И ЦВЕТ ИГРЫ ОДИН В ОДИН (чтобы перекрыть старый текст)
+                    var oldImg = oldGameSaveBtn.GetComponent<UnityEngine.UI.Image>();
+                    var newImg = customBtnGo.GetComponent<UnityEngine.UI.Image>();
+                    if (oldImg != null && newImg != null)
+                    {
+                        newImg.sprite = oldImg.sprite;
+                        newImg.type = oldImg.type;
+                        newImg.color = oldImg.color; // Без перекрашивания, берем оригинальный оттенок игры!
+                    }
                 }
                 else
                 {
-                    // Подстраховка, если вдруг не нашли старую кнопку
+                    // Дефолтная подстраховка, если оригинальная кнопка не была найдена
                     customBtnGo.transform.SetParent(_myCustomDialogInstance.transform, false);
                     RectTransform targetRect = customBtnGo.GetComponent<RectTransform>();
-                    targetRect.anchorMin = new Vector2(0.35f, 0.12f);
-                    targetRect.anchorMax = new Vector2(0.65f, 0.25f);
+                    targetRect.anchorMin = new Vector2(0.40f, 0.12f);
+                    targetRect.anchorMax = new Vector2(0.75f, 0.25f);
                     targetRect.offsetMin = targetRect.offsetMax = Vector2.zero;
                 }
 
-                // Привязываем наше сохранение мода
+                // Вешаем НАШЕ событие физического сохранения JSON мода
                 UnityEngine.UI.Button myButtonComp = customBtnGo.GetComponent<UnityEngine.UI.Button>();
                 myButtonComp.onClick.AddListener(() =>
                 {
-                    Plugin.Log.LogWarning("[EditorUiManager] Клик по наложенной кнопке зафиксирован!");
-                    onConfirm?.Invoke(); // Физическая запись JSON в файлы мода
+                    Plugin.Log.LogWarning("[EditorUiManager] Клик по широкой наложенной кнопке зафиксирован!");
+                    onConfirm?.Invoke(); // Вызов цепочки экспорта из PoseExporter
                     GameObject.Destroy(_myCustomDialogInstance);
                 });
 
-                // Рисуем текст на нашей наложенной кнопке
+                // Создаем ТЕКСТ внутри нашей новой широкой кнопки
                 GameObject btnTextGo = new GameObject("Text", typeof(RectTransform), typeof(UnityEngine.UI.Text));
                 btnTextGo.transform.SetParent(customBtnGo.transform, false);
 
@@ -194,12 +224,15 @@ namespace FurnitureAnimationsMod
                 btnTextComp.verticalOverflow = VerticalWrapMode.Overflow;
                 if (fontSample != null && fontSample.font != null) btnTextComp.font = fontSample.font;
 
+                // Растягиваем текст на всю область новой кнопки
                 RectTransform btnTextRect = btnTextGo.GetComponent<RectTransform>();
                 btnTextRect.anchorMin = Vector2.zero;
                 btnTextRect.anchorMax = Vector2.one;
                 btnTextRect.offsetMin = btnTextRect.offsetMax = Vector2.zero;
 
-                // 6. Подстановка иконки превью
+                // ==========================================================
+                // 🖼️ 6. ПОДСТАНОВКА ИКОНКИ ПРЕВЬЮ МЕБЕЛИ
+                // ==========================================================
                 if (previewTexture != null)
                 {
                     var rawImageComp = _myCustomDialogInstance.GetComponentInChildren<UnityEngine.UI.RawImage>(true);
