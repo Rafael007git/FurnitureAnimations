@@ -61,7 +61,7 @@ namespace FurnitureAnimationsMod
         // Сделайте метод статическим, чтобы вызывать его напрямую через имя класса
         private static GameObject _myCustomDialogInstance = null;
 
-        public void ShowNativeStyleDialog(string title, System.Action onConfirm)
+        public static void ShowNativeStyleDialog(string title, System.Action onConfirm)
         {
             Plugin.Log.LogWarning("[TRACE] 1. Метод ShowNativeStyleDialog запущен.");
 

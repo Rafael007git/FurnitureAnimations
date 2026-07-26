@@ -17,7 +17,6 @@ namespace FurnitureAnimationsMod
             // 1. Проверяем дистанцию до мебели (5 метров)
             Vector3 playerPos = uiInstance.selectedCharacter.position;
             Furniture closestFurniture = FindClosestFurniture(playerPos, 5f);
-
             if (closestFurniture == null)
             {
                 if (Global.code != null && Global.code.uiCombat != null)
@@ -31,12 +30,10 @@ namespace FurnitureAnimationsMod
             // 2. ИЩЕМ НАШУ УЛЬТИМАТИВНУЮ КНОПКУ НА СЦЕНЕ ДЛЯ ОПРЕДЕЛЕНИЯ РЕЖИМА
             Transform sdkBtnTrans = uiInstance.transform.Find("Button_SaveInteract");
             UnityEngine.UI.Text buttonTextComp = sdkBtnTrans?.GetComponentInChildren<UnityEngine.UI.Text>();
-
             string currentButtonText = buttonTextComp != null ? buttonTextComp.text : "";
 
             // Железно определяем режим на основе текста кнопки, который выбрал пользователь!
             bool isCustomBakeMode = currentButtonText == "Save Custom Pose for Furniture";
-
             string controllerName = "None";
             _lastCapturedIcon = null;
 
@@ -85,19 +82,23 @@ namespace FurnitureAnimationsMod
                                 $"Type: {(isCustomBakeMode ? "User-made Custom Pose" : "Pose/Animation from the game")}\n" +
                                 $"Identifier: {controllerName}";
 
-            // Передаем нашу текстуру напрямую без каких-либо проверок и приведений типов
-            Texture2D previewTexture = _lastCapturedIcon;
+            // ИСПРАВЛЕННЫЙ ВЫЗОВ ДИАЛОГА ОКНА СОХРАНЕНИЯ
 
-            // Вызываем статический метод напрямую через класс без .Instance
-            EditorUiManager.ShowNativeStyleDialog(
-                uiInstance,
-                promptText,
-                previewTexture,
-                () => {
-                    // При нажатии "ДА" передаем флаг isCustomBakeMode на физическую запись файлов
-                    SavePoseToDataFolder(furnitureName, controllerName, exactLocPos, exactLocRot, isCustomBakeMode, characterComp);
-                }
-            );
+            // Шаг A: Заполняем скрытые переменные игры, чтобы пробить валидацию "if (poseName != "")"
+            if (uiInstance != null)
+            {
+                uiInstance.poseName = "FurniturePose";
+                uiInstance.creatorName = "ModAuthor";
+            }
+
+            // Шаг Б: Вызываем статический метод напрямую через класс с 2 нужными аргументами
+            EditorUiManager.ShowNativeStyleDialog(promptText, () =>
+            {
+                Plugin.Log.LogWarning("[PoseExporter] Клик подтвержден пользователем. Запуск физической записи JSON...");
+
+                // При нажатии кнопки на кастомном UI передаем все параметры на физическую запись файлов
+                SavePoseToDataFolder(furnitureName, controllerName, exactLocPos, exactLocRot, isCustomBakeMode, characterComp);
+            });
         }
 
 
