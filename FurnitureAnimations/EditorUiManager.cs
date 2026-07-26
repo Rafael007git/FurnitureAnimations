@@ -135,55 +135,79 @@ namespace FurnitureAnimationsMod
                 var fontSample = _myCustomDialogInstance.GetComponentInChildren<UnityEngine.UI.Text>(true);
                 if (fontSample != null && fontSample.font != null) myTextComp.font = fontSample.font;
 
-                // 5. ИСПРАВЛЕННАЯ НАСТРОЙКА КНОПОК
-                var buttons = _myCustomDialogInstance.GetComponentsInChildren<UnityEngine.UI.Button>(true);
+                // 5. НАДЕЖНЫЙ РЕКУРСИВНЫЙ ПОИСК И ПЕРЕОБОРУДОВАНИЕ РОДНЫХ КНОПОК
+                UnityEngine.UI.Button nativeSaveBtn = null;
+                UnityEngine.UI.Button nativeCloseBtn = null;
 
-                if (buttons != null && buttons.Length >= 2)
+                // Достаем вообще все кнопки, которые игра создала внутри этого окна
+                var allButtonsInClone = _myCustomDialogInstance.GetComponentsInChildren<UnityEngine.UI.Button>(true);
+
+                foreach (var btn in allButtonsInClone)
                 {
-                    // ЛЕВАЯ КНОПКА (Темно-красная Save)
-                    var saveBtn = buttons[0];
-                    if (saveBtn != null)
+                    if (btn == null) continue;
+
+                    string btnName = btn.name.Trim();
+                    if (btnName == "Button Save")
                     {
-                        saveBtn.onClick.RemoveAllListeners();
-                        saveBtn.onClick.AddListener(() =>
-                        {
-                            Plugin.Log.LogInfo("[EditorUiManager] Клон: Сохранение подтверждено.");
-                            onConfirm?.Invoke();
-                            GameObject.Destroy(_myCustomDialogInstance);
-                        });
-
-                        // Возвращаем кнопку на её РОДНОЕ ванильное место (убираем некорректное расширение влево)
-                        // Оставляем цвет по умолчанию (темно-красный)
-                        var btnImg = saveBtn.GetComponent<UnityEngine.UI.Image>();
-                        if (btnImg != null) btnImg.color = Color.white; // Белый восстановит оригинальный спрайт кнопки игры
-
-                        var btnText = saveBtn.GetComponentInChildren<UnityEngine.UI.Text>(true);
-                        if (btnText != null)
-                        {
-                            btnText.gameObject.SetActive(true);
-                            btnText.text = "Save Furniture Pose";
-                            btnText.fontSize = 11;
-                            btnText.color = Color.white; // Белый текст идеально читается на темно-красном фоне
-
-                            // ЖЕЛЕЗНЫЙ ХАК ДЛЯ ОТОБРАЖЕНИЯ: Разрешаем тексту выходить за границы кнопки, 
-                            // чтобы он гарантированно отрендерился и не исчезал, если кнопка слишком узкая!
-                            btnText.horizontalOverflow = HorizontalWrapMode.Overflow;
-                            btnText.verticalOverflow = VerticalWrapMode.Overflow;
-                            btnText.alignment = TextAnchor.MiddleCenter; // Центрируем текст на кнопке
-                        }
+                        nativeSaveBtn = btn;
                     }
-
-                    // ПРАВАЯ КНОПКА (Крестик закрытия)
-                    var cancelBtn = buttons[1];
-                    if (cancelBtn != null)
+                    else if (btnName == "Btn Close (4)")
                     {
-                        cancelBtn.onClick.RemoveAllListeners();
-                        cancelBtn.onClick.AddListener(() =>
-                        {
-                            Plugin.Log.LogInfo("[EditorUiManager] Клон: Окно закрыто.");
-                            GameObject.Destroy(_myCustomDialogInstance);
-                        });
+                        nativeCloseBtn = btn;
                     }
+                }
+
+                // ПЕРЕКРАИВАЕМ КНОПКУ СОХРАНЕНИЯ ПОД НАШ МОД
+                if (nativeSaveBtn != null)
+                {
+                    Plugin.Log.LogWarning($"[EditorUiManager] Найдена родная кнопка '{nativeSaveBtn.gameObject.name}'. Перехватываем управление...");
+
+                    // Стираем старое поведение игры (чтобы не запускался ванильный скрипт)
+                    nativeSaveBtn.onClick.RemoveAllListeners();
+
+                    // Привязываем наше физическое сохранение файлов из PoseExporter
+                    nativeSaveBtn.onClick.AddListener(() =>
+                    {
+                        Plugin.Log.LogInfo("[EditorUiManager] Клик по кнопке сохранения подтвержден!");
+                        onConfirm?.Invoke(); // Вызов метода записи JSON
+                        GameObject.Destroy(_myCustomDialogInstance); // Закрываем окно
+                    });
+
+                    // Гарантируем, что она активна
+                    nativeSaveBtn.gameObject.SetActive(true);
+                    nativeSaveBtn.interactable = true;
+
+                    // Меняем текст прямо поверх нее
+                    var btnText = nativeSaveBtn.GetComponentInChildren<UnityEngine.UI.Text>(true);
+                    if (btnText != null)
+                    {
+                        btnText.gameObject.SetActive(true);
+                        btnText.text = "Save Furniture Pose"; // Наш кастомный текст
+                        btnText.fontSize = 11;
+                        btnText.color = Color.white;
+                        btnText.horizontalOverflow = HorizontalWrapMode.Overflow;
+                        btnText.verticalOverflow = VerticalWrapMode.Overflow;
+                        btnText.alignment = TextAnchor.MiddleCenter;
+                    }
+                }
+                else
+                {
+                    Plugin.Log.LogError("[EditorUiManager] Критическая ошибка: Не удалось обнаружить кнопку 'Button Save' в иерархии окна!");
+                }
+
+                // ПЕРЕКРАИВАЕМ КРЕСТИК ЗАКРЫТИЯ
+                if (nativeCloseBtn != null)
+                {
+                    nativeCloseBtn.onClick.RemoveAllListeners();
+                    nativeCloseBtn.onClick.AddListener(() =>
+                    {
+                        Plugin.Log.LogInfo("[EditorUiManager] Окно закрыто пользователем через крестик.");
+                        GameObject.Destroy(_myCustomDialogInstance);
+                    });
+                }
+                else
+                {
+                    Plugin.Log.LogError("[EditorUiManager] Критическая ошибка: Не удалось обнаружить крестик 'Btn Close (4)' в иерархии окна!");
                 }
 
                 // 6. ПОДСТАНОВКА ИКОНКИ
