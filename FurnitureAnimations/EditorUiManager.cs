@@ -230,15 +230,16 @@ namespace FurnitureAnimationsMod
                 btnTextRect.anchorMax = Vector2.one;
                 btnTextRect.offsetMin = btnTextRect.offsetMax = Vector2.zero;
 
-                // ==========================================================
-                // 🖼️ 6. ПОДСТАНОВКА ИКОНКИ ПРЕВЬЮ МЕБЕЛИ
-                // ==========================================================
+                // 6. ПОДСТАНОВКА ИКОНКИ В НАШЕМ UI
                 if (previewTexture != null)
                 {
                     var rawImageComp = _myCustomDialogInstance.GetComponentInChildren<UnityEngine.UI.RawImage>(true);
                     if (rawImageComp != null)
+                    {
                         rawImageComp.texture = previewTexture;
+                    }
                 }
+
 
                 _myCustomDialogInstance.SetActive(true);
             }

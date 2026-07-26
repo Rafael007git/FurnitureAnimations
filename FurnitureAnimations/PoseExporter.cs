@@ -78,7 +78,7 @@ namespace FurnitureAnimationsMod
                 }
             }
 
-            // Расчет локального смещения относительно мебели
+            // Расчет локального смещения относительно мебели (Как на стр 19)
             Vector3 exactLocPos = closestFurniture.transform.InverseTransformPoint(playerPos);
             Quaternion localQuaternion = Quaternion.Inverse(closestFurniture.transform.rotation) * uiInstance.selectedCharacter.rotation;
             Vector3 exactLocRot = localQuaternion.eulerAngles;
@@ -88,21 +88,41 @@ namespace FurnitureAnimationsMod
                                 $"Type: {(isCustomBakeMode ? "User-made Custom Pose" : "Pose/Animation from the game")}\n" +
                                 $"Identifier: {controllerName}";
 
-            // Шаг A: Заполняем скрытые переменные оригинального скрипта игры, чтобы пробить валидацию "if (poseName != "")"
+            // ==========================================================
+            // 🔀 ВОЗВРАТ РАЗДЕЛЕНИЯ ЛОГИКИ ИКОНОК
+            // ==========================================================
+            Texture2D finalPreview = null;
+
+            if (!isCustomBakeMode)
+            {
+                // Сценарий А: Готовая поза — вытаскиваем сохранённую иконку из игры
+                finalPreview = _lastCapturedIcon;
+                Plugin.Log.LogInfo("[PoseExporter] В диалог уходит оригинальная иконка ванильной позы.");
+            }
+            else
+            {
+                // Сценарий Б: Кастомная поза — генерируем свежий скриншот-иконку нашей камерой
+                var photoComp = uiInstance.GetComponent<TakePhotos>();
+                if (photoComp != null && Global.code != null && Global.code.freeCamera != null)
+                {
+                    Camera cam = Global.code.freeCamera.GetComponent<Camera>();
+                    finalPreview = photoComp.CameraCapture(cam, new Rect(0f, 0f, 300f, 300f), "");
+                    Plugin.Log.LogInfo("[PoseExporter] В диалог уходит свежий скриншот кастомной позы.");
+                }
+            }
+
+            // Шаг A: Заполняем переменные оригинального скрипта, чтобы пробить валидацию игры
             if (uiInstance != null)
             {
                 uiInstance.poseName = "FurniturePose";
                 uiInstance.creatorName = "ModAuthor";
             }
 
-            // Передаем нашу текстуру (которая теперь гарантированно содержит либо иконку позы, либо скриншот)
-            Texture2D previewTexture = _lastCapturedIcon;
-
-            // Шаг Б: Вызываем метод с наложенным UI (передаем uiInstance, promptText, previewTexture и экшен сохранения)
+            // Шаг Б: Вызываем диалог, передавая ИМЕННО КОРРЕКТНУЮ finalPreview
             EditorUiManager.ShowNativeStyleDialog(
                 uiInstance,
                 promptText,
-                previewTexture,
+                finalPreview, // Наш исправленный выбор!
                 () => {
                     // При нажатии запускаем физическую запись файлов конфига мода
                     SavePoseToDataFolder(furnitureName, controllerName, exactLocPos, exactLocRot, isCustomBakeMode, characterComp);
