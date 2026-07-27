@@ -214,10 +214,28 @@ namespace FurnitureAnimationsMod
                 string generatedPoseName = isCustom ? $"Custom Pose — {DateTime.Now:dd.MM HH:mm}" : $"Animation — {controller}";
                 string customAnimFileName = isCustom ? $"{furnitureName}_{timestamp}.json" : "";
 
+                // =========================================================================
+                // НАЧАЛО ИСПРАВЛЕНИЯ: Вычисляем точный тип позы для сохранения в JSON
+                // =========================================================================
+                string savedType = "Vanilla";
+
+                if (isCustom)
+                {
+                    savedType = "CustomJSON";
+                }
+                else if (CharacterStateHelper.IsPoseAnimationsInstalled &&
+                         controller == CharacterStateHelper.GetActiveModAnimationName(character))
+                {
+                    savedType = "PoseAnimationsMod"; // <--- Маркируем внешнюю JSON-анимацию
+                }
+                // =========================================================================
+                // КОНЕЦ ИСПРАВЛЕНИЯ
+                // =========================================================================
+
                 PoseData newPoseData = new PoseData
                 {
                     DisplayName = generatedPoseName,
-                    Type = isCustom ? "CustomJSON" : "Vanilla",
+                    Type = savedType, // <--- Записываем вычисленное значение вместо старого тернарного оператора
                     ControllerName = controller,
                     JsonFileName = customAnimFileName,
                     LocPosition = new Vector3Data { x = (float)Math.Round(pos.x, 4), y = (float)Math.Round(pos.y, 4), z = (float)Math.Round(pos.z, 4) },
@@ -281,6 +299,7 @@ namespace FurnitureAnimationsMod
                 Plugin.Log.LogError($"[PoseExporter] Критическая ошибка записи: {ex.Message}");
             }
         }
+
 
         // Обновленный метод поиска: теперь принимает максимальную дистанцию (радиус)
         public static Furniture FindClosestFurniture(Vector3 playerPosition, float maxDistance = 5f)

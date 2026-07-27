@@ -1,6 +1,8 @@
-﻿using UnityEngine;
+﻿using System;
+using System.Collections.Generic;
+using UnityEngine;
 using RuntimeGizmos;
-using BepInEx.Bootstrap; // Обязательно для Chainloader
+using BepInEx.Bootstrap;
 
 namespace FurnitureAnimationsMod
 {
@@ -13,12 +15,10 @@ namespace FurnitureAnimationsMod
 
     public static class CharacterStateHelper
     {
-        // Глобальный флаг: установлен ли мод PoseAnimations у пользователя?
         public static readonly bool IsPoseAnimationsInstalled;
 
         static CharacterStateHelper()
         {
-            // Безопасно проверяем BepInEx на наличие GUID нужного мода
             IsPoseAnimationsInstalled = Chainloader.PluginInfos.ContainsKey("aedenthorn.PoseAnimations");
         }
 
@@ -27,8 +27,6 @@ namespace FurnitureAnimationsMod
             if (character == null || character.anim == null)
                 return CharacterPoseState.CustomPoseJSON;
 
-            // --- ПРОВЕРКА СОСТОЯНИЯ 3: Внешний JSON плеер ---
-            // Вызываем чужой код ТОЛЬКО через изолированный мост, если мод реально установлен
             if (IsPoseAnimationsInstalled && PoseAnimationsBridge.IsModActiveAndPosing(character))
             {
                 return CharacterPoseState.PoseAnimationsModActive;
@@ -38,13 +36,11 @@ namespace FurnitureAnimationsMod
             bool isGizmoActive = TransformGizmo.transformGizmo_ != null &&
                                  TransformGizmo.transformGizmo_.runTransformGizmo;
 
-            // --- ПРОВЕРКА СОСТОЯНИЯ 2: Ручная сборка (Гизмо) ---
             if (character.anim.enabled == false || currentCtrlName.Contains("custom") || isGizmoActive)
             {
                 return CharacterPoseState.CustomPoseJSON;
             }
 
-            // --- ПРОВЕРКА СОСТОЯНИЯ 1: Родной пресет игры ---
             bool isDefaultIdle = currentCtrlName.Contains("idle") ||
                                  currentCtrlName.Contains("unarmed") ||
                                  string.IsNullOrEmpty(currentCtrlName);
@@ -59,15 +55,11 @@ namespace FurnitureAnimationsMod
 
         public static string GetActiveModAnimationName(CharacterCustomization character)
         {
-            // Если мода нет, возвращаем заглушку, чужие типы не трогаем
             if (!IsPoseAnimationsInstalled) return "UnknownModAnimation";
             return PoseAnimationsBridge.GetAnimName(character);
         }
     }
 
-    // Изолированный внутренний класс-мост. 
-    // Среда выполнения Mono / .NET никогда не станет компилировать или загружать этот класс в память,
-    // пока к нему не обратятся физически из кода выше.
     internal static class PoseAnimationsBridge
     {
         [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
@@ -103,6 +95,53 @@ namespace FurnitureAnimationsMod
             }
             catch { }
             return "UnknownModAnimation";
+        }
+
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        public static void PlayExternalAnimation(CharacterCustomization character, string animationName)
+        {
+            try
+            {
+                // 1. Проверяем, существует ли вообще такая анимация в базе данных мода (строка 675)
+                if (PoseAnimations.BepInExPlugin.animationDict != null &&
+                    PoseAnimations.BepInExPlugin.animationDict.ContainsKey(animationName))
+                {
+                    Plugin.Log.LogInfo($"[PoseBridge] Анимация '{animationName}' верифицирована. Ищем её игровой объект-кнопку...");
+
+                    // 2. Ищем сгенерированный автором трансформ позы в глобальном реестре игры (строка 355)
+                    if (RM.code != null && RM.code.allFreePoses != null)
+                    {
+                        Transform targetPoseTransform = null;
+                        foreach (Transform t in RM.code.allFreePoses.items)
+                        {
+                            if (t != null && t.name == animationName)
+                            {
+                                targetPoseTransform = t;
+                                break;
+                            }
+                        }
+
+                        // 3. Эмулируем клик игрока для бесшовного запуска! (строка 359)
+                        if (targetPoseTransform != null)
+                        {
+                            Plugin.Log.LogWarning($"[PoseBridge] Инициализируем принудительный нативный старт анимации через PoseButtonClicked!");
+                            PoseAnimations.BepInExPlugin.PoseButtonClicked(targetPoseTransform);
+                        }
+                        else
+                        {
+                            Plugin.Log.LogError($"[PoseBridge] Сбой: Объект позы '{animationName}' не зарегистрирован в RM.code.allFreePoses!");
+                        }
+                    }
+                }
+                else
+                {
+                    Plugin.Log.LogError($"[PoseBridge] Сбой: Анимация '{animationName}' отсутствует в animationDict мода!");
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"[PoseBridge] Критический краш при вызове PoseButtonClicked: {ex.Message}");
+            }
         }
     }
 }
