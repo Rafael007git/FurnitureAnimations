@@ -230,15 +230,53 @@ namespace FurnitureAnimationsMod
                 btnTextRect.anchorMax = Vector2.one;
                 btnTextRect.offsetMin = btnTextRect.offsetMax = Vector2.zero;
 
-                // 6. ПОДСТАНОВКА ИКОНКИ В НАШЕМ UI
+                // ==========================================================
+                // 🖼️ 6. СОЗДАНИЕ КАСТОМНОГО ПРЕВЬЮ ДЛЯ ЗАЩИТЫ ОТ СКРИНШОТОВ ИГРЫ
+                // ==========================================================
                 if (previewTexture != null)
                 {
-                    var rawImageComp = _myCustomDialogInstance.GetComponentInChildren<UnityEngine.UI.RawImage>(true);
-                    if (rawImageComp != null)
+                    // Находим оригинальный RawImage игры
+                    var oldRawImage = _myCustomDialogInstance.GetComponentInChildren<UnityEngine.UI.RawImage>(true);
+
+                    // Создаем НАШ полностью независимый RawImage для превью
+                    GameObject customPreviewGo = new GameObject("Mod_UltimatePreviewOverlay", typeof(RectTransform), typeof(UnityEngine.UI.RawImage));
+
+                    if (oldRawImage != null)
                     {
-                        rawImageComp.texture = previewTexture;
+                        // Сажаем на того же родителя, где висело оригинальное превью игры
+                        customPreviewGo.transform.SetParent(oldRawImage.transform.parent, false);
+
+                        // Копируем координаты и размеры один в один, чтобы встать ровно на его место
+                        RectTransform targetPreviewRect = customPreviewGo.GetComponent<RectTransform>();
+                        RectTransform sourcePreviewRect = oldRawImage.GetComponent<RectTransform>();
+
+                        targetPreviewRect.anchorMin = sourcePreviewRect.anchorMin;
+                        targetPreviewRect.anchorMax = sourcePreviewRect.anchorMax;
+                        targetPreviewRect.pivot = sourcePreviewRect.pivot;
+                        targetPreviewRect.anchoredPosition = sourcePreviewRect.anchoredPosition;
+                        targetPreviewRect.sizeDelta = sourcePreviewRect.sizeDelta;
+
+                        // Скрываем ванильный RawImage игры, чтобы он не моргал скриншотами на заднем плане
+                        oldRawImage.gameObject.SetActive(false);
                     }
+                    else
+                    {
+                        // Подстраховка по координатам правой панели клона, если старый компонент не нашелся
+                        customPreviewGo.transform.SetParent(_myCustomDialogInstance.transform, false);
+                        RectTransform targetPreviewRect = customPreviewGo.GetComponent<RectTransform>();
+                        targetPreviewRect.anchorMin = new Vector2(0.05f, 0.35f);
+                        targetPreviewRect.anchorMax = new Vector2(0.32f, 0.90f);
+                        targetPreviewRect.offsetMin = targetPreviewRect.offsetMax = Vector2.zero;
+                    }
+
+                    // Заливаем в нашу защищенную плашку правильную текстуру позы!
+                    UnityEngine.UI.RawImage myPreviewComp = customPreviewGo.GetComponent<UnityEngine.UI.RawImage>();
+                    myPreviewComp.texture = previewTexture;
+                    customPreviewGo.SetActive(true);
+
+                    Plugin.Log.LogInfo($"[EditorUiManager] Защищенное превью создано. Передана иконка позы размером: {previewTexture.width}x{previewTexture.height}");
                 }
+
 
 
                 _myCustomDialogInstance.SetActive(true);
