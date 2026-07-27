@@ -3,6 +3,7 @@ using System.IO;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using PoseAnimations; // Прямая ссылка
 
 namespace FurnitureAnimationsMod
 {
@@ -28,162 +29,132 @@ namespace FurnitureAnimationsMod
             string furnitureName = closestFurniture.name.Replace("(Clone)", "").Trim();
             CharacterCustomization characterComp = uiInstance.selectedCharacter.GetComponent<CharacterCustomization>();
 
-            // 2. ИЩЕМ НАШУ УЛЬТИМАТИВНУЮ КНОПКУ НА СЦЕНЕ ДЛЯ ОПРЕДЕЛЕНИЯ РЕЖИМА
-            Transform sdkBtnTrans = uiInstance.transform.Find("Button_SaveInteract");
-            UnityEngine.UI.Text buttonTextComp = sdkBtnTrans?.GetComponentInChildren<UnityEngine.UI.Text>();
-            string currentButtonText = buttonTextComp != null ? buttonTextComp.text : "";
-
-            // Железно определяем режим на основе текста кнопки, который выбрал пользователь!
-            bool isCustomBakeMode = currentButtonText == "Save Custom Pose for Furniture";
-
-            string controllerName = "None";
             _lastCapturedIcon = null;
 
-            Plugin.Log.LogWarning($"[DEBUG_ICON] === СТАРТ ТРАССИРОВКИ ИКОНКИ ===");
-            Plugin.Log.LogInfo($"[DEBUG_ICON] Выбранный режим: isCustomBakeMode = {isCustomBakeMode}");
-            Plugin.Log.LogInfo($"[DEBUG_ICON] Текст кнопки на сцене: '{currentButtonText}'");
+            // 2. ИСПОЛЬЗУЕМ НАШ СТРОГИЙ ДЕТЕКТОР ДЛЯ ОПРЕДЕЛЕНИЯ ТРОЙНОГО СОСТОЯНИЯ
+            CharacterPoseState currentState = CharacterStateHelper.GetCurrentState(characterComp);
 
-            if (!isCustomBakeMode)
-            {
-                // Сценарий А: Link Preset Pose (Зеленый режим кнопки)
-                controllerName = (characterComp?.anim?.runtimeAnimatorController?.name ?? "None");
-                Plugin.Log.LogWarning($"[DEBUG_ICON] Запуск Сценария А (Preset Link). Целевое имя контроллера: '{controllerName}'");
-
-                // Проверяем доступность игровых реестров
-                if (RM.code == null) Plugin.Log.LogError("[DEBUG_ICON] Ошибка: RM.code равен null!");
-                else if (RM.code.allFreePoses == null) Plugin.Log.LogError("[DEBUG_ICON] Ошибка: RM.code.allFreePoses равен null!");
-                else
-                {
-                    Plugin.Log.LogInfo($"[DEBUG_ICON] Успешно зашли в RM.allFreePoses. Всего элементов для перебора: {RM.code.allFreePoses.items.Count}");
-
-                    int checkedPosesCount = 0;
-                    bool foundMatch = false;
-
-                    foreach (Transform t in RM.code.allFreePoses.items)
-                    {
-                        if (t == null) continue;
-                        checkedPosesCount++;
-
-                        var p = t.GetComponent<global::Pose>();
-                        if (p == null) continue;
-
-                        string currentPoseName = p.name ?? "NULL";
-                        string currentPoseCtrlName = p.controller != null ? p.controller.name : "NULL";
-
-                        // Спамим в лог каждые несколько поз, чтобы увидеть реальные имена контроллеров в игре
-                        if (checkedPosesCount <= 5 || currentPoseCtrlName.ToLower() == controllerName.ToLower())
-                        {
-                            Plugin.Log.LogInfo($"    -> Проверка позы №{checkedPosesCount}: Имя='{currentPoseName}' | Контроллер в игре='{currentPoseCtrlName}'");
-                        }
-
-                        if (p.controller != null && p.controller.name == controllerName)
-                        {
-                            Plugin.Log.LogWarning($"[DEBUG_ICON] 🎉 СОВПАДЕНИЕ НАЙДЕНО! Поза: '{currentPoseName}'. Извлекаем родную иконку...");
-                            _lastCapturedIcon = p.icon;
-
-                            if (_lastCapturedIcon == null) Plugin.Log.LogError("[DEBUG_ICON] Критично: p.icon у этой позы равен null!");
-                            else Plugin.Log.LogInfo($"[DEBUG_ICON] Успешно записали p.icon в _lastCapturedIcon. Размеры: {_lastCapturedIcon.width}x{_lastCapturedIcon.height}");
-
-                            foundMatch = true;
-                            break;
-                        }
-                    }
-
-                    if (!foundMatch)
-                    {
-                        Plugin.Log.LogError($"[DEBUG_ICON] ❌ Сбой: Цикл завершился, но ни один контроллер в игре не совпал с целевым '{controllerName}'!");
-                    }
-                }
-            }
-            else
-            {
-                // ==========================================================
-                // 🛠️ СЦЕНАРИЙ Б: РЕЖИМ ГИЗМО — Ручная сборка позы (Ваш родной код)
-                // ==========================================================
-                controllerName = "CustomJSON";
-                Plugin.Log.LogWarning("[PoseExporter] Запуск Сценария Б (Режим Гизмо). Сейчас будет скриншот!");
-
-                var photoComp = uiInstance.GetComponent<TakePhotos>();
-                if (photoComp != null && Global.code != null && Global.code.freeCamera != null)
-                {
-                    Camera cam = Global.code.freeCamera.GetComponent<Camera>();
-                    _lastCapturedIcon = photoComp.CameraCapture(cam, new Rect(0f, 0f, 300f, 300f), "");
-                }
-            }
-
-            // ==========================================================
-            // 🔀 ТРОЙНОЕ РАЗДЕЛЕНИЕ НАШИМ СОБСТВЕННЫМ ДЕТЕКТОРОМ
-            // ==========================================================
-
-            // Получаем реальное техническое имя анимации персонажа из его контроллера
-            string rawControllerName = (characterComp?.anim?.runtimeAnimatorController?.name ?? "None");
-
-            // 🕵️ Проверяем: JSON или Unity? 
-            // Если имя содержит .json, "JSON", или характерные префиксы кастомных файлов из лога ("Dance", "A_")
-            bool isAnimatedPoseMod = rawControllerName.EndsWith(".json") ||
-                                     rawControllerName.Contains("JSON") ||
-                                     rawControllerName.StartsWith("Dance") ||
-                                     rawControllerName.StartsWith("A_");
-
-            controllerName = rawControllerName;
-            string buttonText = "Link Preset Pose for Furniture"; // Тип 1: Ванильная Unity-поза
+            string controllerName = "None";
+            string buttonText = "Link Preset Pose for Furniture";
             string typeText = "Pose/Animation from the game";
-            Texture2D finalPreview = _lastCapturedIcon; // По умолчанию берем то, что в памяти
+            bool isCustomBakeMode = false;
 
-            if (isCustomBakeMode)
+            Plugin.Log.LogWarning($"[DEBUG_ICON] === СТАРТ ТРАССИРОВКИ ИКОНКИ (ОБНОВЛЕННЫЙ) ===");
+            Plugin.Log.LogInfo($"[DEBUG_ICON] Вычисленное состояние куклы: {currentState}");
+
+            switch (currentState)
             {
-                // 🛠️ ТИП 2: Гизмо (Ручное запекание костей)
-                controllerName = "CustomJSON";
-                buttonText = "Save Custom Pose for Furniture";
-                typeText = "User-made Custom Pose";
+                case CharacterPoseState.PoseAnimationsModActive:
+                    // ==========================================================
+                    // ТИП 3: Внешняя JSON-анимация (мод aedenthorn) 💃
+                    // ==========================================================
+                    isCustomBakeMode = false;
+                    controllerName = CharacterStateHelper.GetActiveModAnimationName(characterComp);
+                    buttonText = "Link Animated Pose for Furniture";
+                    typeText = "External Mod Animation (AnimatedPose)";
 
-                // Делаем фотопревью камерой, так как готовой иконки у гизмо нет
-                var photoComp = uiInstance.GetComponent<TakePhotos>();
-                if (photoComp != null && Global.code != null && Global.code.freeCamera != null)
-                {
-                    Camera cam = Global.code.freeCamera.GetComponent<Camera>();
-                    finalPreview = photoComp.CameraCapture(cam, new Rect(0f, 0f, 300f, 300f), "");
-                    _lastCapturedIcon = finalPreview;
-                }
-            }
-            else if (isAnimatedPoseMod)
-            {
-                // 💃 ТИП 3: Иконка -> JSON (Кастомная анимация из AnimatedPose)
-                buttonText = "Link Animated Pose for Furniture"; // Наша новая надпись на сцене!
-                typeText = "External Mod Animation (AnimatedPose)";
+                    Plugin.Log.LogWarning($"[PoseExporter] Детектор: Поймали JSON-анимацию '{controllerName}'! Ищем её легальную иконку...");
 
-                Plugin.Log.LogWarning($"[PoseExporter] Детектор: Поймали JSON-анимацию '{controllerName}'! Ищем её легальную иконку...");
-
-                // Так как AnimatedPose легально пушит свои трансформы в RM.code.allFreePoses (стр 15 PDF),
-                // мы вытаскиваем иконку танца прямо оттуда по точному совпадению имени!
-                if (RM.code != null && RM.code.allFreePoses != null)
-                {
-                    foreach (Transform t in RM.code.allFreePoses.items)
+                    // Извлекаем иконку танца из каталога RM по точному совпадению имени объекта
+                    if (RM.code != null && RM.code.allFreePoses != null)
                     {
-                        if (t == null) continue;
-                        if (t.name == controllerName) // В модовых кнопках имя объекта равно названию анимации!
+                        foreach (Transform t in RM.code.allFreePoses.items)
                         {
-                            var p = t.GetComponent<global::Pose>();
-                            if (p != null && p.icon != null)
+                            if (t == null) continue;
+                            if (t.name == controllerName)
                             {
-                                finalPreview = p.icon;
-                                _lastCapturedIcon = p.icon;
-                                Plugin.Log.LogInfo($"[PoseExporter] 🎉 Легальная иконка мода для '{controllerName}' успешно извлечена из каталога!");
+                                var p = t.GetComponent<global::Pose>();
+                                if (p != null && p.icon != null)
+                                {
+                                    _lastCapturedIcon = p.icon;
+                                    Plugin.Log.LogInfo($"[PoseExporter] Легальная 🎉 иконка мода для '{controllerName}' успешно извлечена из каталога!");
+                                }
+                                break;
                             }
-                            break;
                         }
                     }
-                }
+                    break;
+
+                case CharacterPoseState.GameAnimatorActive:
+                    // ==========================================================
+                    // ТИП 1: Иконка -> Unity (Ванильная поза/пресет игры) 🎮
+                    // ==========================================================
+                    isCustomBakeMode = false;
+                    controllerName = characterComp?.anim?.runtimeAnimatorController?.name ?? "None";
+
+                    // Убираем рантайм-суффикс Юнити, если он прицепился
+                    if (controllerName.EndsWith("(Instance)"))
+                        controllerName = controllerName.Replace("(Instance)", "").Trim();
+
+                    buttonText = "Link Preset Pose for Furniture";
+                    typeText = "Pose/Animation from the game";
+
+                    Plugin.Log.LogWarning($"[DEBUG_ICON] Запуск Сценария А (Preset Link). Целевое имя контроллера: '{controllerName}'");
+
+                    if (RM.code == null) Plugin.Log.LogError("[DEBUG_ICON] Ошибка: RM.code равен null!");
+                    else if (RM.code.allFreePoses == null) Plugin.Log.LogError("[DEBUG_ICON] Ошибка: RM.code.allFreePoses равен null!");
+                    else
+                    {
+                        int checkedPosesCount = 0;
+                        bool foundMatch = false;
+
+                        foreach (Transform t in RM.code.allFreePoses.items)
+                        {
+                            if (t == null) continue;
+                            checkedPosesCount++;
+
+                            var p = t.GetComponent<global::Pose>();
+                            if (p == null) continue;
+
+                            string currentPoseName = p.name ?? "NULL";
+                            string currentPoseCtrlName = p.controller != null ? p.controller.name : "NULL";
+
+                            if (checkedPosesCount <= 5 || currentPoseCtrlName.ToLower() == controllerName.ToLower())
+                            {
+                                Plugin.Log.LogInfo($" -> Проверка позы №{checkedPosesCount}: Имя='{currentPoseName}' | Контроллер в игре='{currentPoseCtrlName}'");
+                            }
+
+                            if (p.controller != null && p.controller.name == controllerName)
+                            {
+                                Plugin.Log.LogWarning($"[DEBUG_ICON] СОВПАДЕНИЕ 🎉 НАЙДЕНО! Поза: '{currentPoseName}'. Извлекаем родную иконку...");
+                                _lastCapturedIcon = p.icon;
+                                foundMatch = true;
+                                break;
+                            }
+                        }
+
+                        if (!foundMatch)
+                        {
+                            Plugin.Log.LogError($"[DEBUG_ICON] Сбой: Ни один контроллер в игре не совпал с целевым '{controllerName}'!");
+                        }
+                    }
+                    break;
+
+                case CharacterPoseState.CustomPoseJSON:
+                    // ==========================================================
+                    // ТИП 2: Гизмо (Ручное запекание костей Диорамы) 🛠
+                    // ==========================================================
+                    isCustomBakeMode = true;
+                    controllerName = "CustomJSON";
+                    buttonText = "Save Custom Pose for Furniture";
+                    typeText = "User-made Custom Pose";
+
+                    Plugin.Log.LogWarning("[PoseExporter] Запуск Сценария Б (Режим Гизмо). Сейчас будет скриншот!");
+
+                    var photoComp = uiInstance.GetComponent<TakePhotos>();
+                    if (photoComp != null && Global.code != null && Global.code.freeCamera != null)
+                    {
+                        Camera cam = Global.code.freeCamera.GetComponent<Camera>();
+                        _lastCapturedIcon = photoComp.CameraCapture(cam, new Rect(0f, 0f, 300f, 300f), "");
+                    }
+                    break;
             }
-            else
-            {
-                // 🎮 ТИП 1: Иконка -> Unity (Ванильная поза игры)
-                Plugin.Log.LogInfo($"[PoseExporter] Обнаружена ванильная Unity-поза. Передаем оригинальную иконку для '{controllerName}'.");
-            }
+
+            Texture2D finalPreview = _lastCapturedIcon;
 
             // Динамически меняем текст нашей кнопки интерактива на сцене игры
-            sdkBtnTrans = uiInstance.transform.Find("Button_SaveInteract");
-            buttonTextComp = sdkBtnTrans?.GetComponentInChildren<UnityEngine.UI.Text>();
+            Transform sdkBtnTrans = uiInstance.transform.Find("Button_SaveInteract");
+            UnityEngine.UI.Text buttonTextComp = sdkBtnTrans?.GetComponentInChildren<UnityEngine.UI.Text>();
             if (buttonTextComp != null)
             {
                 buttonTextComp.text = buttonText;
@@ -206,7 +177,7 @@ namespace FurnitureAnimationsMod
                 uiInstance.creatorName = "ModAuthor";
             }
 
-            // Шаг Б: Вызываем наше отлаженное диалоговое окно (передаем promptText и ИМЕННО КОРРЕКТНУЮ finalPreview)
+            // Шаг Б: Вызываем наше отлаженное диалоговое окно
             EditorUiManager.ShowNativeStyleDialog(
                 uiInstance,
                 promptText,
@@ -216,7 +187,6 @@ namespace FurnitureAnimationsMod
                 }
             );
         }
-
 
         private static void SavePoseToDataFolder(string furnitureName, string controller, Vector3 pos, Vector3 rot, bool isCustom, CharacterCustomization character)
         {
@@ -240,7 +210,7 @@ namespace FurnitureAnimationsMod
 
                 if (configToSave.InteractionPoses == null) configToSave.InteractionPoses = new List<PoseData>();
 
-                // Исправлено: Красивое имя в списке
+                // Красивое имя в списке
                 string generatedPoseName = isCustom ? $"Custom Pose — {DateTime.Now:dd.MM HH:mm}" : $"Animation — {controller}";
                 string customAnimFileName = isCustom ? $"{furnitureName}_{timestamp}.json" : "";
 
@@ -263,11 +233,11 @@ namespace FurnitureAnimationsMod
                     File.WriteAllText(customAnimFullPath, bonesJson);
                 }
 
-                // ИСПРАВЛЕНО: Сохранение иконки строго в \FurnitureConfigs\Icons\ с защитой от ванильного краша
+                // Сохранение иконки строго в \FurnitureConfigs\Icons\ с защитой от ванильного краша
                 if (_lastCapturedIcon != null)
                 {
                     string iconName = isCustom ? $"{furnitureName}_{timestamp}.png" : $"{controller}.png";
-                    string iconFullPath = Path.Combine(ConfigManager.IconsPath, iconName); // Путь автоматически подхватит FurnitureConfigs\Icons!
+                    string iconFullPath = Path.Combine(ConfigManager.IconsPath, iconName);
 
                     bool canWriteTexture = true;
                     try
@@ -296,11 +266,9 @@ namespace FurnitureAnimationsMod
                 ConfigManager.LoadedConfigs[furnitureName] = configToSave;
 
                 // ХИРУРГИЧЕСКИЙ ВЫЗОВ МГНОВЕННОГО РЕФРЕША:
-                // Ищем объект мебели, который мы сейчас редактировали на сцене Unity
                 Furniture currentPropOnScene = FindClosestFurniture(character.transform.position, 5f);
                 if (currentPropOnScene != null)
                 {
-                    // Вызываем наш метод пересборки кнопок интерактива!
                     FurnitureInjectorPatch.RebuildFurniturePoses(currentPropOnScene);
                     Plugin.Log.LogWarning($"[PoseExporter] Рантайм-рефреш меню интерактива для {furnitureName} выполнен успешно!");
                 }
@@ -351,7 +319,7 @@ namespace FurnitureAnimationsMod
                         if (found != null) return found;
                     }
                     return null;
-                } // <--- ЗДЕСЬ ФУНКЦИЯ ПОИСКА ПРАВИЛЬНО ЗАКРЫВАЕТСЯ!
+                } // <--- Функция поиска правильно закрывается
 
                 // Пробегаемся строго по нашему эталонному списку имен из реестра Диорамы
                 foreach (string targetName in DioramaConstants.AnatomyBoneRegistry)
@@ -393,7 +361,7 @@ namespace FurnitureAnimationsMod
                     }
                 }
 
-                // Теперь этот return честно возвращает JSON из самого метода ExportBonesToCustomJson!
+                // Этот return честно возвращает JSON из самого метода ExportBonesToCustomJson!
                 return Newtonsoft.Json.JsonConvert.SerializeObject(bakedPoseData, Newtonsoft.Json.Formatting.Indented);
             }
             catch (Exception ex)
@@ -401,10 +369,6 @@ namespace FurnitureAnimationsMod
                 Plugin.Log.LogError($"[BonesBake] Ошибка: {ex.Message}");
                 return "{}";
             }
-
-            return "{}";
         }
-
     }
 }
-

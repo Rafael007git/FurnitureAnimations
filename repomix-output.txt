@@ -49,12 +49,14 @@ Directory Structure
 .gitignore
 .repomixignore
 FurnitureAnimations.slnx
+FurnitureAnimations/AnimatedPosePatch.cs
 FurnitureAnimations/ConfigManager.cs
 FurnitureAnimations/DioramaConstants.cs
 FurnitureAnimations/EditorUiManager.cs
 FurnitureAnimations/FurnitureAnimations.csproj
 FurnitureAnimations/FurnitureInjectorPatch.cs
 FurnitureAnimations/FurnitureSdkButtonController.cs
+FurnitureAnimations/LogOvertake.cs
 FurnitureAnimations/Models.cs
 FurnitureAnimations/Plugin.cs
 FurnitureAnimations/PoseExporter.cs
@@ -592,6 +594,87 @@ namespace FurnitureAnimationsMod
 }
 
 ================
+File: FurnitureAnimations/LogOvertake.cs
+================
+using BepInEx.Logging;
+using FurnitureAnimationsMod;
+using System.Linq;
+using UnityEngine;
+
+namespace FurnitureAnimations
+{
+    // 🕵️ ГЛОБАЛЬНЫЙ ПЕРЕХВАТЧИК ЛОГОВ БЕЗ НАГРУЗКИ НА UPDATE
+    public class AnimatedPoseLogListener : ILogListener
+    {
+        public void LogEvent(object sender, LogEventArgs eventArgs)
+        {
+            try
+            {
+                // Нам интересны только информационные или предупреждающие сообщения
+                if (eventArgs.Level != LogLevel.Info && eventArgs.Level != LogLevel.Warning && eventArgs.Level != LogLevel.Message) return;
+
+                string logMessage = eventArgs.Data?.ToString();
+                if (string.IsNullOrEmpty(logMessage)) return;
+
+                // 🎯 ЛОВИМ ТЕКСТ ЗЛОДЕЯ ИЗ ВАШЕГО ЛОГА!
+                if (logMessage.Contains("Setting Player to animation"))
+                {
+                    // Вытаскиваем имя анимации. Из строки "Setting Player to animation DanceAround01" 
+                    // мы забираем всё, что идет после слова "animation "
+                    string keyword = "animation ";
+                    int index = logMessage.IndexOf(keyword);
+                    if (index == -1) return;
+
+                    string animationName = logMessage.Substring(index + keyword.Length).Trim();
+                    Plugin.Log.LogWarning($"[LOG_OVERTAKE] 🎉 Успешно перехвачен лог AnimatedPose! Включен танец: '{animationName}'");
+
+                    // 1. Ищем легальную иконку этого танца в каталоге игры
+                    if (RM.code != null && RM.code.allFreePoses != null)
+                    {
+                        foreach (Transform t in RM.code.allFreePoses.items)
+                        {
+                            if (t != null && t.name == animationName)
+                            {
+                                var p = t.GetComponent<global::Pose>();
+                                if (p != null && p.icon != null)
+                                {
+                                    // Записываем иконку в скрытое поле PoseExporter через рефлексию
+                                    var field = typeof(PoseExporter).GetField("_lastCapturedIcon", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+                                    field?.SetValue(null, p.icon);
+                                    Plugin.Log.LogInfo($"[LOG_OVERTAKE] Легальная иконка для '{animationName}' успешно сохранена в память.");
+                                }
+                                break;
+                            }
+                        }
+                    }
+
+                    // 2. Мгновенно перекрашиваем кнопку интерактива на сцене
+                    var uiFreePose = GameObject.FindObjectOfType<UIFreePose>();
+                    if (uiFreePose != null)
+                    {
+                        Transform sdkBtnTrans = uiFreePose.transform.Find("Button_SaveInteract");
+                        var buttonTextComp = sdkBtnTrans?.GetComponentInChildren<UnityEngine.UI.Text>();
+                        var buttonImageComp = sdkBtnTrans?.GetComponent<UnityEngine.UI.Image>();
+
+                        if (buttonTextComp != null) buttonTextComp.text = "Link Animated Pose for Furniture";
+                        if (buttonImageComp != null) buttonImageComp.color = new Color(0.6f, 0.2f, 0.8f, 1f); // Фиолетовый
+
+                        Plugin.Log.LogInfo("[LOG_OVERTAKE] Кнопка интерактива успешно переведена в режим танца.");
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                Plugin.Log.LogError($"[LOG_OVERTAKE] Ошибка разбора строки лога: {ex}");
+            }
+        }
+
+        // Обязательные методы интерфейса ILogListener (просто оставляем пустыми)
+        public void Dispose() { }
+    }
+}
+
+================
 File: FurnitureAnimations/Properties/AssemblyInfo.cs
 ================
 using System.Reflection;
@@ -682,6 +765,78 @@ File: FurnitureAnimations.slnx
 <Solution>
   <Project Path="FurnitureAnimations/FurnitureAnimations.csproj" Id="a4cc8495-9abb-49f7-9fb8-1df40af0c220" />
 </Solution>
+
+================
+File: FurnitureAnimations/AnimatedPosePatch.cs
+================
+using FurnitureAnimationsMod;
+using HarmonyLib;
+using UnityEngine;
+
+namespace FurnitureAnimations
+{
+    // 🕵️ УЛЬТИМАТИВНЫЙ ПЕРЕХВАТ КЛИКА В ЯДРЕ ANIMATED POSE
+    // Патчим метод, который выводит строчку "Setting Player to animation..."
+    [HarmonyPatch("PoseAnimations.BepInExPlugin", "SetToAnimation")]
+    [HarmonyPatch(new System.Type[] { typeof(string), typeof(CharacterCustomization) })]
+
+    public static class AnimatedPose_Method_Overtake
+    {
+        public static void Postfix(string name, CharacterCustomization character)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(name) || character == null) return;
+
+                Plugin.Log.LogWarning($"[HARMONY_OVERTAKE] Поймали активацию танца: '{name}' на персонаже {character.name}");
+
+                // 1. Находим объект позы в каталоге игры, чтобы забрать легальную иконку мода
+                if (RM.code != null && RM.code.allFreePoses != null)
+                {
+                    foreach (Transform t in RM.code.allFreePoses.items)
+                    {
+                        if (t != null && t.name == name)
+                        {
+                            var p = t.GetComponent<global::Pose>();
+                            if (p != null && p.icon != null)
+                            {
+                                // Записываем иконку в наше скрытое поле через рефлексию
+                                var field = typeof(PoseExporter).GetField("_lastCapturedIcon", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+                                field?.SetValue(null, p.icon);
+                                Plugin.Log.LogInfo($"[HARMONY_OVERTAKE] Легальная иконка для '{name}' успешно перехвачена.");
+                            }
+                            break;
+                        }
+                    }
+                }
+
+                // 2. Мгновенно меняем текст и цвет нашей кнопки интерактива на сцене
+                var uiFreePose = GameObject.FindObjectOfType<UIFreePose>();
+                if (uiFreePose != null)
+                {
+                    Transform sdkBtnTrans = uiFreePose.transform.Find("Button_SaveInteract");
+                    var buttonTextComp = sdkBtnTrans?.GetComponentInChildren<UnityEngine.UI.Text>();
+                    var buttonImageComp = sdkBtnTrans?.GetComponent<UnityEngine.UI.Image>();
+
+                    if (buttonTextComp != null)
+                    {
+                        buttonTextComp.text = "Link Animated Pose for Furniture";
+                    }
+                    if (buttonImageComp != null)
+                    {
+                        // Вспыхиваем красивым фиолетовым цветом мода в рантайме!
+                        buttonImageComp.color = new Color(0.6f, 0.2f, 0.8f, 1f);
+                    }
+                    Plugin.Log.LogInfo("[HARMONY_OVERTAKE] Кнопка на сцене мгновенно переведена в режим 'Link Animated Pose'.");
+                }
+            }
+            catch (System.Exception ex)
+            {
+                Plugin.Log.LogError($"[HARMONY_OVERTAKE] Ошибка перехвата в SetToAnimation: {ex}");
+            }
+        }
+    }
+}
 
 ================
 File: FurnitureAnimations/Models.cs
@@ -1104,6 +1259,9 @@ File: FurnitureAnimations/FurnitureAnimations.csproj
       <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\Newtonsoft.Json.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <Reference Include="PoseAnimations">
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\BepInEx\plugins\PoseAnimations.dll</HintPath>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Xml.Linq" />
@@ -1135,11 +1293,13 @@ File: FurnitureAnimations/FurnitureAnimations.csproj
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AnimatedPosePatch.cs" />
     <Compile Include="ConfigManager.cs" />
     <Compile Include="DioramaConstants.cs" />
     <Compile Include="EditorUiManager.cs" />
     <Compile Include="FurnitureInjectorPatch.cs" />
     <Compile Include="FurnitureSdkButtonController.cs" />
+    <Compile Include="LogOvertake.cs" />
     <Compile Include="Models.cs" />
     <Compile Include="Plugin.cs" />
     <Compile Include="PoseExporter.cs" />
@@ -1147,6 +1307,68 @@ File: FurnitureAnimations/FurnitureAnimations.csproj
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
+
+================
+File: FurnitureAnimations/Plugin.cs
+================
+using BepInEx;
+using BepInEx.Logging;
+using FurnitureAnimations;
+using HarmonyLib;
+
+namespace FurnitureAnimationsMod
+{
+    // Проверь, чтобы имя исполняемого файла игры было написано без ошибок
+    [BepInPlugin(PluginGuid, PluginName, PluginVersion)]
+    [BepInProcess("She Will Punish Them.exe")]
+    public class Plugin : BaseUnityPlugin // <-- КРИТИЧНО: Класс ОБЯЗАТЕЛЬНО должен быть public и наследоваться от BaseUnityPlugin
+    {
+        public const string PluginGuid = "com.lorifel007.furnitureanimations";
+        public const string PluginName = "Furniture Animations Mod";
+        public const string PluginVersion = "1.2.1";
+
+        public static ManualLogSource Log;
+        private Harmony harmony;
+
+        public static bool IsAnyPoseSelected = false;
+        public static bool IsCustomPoseActive = false;
+
+        // BepInEx ищет именно метод Awake без параметров
+        private void Awake()
+        {
+            Log = Logger;
+            Log.LogWarning("[FurnitureMod] Старт инициализации плагина...");
+
+            EditorUiManager.Initialize();
+
+            try
+            {
+                // Запускаем наш менеджер конфигураций
+                ConfigManager.Initialize();
+
+                // Применяем Harmony патчи
+                harmony = new Harmony(PluginGuid);
+                harmony.PatchAll();
+
+                Log.LogWarning("[FurnitureMod] Плагин успешно загружен и применил патчи!");
+            }
+            catch (System.Exception ex)
+            {
+                Log.LogError($"[FurnitureMod] Сбой при загрузке плагина: {ex.Message}");
+            }
+
+            // Встраиваем наш слушатель в глобальный поток логов BepInEx
+            BepInEx.Logging.Logger.Listeners.Add(new AnimatedPoseLogListener());
+            Plugin.Log.LogWarning("[FurnitureAnimations] Перехватчик логов AnimatedPose успешно зарегистрирован!");
+
+        }
+
+        private void OnDestroy()
+        {
+            harmony?.UnpatchSelf();
+        }
+    }
+}
 
 ================
 File: FurnitureAnimations/PoseExporter.cs
@@ -1161,7 +1383,7 @@ namespace FurnitureAnimationsMod
 {
     public static class PoseExporter
     {
-        private static Texture2D _lastCapturedIcon = null;
+        public static Texture2D _lastCapturedIcon = null;
 
         public static void OnSaveInteractClicked(UIFreePose uiInstance)
         {
@@ -1184,7 +1406,6 @@ namespace FurnitureAnimationsMod
             // 2. ИЩЕМ НАШУ УЛЬТИМАТИВНУЮ КНОПКУ НА СЦЕНЕ ДЛЯ ОПРЕДЕЛЕНИЯ РЕЖИМА
             Transform sdkBtnTrans = uiInstance.transform.Find("Button_SaveInteract");
             UnityEngine.UI.Text buttonTextComp = sdkBtnTrans?.GetComponentInChildren<UnityEngine.UI.Text>();
-
             string currentButtonText = buttonTextComp != null ? buttonTextComp.text : "";
 
             // Железно определяем режим на основе текста кнопки, который выбрал пользователь!
@@ -1193,33 +1414,70 @@ namespace FurnitureAnimationsMod
             string controllerName = "None";
             _lastCapturedIcon = null;
 
+            Plugin.Log.LogWarning($"[DEBUG_ICON] === СТАРТ ТРАССИРОВКИ ИКОНКИ ===");
+            Plugin.Log.LogInfo($"[DEBUG_ICON] Выбранный режим: isCustomBakeMode = {isCustomBakeMode}");
+            Plugin.Log.LogInfo($"[DEBUG_ICON] Текст кнопки на сцене: '{currentButtonText}'");
+
             if (!isCustomBakeMode)
             {
                 // Сценарий А: Link Preset Pose (Зеленый режим кнопки)
                 controllerName = (characterComp?.anim?.runtimeAnimatorController?.name ?? "None");
-                Plugin.Log.LogInfo($"[PoseExporter] Текст кнопки: '{currentButtonText}'. Запуск Сценария А (Preset Link) для {controllerName}...");
+                Plugin.Log.LogWarning($"[DEBUG_ICON] Запуск Сценария А (Preset Link). Целевое имя контроллера: '{controllerName}'");
 
-                // Вытаскиваем родную иконку из игры
-                if (RM.code != null && RM.code.allFreePoses != null)
+                // Проверяем доступность игровых реестров
+                if (RM.code == null) Plugin.Log.LogError("[DEBUG_ICON] Ошибка: RM.code равен null!");
+                else if (RM.code.allFreePoses == null) Plugin.Log.LogError("[DEBUG_ICON] Ошибка: RM.code.allFreePoses равен null!");
+                else
                 {
+                    Plugin.Log.LogInfo($"[DEBUG_ICON] Успешно зашли в RM.allFreePoses. Всего элементов для перебора: {RM.code.allFreePoses.items.Count}");
+
+                    int checkedPosesCount = 0;
+                    bool foundMatch = false;
+
                     foreach (Transform t in RM.code.allFreePoses.items)
                     {
+                        if (t == null) continue;
+                        checkedPosesCount++;
+
                         var p = t.GetComponent<global::Pose>();
-                        if (p != null && p.controller != null && p.controller.name == controllerName)
+                        if (p == null) continue;
+
+                        string currentPoseName = p.name ?? "NULL";
+                        string currentPoseCtrlName = p.controller != null ? p.controller.name : "NULL";
+
+                        // Спамим в лог каждые несколько поз, чтобы увидеть реальные имена контроллеров в игре
+                        if (checkedPosesCount <= 5 || currentPoseCtrlName.ToLower() == controllerName.ToLower())
                         {
+                            Plugin.Log.LogInfo($"    -> Проверка позы №{checkedPosesCount}: Имя='{currentPoseName}' | Контроллер в игре='{currentPoseCtrlName}'");
+                        }
+
+                        if (p.controller != null && p.controller.name == controllerName)
+                        {
+                            Plugin.Log.LogWarning($"[DEBUG_ICON] 🎉 СОВПАДЕНИЕ НАЙДЕНО! Поза: '{currentPoseName}'. Извлекаем родную иконку...");
                             _lastCapturedIcon = p.icon;
+
+                            if (_lastCapturedIcon == null) Plugin.Log.LogError("[DEBUG_ICON] Критично: p.icon у этой позы равен null!");
+                            else Plugin.Log.LogInfo($"[DEBUG_ICON] Успешно записали p.icon в _lastCapturedIcon. Размеры: {_lastCapturedIcon.width}x{_lastCapturedIcon.height}");
+
+                            foundMatch = true;
                             break;
                         }
+                    }
+
+                    if (!foundMatch)
+                    {
+                        Plugin.Log.LogError($"[DEBUG_ICON] ❌ Сбой: Цикл завершился, но ни один контроллер в игре не совпал с целевым '{controllerName}'!");
                     }
                 }
             }
             else
             {
-                // Сценарий Б: Save Custom Pose (Бирюзовый режим кнопки)
+                // ==========================================================
+                // 🛠️ СЦЕНАРИЙ Б: РЕЖИМ ГИЗМО — Ручная сборка позы (Ваш родной код)
+                // ==========================================================
                 controllerName = "CustomJSON";
-                Plugin.Log.LogInfo($"[PoseExporter] Текст кнопки: '{currentButtonText}'. Запуск Сценария Б (Bake Custom Skeleton)...");
+                Plugin.Log.LogWarning("[PoseExporter] Запуск Сценария Б (Режим Гизмо). Сейчас будет скриншот!");
 
-                // Генерируем скриншот-иконку нашей камерой
                 var photoComp = uiInstance.GetComponent<TakePhotos>();
                 if (photoComp != null && Global.code != null && Global.code.freeCamera != null)
                 {
@@ -1228,31 +1486,111 @@ namespace FurnitureAnimationsMod
                 }
             }
 
+            // ==========================================================
+            // 🔀 ТРОЙНОЕ РАЗДЕЛЕНИЕ НАШИМ СОБСТВЕННЫМ ДЕТЕКТОРОМ
+            // ==========================================================
+
+            // Получаем реальное техническое имя анимации персонажа из его контроллера
+            string rawControllerName = (characterComp?.anim?.runtimeAnimatorController?.name ?? "None");
+
+            // 🕵️ Проверяем: JSON или Unity? 
+            // Если имя содержит .json, "JSON", или характерные префиксы кастомных файлов из лога ("Dance", "A_")
+            bool isAnimatedPoseMod = rawControllerName.EndsWith(".json") ||
+                                     rawControllerName.Contains("JSON") ||
+                                     rawControllerName.StartsWith("Dance") ||
+                                     rawControllerName.StartsWith("A_");
+
+            controllerName = rawControllerName;
+            string buttonText = "Link Preset Pose for Furniture"; // Тип 1: Ванильная Unity-поза
+            string typeText = "Pose/Animation from the game";
+            Texture2D finalPreview = _lastCapturedIcon; // По умолчанию берем то, что в памяти
+
+            if (isCustomBakeMode)
+            {
+                // 🛠️ ТИП 2: Гизмо (Ручное запекание костей)
+                controllerName = "CustomJSON";
+                buttonText = "Save Custom Pose for Furniture";
+                typeText = "User-made Custom Pose";
+
+                // Делаем фотопревью камерой, так как готовой иконки у гизмо нет
+                var photoComp = uiInstance.GetComponent<TakePhotos>();
+                if (photoComp != null && Global.code != null && Global.code.freeCamera != null)
+                {
+                    Camera cam = Global.code.freeCamera.GetComponent<Camera>();
+                    finalPreview = photoComp.CameraCapture(cam, new Rect(0f, 0f, 300f, 300f), "");
+                    _lastCapturedIcon = finalPreview;
+                }
+            }
+            else if (isAnimatedPoseMod)
+            {
+                // 💃 ТИП 3: Иконка -> JSON (Кастомная анимация из AnimatedPose)
+                buttonText = "Link Animated Pose for Furniture"; // Наша новая надпись на сцене!
+                typeText = "External Mod Animation (AnimatedPose)";
+
+                Plugin.Log.LogWarning($"[PoseExporter] Детектор: Поймали JSON-анимацию '{controllerName}'! Ищем её легальную иконку...");
+
+                // Так как AnimatedPose легально пушит свои трансформы в RM.code.allFreePoses (стр 15 PDF),
+                // мы вытаскиваем иконку танца прямо оттуда по точному совпадению имени!
+                if (RM.code != null && RM.code.allFreePoses != null)
+                {
+                    foreach (Transform t in RM.code.allFreePoses.items)
+                    {
+                        if (t == null) continue;
+                        if (t.name == controllerName) // В модовых кнопках имя объекта равно названию анимации!
+                        {
+                            var p = t.GetComponent<global::Pose>();
+                            if (p != null && p.icon != null)
+                            {
+                                finalPreview = p.icon;
+                                _lastCapturedIcon = p.icon;
+                                Plugin.Log.LogInfo($"[PoseExporter] 🎉 Легальная иконка мода для '{controllerName}' успешно извлечена из каталога!");
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // 🎮 ТИП 1: Иконка -> Unity (Ванильная поза игры)
+                Plugin.Log.LogInfo($"[PoseExporter] Обнаружена ванильная Unity-поза. Передаем оригинальную иконку для '{controllerName}'.");
+            }
+
+            // Динамически меняем текст нашей кнопки интерактива на сцене игры
+            sdkBtnTrans = uiInstance.transform.Find("Button_SaveInteract");
+            buttonTextComp = sdkBtnTrans?.GetComponentInChildren<UnityEngine.UI.Text>();
+            if (buttonTextComp != null)
+            {
+                buttonTextComp.text = buttonText;
+            }
+
             // Расчет локального смещения относительно мебели
             Vector3 exactLocPos = closestFurniture.transform.InverseTransformPoint(playerPos);
             Quaternion localQuaternion = Quaternion.Inverse(closestFurniture.transform.rotation) * uiInstance.selectedCharacter.rotation;
             Vector3 exactLocRot = localQuaternion.eulerAngles;
 
-            // Формируем текст сообщения
+            // Формируем текст сообщения для нашего идеального диалога
             string promptText = $"Do you want to save this pose for <color=yellow>{furnitureName}</color>?\n" +
-                                $"Type: {(isCustomBakeMode ? "User-made Custom Pose" : "Pose/Animation from the game")}\n" +
+                                $"Type: {typeText}\n" +
                                 $"Identifier: {controllerName}";
 
-            // Передаем нашу текстуру напрямую без каких-либо проверок и приведений типов
-            Texture2D previewTexture = _lastCapturedIcon;
+            // Шаг A: Обманываем скрытую валидацию игры, чтобы пропустить сохранение
+            if (uiInstance != null)
+            {
+                uiInstance.poseName = "FurniturePose";
+                uiInstance.creatorName = "ModAuthor";
+            }
 
-            // Вызываем статический метод напрямую через класс без .Instance
+            // Шаг Б: Вызываем наше отлаженное диалоговое окно (передаем promptText и ИМЕННО КОРРЕКТНУЮ finalPreview)
             EditorUiManager.ShowNativeStyleDialog(
                 uiInstance,
                 promptText,
-                previewTexture,
+                finalPreview,
                 () => {
-                    // При нажатии "ДА" передаем флаг isCustomBakeMode на физическую запись файлов
                     SavePoseToDataFolder(furnitureName, controllerName, exactLocPos, exactLocRot, isCustomBakeMode, characterComp);
                 }
             );
         }
-
 
 
         private static void SavePoseToDataFolder(string furnitureName, string controller, Vector3 pos, Vector3 rot, bool isCustom, CharacterCustomization character)
@@ -1446,62 +1784,6 @@ namespace FurnitureAnimationsMod
 }
 
 ================
-File: FurnitureAnimations/Plugin.cs
-================
-using BepInEx;
-using BepInEx.Logging;
-using HarmonyLib;
-
-namespace FurnitureAnimationsMod
-{
-    // Проверь, чтобы имя исполняемого файла игры было написано без ошибок
-    [BepInPlugin(PluginGuid, PluginName, PluginVersion)]
-    [BepInProcess("She Will Punish Them.exe")]
-    public class Plugin : BaseUnityPlugin // <-- КРИТИЧНО: Класс ОБЯЗАТЕЛЬНО должен быть public и наследоваться от BaseUnityPlugin
-    {
-        public const string PluginGuid = "com.lorifel007.furnitureanimations";
-        public const string PluginName = "Furniture Animations Mod";
-        public const string PluginVersion = "1.2.0";
-
-        public static ManualLogSource Log;
-        private Harmony harmony;
-
-        public static bool IsAnyPoseSelected = false;
-        public static bool IsCustomPoseActive = false;
-
-        // BepInEx ищет именно метод Awake без параметров
-        private void Awake()
-        {
-            Log = Logger;
-            Log.LogWarning("[FurnitureMod] Старт инициализации плагина...");
-
-            EditorUiManager.Initialize();
-
-            try
-            {
-                // Запускаем наш менеджер конфигураций
-                ConfigManager.Initialize();
-
-                // Применяем Harmony патчи
-                harmony = new Harmony(PluginGuid);
-                harmony.PatchAll();
-
-                Log.LogWarning("[FurnitureMod] Плагин успешно загружен и применил патчи!");
-            }
-            catch (System.Exception ex)
-            {
-                Log.LogError($"[FurnitureMod] Сбой при загрузке плагина: {ex.Message}");
-            }
-        }
-
-        private void OnDestroy()
-        {
-            harmony?.UnpatchSelf();
-        }
-    }
-}
-
-================
 File: FurnitureAnimations/EditorUiManager.cs
 ================
 using System;
@@ -1573,9 +1855,10 @@ namespace FurnitureAnimationsMod
             {
                 if (uiFreePose == null || uiFreePose.savePosePanel == null) return;
 
-                if (_myCustomDialogInstance != null) GameObject.Destroy(_myCustomDialogInstance);
+                if (_myCustomDialogInstance != null)
+                    GameObject.Destroy(_myCustomDialogInstance);
 
-                // 1. Вызываем родной метод игры
+                // 1. Открываем оригинальное окно (как в вашем оригинальном коде)
                 uiFreePose.OpenSaveFreePosePanel();
                 uiFreePose.savePosePanel.SetActive(false); // Прячем оригинал
 
@@ -1583,13 +1866,14 @@ namespace FurnitureAnimationsMod
                 _myCustomDialogInstance = GameObject.Instantiate(uiFreePose.savePosePanel, uiFreePose.savePosePanel.transform.parent);
                 _myCustomDialogInstance.name = "Mod_CustomFurnitureSaveDialog";
 
-                // Удаляем скрипт игры с клона
+                // Удаляем скрипт игры с клона, чтобы он не сбрасывал вёрстку кадр за кадром
                 var duplicatedGameScript = _myCustomDialogInstance.GetComponent<UIFreePose>();
-                if (duplicatedGameScript != null) GameObject.Destroy(duplicatedGameScript);
+                if (duplicatedGameScript != null)
+                    GameObject.Destroy(duplicatedGameScript);
 
                 Color gameTextColor = new Color(0.8f, 0.8f, 0.8f, 1f); // Бежево-серый дефолт
 
-                // 3. БЕЗОПАСНЫЙ ПОИСК И НАСТРОЙКА ОБЪЕКТОВ
+                // 3. БЕЗОПАСНЫЙ ПОИСК И НАСТРОЙКА ОБЪЕКТОВ (Ваш оригинальный цикл чистки)
                 foreach (Transform child in _myCustomDialogInstance.transform)
                 {
                     string childNameClean = child.name.Trim();
@@ -1611,14 +1895,14 @@ namespace FurnitureAnimationsMod
                     // ОСТАВЛЯЕМ красивую общую рамку панели
                     if (childNameClean == "fram (3)") child.gameObject.SetActive(true);
 
-                    // ПОЛНОСТЬЮ ВЫКЛЮЧАЕМ ПОЛЯ ВВОДА (Это уберет их ненужные контуры, как в первом варианте!)
+                    // ПОЛНОСТЬЮ ВЫКЛЮЧАЕМ ПОЛЯ ВВОДА
                     if (childNameClean == "InputField Pose" || childNameClean == "InputField creator")
                     {
                         child.gameObject.SetActive(false);
                     }
                 }
 
-                // 4. НАСТРОЙКА НАШЕГО КАСТОМНОГО ТЕКСТА
+                // 4. НАСТРОЙКА НАШЕГО КАСТОМНОГО ТЕКСТА (Ваш идеальный блок верстки)
                 GameObject myTextGo = new GameObject("Mod_CustomMessageText", typeof(RectTransform), typeof(UnityEngine.UI.Text));
                 myTextGo.transform.SetParent(_myCustomDialogInstance.transform, false);
 
@@ -1631,7 +1915,7 @@ namespace FurnitureAnimationsMod
                 myTextComp.horizontalOverflow = HorizontalWrapMode.Wrap;
                 myTextComp.verticalOverflow = VerticalWrapMode.Overflow;
 
-                // Позиционируем текст на правой панели
+                // Позиционируем текст на правой панели окна
                 RectTransform textRect = myTextGo.GetComponent<RectTransform>();
                 textRect.anchorMin = new Vector2(0.35f, 0.35f);
                 textRect.anchorMax = new Vector2(0.96f, 0.96f);
@@ -1641,63 +1925,157 @@ namespace FurnitureAnimationsMod
                 var fontSample = _myCustomDialogInstance.GetComponentInChildren<UnityEngine.UI.Text>(true);
                 if (fontSample != null && fontSample.font != null) myTextComp.font = fontSample.font;
 
-                // 5. ИСПРАВЛЕННАЯ НАСТРОЙКА КНОПОК
-                var buttons = _myCustomDialogInstance.GetComponentsInChildren<UnityEngine.UI.Button>(true);
 
-                if (buttons != null && buttons.Length >= 2)
+                // ==========================================================
+                // 💥 5. НАЛОЖЕНИЕ НОВОЙ КНОПКИ С ЗАКРЫТИЕМ СТАРОГО ТЕКСТА
+                // ==========================================================
+
+                // Сначала находим оригинальные кнопки в клоне
+                var vanillaButtons = _myCustomDialogInstance.GetComponentsInChildren<UnityEngine.UI.Button>(true);
+                UnityEngine.UI.Button oldGameSaveBtn = null;
+                UnityEngine.UI.Button oldGameCloseBtn = null;
+
+                foreach (var b in vanillaButtons)
                 {
-                    // ЛЕВАЯ КНОПКА (Темно-красная Save)
-                    var saveBtn = buttons[0];
-                    if (saveBtn != null)
-                    {
-                        saveBtn.onClick.RemoveAllListeners();
-                        saveBtn.onClick.AddListener(() =>
-                        {
-                            Plugin.Log.LogInfo("[EditorUiManager] Клон: Сохранение подтверждено.");
-                            onConfirm?.Invoke();
-                            GameObject.Destroy(_myCustomDialogInstance);
-                        });
-
-                        // Возвращаем кнопку на её РОДНОЕ ванильное место (убираем некорректное расширение влево)
-                        // Оставляем цвет по умолчанию (темно-красный)
-                        var btnImg = saveBtn.GetComponent<UnityEngine.UI.Image>();
-                        if (btnImg != null) btnImg.color = Color.white; // Белый восстановит оригинальный спрайт кнопки игры
-
-                        var btnText = saveBtn.GetComponentInChildren<UnityEngine.UI.Text>(true);
-                        if (btnText != null)
-                        {
-                            btnText.gameObject.SetActive(true);
-                            btnText.text = "Save Furniture Pose";
-                            btnText.fontSize = 11;
-                            btnText.color = Color.white; // Белый текст идеально читается на темно-красном фоне
-
-                            // ЖЕЛЕЗНЫЙ ХАК ДЛЯ ОТОБРАЖЕНИЯ: Разрешаем тексту выходить за границы кнопки, 
-                            // чтобы он гарантированно отрендерился и не исчезал, если кнопка слишком узкая!
-                            btnText.horizontalOverflow = HorizontalWrapMode.Overflow;
-                            btnText.verticalOverflow = VerticalWrapMode.Overflow;
-                            btnText.alignment = TextAnchor.MiddleCenter; // Центрируем текст на кнопке
-                        }
-                    }
-
-                    // ПРАВАЯ КНОПКА (Крестик закрытия)
-                    var cancelBtn = buttons[1];
-                    if (cancelBtn != null)
-                    {
-                        cancelBtn.onClick.RemoveAllListeners();
-                        cancelBtn.onClick.AddListener(() =>
-                        {
-                            Plugin.Log.LogInfo("[EditorUiManager] Клон: Окно закрыто.");
-                            GameObject.Destroy(_myCustomDialogInstance);
-                        });
-                    }
+                    if (b == null) continue;
+                    string bName = b.name.Trim();
+                    if (bName == "Button Save") oldGameSaveBtn = b;
+                    if (bName == "Btn Close (4)") oldGameCloseBtn = b;
                 }
 
-                // 6. ПОДСТАНОВКА ИКОНКИ
+                // Настраиваем крестик закрытия окна (чтобы работал штатно как отмена)
+                if (oldGameCloseBtn != null)
+                {
+                    oldGameCloseBtn.onClick.RemoveAllListeners();
+                    oldGameCloseBtn.onClick.AddListener(() => GameObject.Destroy(_myCustomDialogInstance));
+                }
+
+                // Создаем нашу кастомную кнопку ОБЯЗАТЕЛЬНО с Image подложкой
+                GameObject customBtnGo = new GameObject("Mod_UltimateSaveBtnOverlay", typeof(RectTransform), typeof(UnityEngine.UI.Button), typeof(UnityEngine.UI.Image));
+
+                if (oldGameSaveBtn != null)
+                {
+                    // Сажаем на того же родителя в контейнер, где лежала старая кнопка
+                    customBtnGo.transform.SetParent(oldGameSaveBtn.transform.parent, false);
+
+                    RectTransform targetRect = customBtnGo.GetComponent<RectTransform>();
+                    RectTransform sourceRect = oldGameSaveBtn.GetComponent<RectTransform>();
+
+                    // Копируем базовую геометрию и привязки
+                    targetRect.anchorMin = sourceRect.anchorMin;
+                    targetRect.anchorMax = sourceRect.anchorMax;
+                    targetRect.pivot = sourceRect.pivot;
+
+                    // 📐 СМЕЩЕНИЕ И ШИРИНА: Сдвигаем на 30 пикселей вправо, делаем шире на 40 пикселей
+                    targetRect.anchoredPosition = new Vector2(sourceRect.anchoredPosition.x + 30f, sourceRect.anchoredPosition.y);
+                    targetRect.sizeDelta = new Vector2(sourceRect.sizeDelta.x + 40f, sourceRect.sizeDelta.y);
+
+                    // 🎨 КОПИРУЕМ РОДНОЙ СТИЛЬ И ЦВЕТ ИГРЫ ОДИН В ОДИН (чтобы перекрыть старый текст)
+                    var oldImg = oldGameSaveBtn.GetComponent<UnityEngine.UI.Image>();
+                    var newImg = customBtnGo.GetComponent<UnityEngine.UI.Image>();
+                    if (oldImg != null && newImg != null)
+                    {
+                        newImg.sprite = oldImg.sprite;
+                        newImg.type = oldImg.type;
+                        newImg.color = oldImg.color; // Без перекрашивания, берем оригинальный оттенок игры!
+                    }
+                }
+                else
+                {
+                    // Дефолтная подстраховка, если оригинальная кнопка не была найдена
+                    customBtnGo.transform.SetParent(_myCustomDialogInstance.transform, false);
+                    RectTransform targetRect = customBtnGo.GetComponent<RectTransform>();
+                    targetRect.anchorMin = new Vector2(0.40f, 0.12f);
+                    targetRect.anchorMax = new Vector2(0.75f, 0.25f);
+                    targetRect.offsetMin = targetRect.offsetMax = Vector2.zero;
+                }
+
+                // Вешаем НАШЕ событие физического сохранения JSON мода
+                UnityEngine.UI.Button myButtonComp = customBtnGo.GetComponent<UnityEngine.UI.Button>();
+                myButtonComp.onClick.AddListener(() =>
+                {
+                    Plugin.Log.LogWarning("[EditorUiManager] Клик по широкой наложенной кнопке зафиксирован!");
+                    onConfirm?.Invoke(); // Вызов цепочки экспорта из PoseExporter
+                    GameObject.Destroy(_myCustomDialogInstance);
+                });
+
+                // Создаем ТЕКСТ внутри нашей новой широкой кнопки
+                GameObject btnTextGo = new GameObject("Text", typeof(RectTransform), typeof(UnityEngine.UI.Text));
+                btnTextGo.transform.SetParent(customBtnGo.transform, false);
+
+                UnityEngine.UI.Text btnTextComp = btnTextGo.GetComponent<UnityEngine.UI.Text>();
+                btnTextComp.text = "Save Furniture Pose";
+                btnTextComp.fontSize = 11;
+                btnTextComp.color = Color.white;
+                btnTextComp.alignment = TextAnchor.MiddleCenter;
+                btnTextComp.horizontalOverflow = HorizontalWrapMode.Overflow;
+                btnTextComp.verticalOverflow = VerticalWrapMode.Overflow;
+                if (fontSample != null && fontSample.font != null) btnTextComp.font = fontSample.font;
+
+                // Растягиваем текст на всю область новой кнопки
+                RectTransform btnTextRect = btnTextGo.GetComponent<RectTransform>();
+                btnTextRect.anchorMin = Vector2.zero;
+                btnTextRect.anchorMax = Vector2.one;
+                btnTextRect.offsetMin = btnTextRect.offsetMax = Vector2.zero;
+
+                // ==========================================================
+                // 🖼️ 6. ТОЧЕЧНАЯ ПОДСТАНОВКА ИКОНКИ ЧЕРЕЗ ОБЪЕКТ 'profile'
+                // ==========================================================
                 if (previewTexture != null)
                 {
-                    var rawImageComp = _myCustomDialogInstance.GetComponentInChildren<UnityEngine.UI.RawImage>(true);
-                    if (rawImageComp != null) rawImageComp.texture = previewTexture;
+                    // Рекурсивно находим именно тот GameObject 'profile', который вы увидели
+                    Transform profileTransform = _myCustomDialogInstance.transform.Find("profile");
+
+                    // Если он лежит глубже (например, внутри контейнера fram (3)), ищем его там
+                    if (profileTransform == null)
+                        profileTransform = _myCustomDialogInstance.transform.Find("fram (3)/profile");
+
+                    if (profileTransform != null)
+                    {
+                        // Берем оригинальный RawImage игры, который висит на объекте profile
+                        var oldRawImage = profileTransform.GetComponent<UnityEngine.UI.RawImage>();
+
+                        if (oldRawImage != null)
+                        {
+                            Plugin.Log.LogInfo("[EditorUiManager] Успешно привязались к объекту превью 'profile'.");
+
+                            // Создаем наш независимый оверлей для картинки
+                            GameObject customPreviewGo = new GameObject("Mod_UltimatePreviewOverlay", typeof(RectTransform), typeof(UnityEngine.UI.RawImage));
+
+                            // Сажаем его внутрь того же объекта 'profile'
+                            customPreviewGo.transform.SetParent(profileTransform, false);
+
+                            // Растягиваем его ровно по границам объекта 'profile'
+                            RectTransform targetPreviewRect = customPreviewGo.GetComponent<RectTransform>();
+                            targetPreviewRect.anchorMin = Vector2.zero;
+                            targetPreviewRect.anchorMax = Vector2.one;
+                            targetPreviewRect.pivot = new Vector2(0.5f, 0.5f);
+                            targetPreviewRect.anchoredPosition = Vector2.zero;
+                            targetPreviewRect.sizeDelta = Vector2.zero;
+
+                            // Скрываем старый RawImage игры, чтобы под ним не моргал скриншот экрана
+                            oldRawImage.enabled = false;
+
+                            // Заливаем иконку готовой позы в наш новый оверлей
+                            UnityEngine.UI.RawImage myPreviewComp = customPreviewGo.GetComponent<UnityEngine.UI.RawImage>();
+                            myPreviewComp.texture = previewTexture;
+
+                            // Прячем картинку на задний план внутри объекта 'profile', 
+                            // чтобы фигурные рамочки игры накрыли её сверху
+                            customPreviewGo.transform.SetAsFirstSibling();
+                            customPreviewGo.SetActive(true);
+                        }
+                        else
+                        {
+                            Plugin.Log.LogError("[EditorUiManager] Ошибка: Компонент RawImage отсутствует на объекте 'profile'!");
+                        }
+                    }
+                    else
+                    {
+                        Plugin.Log.LogError("[EditorUiManager] Ошибка: GameObject с именем 'profile' не найден в иерархии окна!");
+                    }
                 }
+
 
                 _myCustomDialogInstance.SetActive(true);
             }
@@ -1706,6 +2084,7 @@ namespace FurnitureAnimationsMod
                 Plugin.Log.LogError($"[EditorUiManager] Ошибка финальной очистки: {ex}");
             }
         }
+
 
         private void DrawDialogWindow(int windowID)
         {

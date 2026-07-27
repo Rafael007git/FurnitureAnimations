@@ -7,6 +7,7 @@ namespace FurnitureAnimationsMod
 {
     // Проверь, чтобы имя исполняемого файла игры было написано без ошибок
     [BepInPlugin(PluginGuid, PluginName, PluginVersion)]
+    [BepInDependency("aedenthorn.PoseAnimations", BepInDependency.DependencyFlags.SoftDependency)]
     [BepInProcess("She Will Punish Them.exe")]
     public class Plugin : BaseUnityPlugin // <-- КРИТИЧНО: Класс ОБЯЗАТЕЛЬНО должен быть public и наследоваться от BaseUnityPlugin
     {

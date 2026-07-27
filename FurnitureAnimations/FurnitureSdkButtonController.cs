@@ -19,7 +19,7 @@ namespace FurnitureAnimationsMod
             _uiInstance = ui;
             _mainButton = GetComponent<UnityEngine.UI.Button>();
             _buttonText = GetComponentInChildren<UnityEngine.UI.Text>();
-            Plugin.Log.LogInfo("[SDK_Controller] Нативный Update-трекер запущен в дипломатическом режиме.");
+            Plugin.Log.LogInfo("[SDK_Controller] Нативный Update-трекер запущен в дипломатическом режиме с поддержкой модов.");
         }
 
         private void Update()
@@ -51,14 +51,13 @@ namespace FurnitureAnimationsMod
                 }
 
                 // 2. ДИПЛОМАТИЧЕСКИЙ РАНТАЙМ-ПЕРЕХВАТ А-ПОЗЫ В ОБХОД ВСЕХ МОДОВ
-                // Если персонаж взаимодействует с мебелью, и на экране ЕЩЕ открыто наше меню...
+                // [ВАШ НАДЕЖНЫЙ КОД ПОЛНОСТЬЮ СОХРАНЕН]
                 if (characterComp.interactingObject != null)
                 {
                     string furnitureName = characterComp.interactingObject.name.Replace("(Clone)", "").Trim();
 
                     if (ConfigManager.LoadedConfigs.TryGetValue(furnitureName, out FurnitureConfig config))
                     {
-                        // Смотрим, какая именно иконка позы сейчас выбрана в интерфейсе игры (через uiPose.curpose)
                         if (Global.code != null && Global.code.uiPose != null && Global.code.uiPose.curpose != null)
                         {
                             string activePoseNameInUi = Global.code.uiPose.curpose.name;
@@ -69,7 +68,7 @@ namespace FurnitureAnimationsMod
                             // СРАБАТЫВАЕТ НАШ ТРИГГЕР: Если это наша кастомная поза, а аниматор еще не усыплен!
                             if (currentPoseData != null &&
                                 currentPoseData.Type.Equals("CustomJSON", StringComparison.OrdinalIgnoreCase) &&
-                                characterComp.anim.enabled == true) // Если аниматор включен — значит игра держит А-позу!
+                                characterComp.anim.enabled == true)
                             {
                                 Plugin.Log.LogWarning($"[SDK_Mono_Bypass] Обнаружена А-поза для '{activePoseNameInUi}'. Исправляем скелет напрямую из MonoBehaviour...");
                                 ApplyCustomBonesDirect(characterComp.transform, currentPoseData.JsonFileName);
@@ -78,28 +77,38 @@ namespace FurnitureAnimationsMod
                     }
                 }
 
-                // 3. АВТО-ПЕРЕКЛЮЧЕНИЕ ЦВЕТА И ТЕКСТА КНОПКИ SDK
-                bool isHandEditingActive = currentCtrlName.Contains("custom") || _uiInstance.isCustomPoseMode == true || isGizmoActiveOnScene;
-                bool isDefaultIdleActive = currentCtrlName.Contains("idle") || currentCtrlName.Contains("unarmed") || string.IsNullOrEmpty(currentCtrlName);
-                bool isAnyPresetPoseActive = characterComp.anim.enabled == false || !isDefaultIdleActive;
+                // ==========================================================
+                // 3. ОБНОВЛЕННОЕ АВТО-ПЕРЕКЛЮЧЕНИЕ ЦВЕТА И ТЕКСТА КНОПКИ SDK
+                // ==========================================================
+                // Запрашиваем состояние у нашего безопасного хелпера (с поддержкой PoseAnimations)
+                CharacterPoseState state = CharacterStateHelper.GetCurrentState(characterComp);
 
-                if (isHandEditingActive)
+                switch (state)
                 {
-                    _buttonText.text = "Save Custom Pose for Furniture";
-                    _buttonText.color = Color.cyan;
-                    _mainButton.interactable = true;
-                }
-                else if (isAnyPresetPoseActive)
-                {
-                    _buttonText.text = "Link Preset Pose for Furniture";
-                    _buttonText.color = Color.green;
-                    _mainButton.interactable = true;
-                }
-                else
-                {
-                    _buttonText.text = "No Furniture Pose";
-                    _buttonText.color = Color.gray;
-                    _mainButton.interactable = false;
+                    case CharacterPoseState.PoseAnimationsModActive:
+                        // Фиолетовый режим: Поймали внешнюю JSON-анимацию другого мода
+                        SetButtonState("Link Animated Pose for Furniture", new Color(0.6f, 0.2f, 0.8f, 1f), true);
+                        break;
+
+                    case CharacterPoseState.GameAnimatorActive:
+                        // Зеленый режим: Найдена ванильная поза/пресет игры
+                        SetButtonState("Link Preset Pose for Furniture", Color.green, true);
+                        break;
+
+                    case CharacterPoseState.CustomPoseJSON:
+                        // Циановый режим: Ручное гизмо или замороженный скелет
+                        // Если персонаж просто стоит в дефолтном Idle и его аниматор включен — гасим кнопку
+                        bool isIdle = currentCtrlName.Contains("idle") || currentCtrlName.Contains("unarmed") || string.IsNullOrEmpty(currentCtrlName);
+
+                        if (isIdle && characterComp.anim.enabled == true)
+                        {
+                            SetButtonState("No Furniture Pose", Color.gray, false);
+                        }
+                        else
+                        {
+                            SetButtonState("Save Custom Pose for Furniture", Color.cyan, true);
+                        }
+                        break;
                 }
             }
             catch (Exception ex)
@@ -108,7 +117,14 @@ namespace FurnitureAnimationsMod
             }
         }
 
-        // Автономный изолированный метод раскатки Диорамы на скелет куклы
+        private void SetButtonState(string text, Color textColor, bool interactable)
+        {
+            _buttonText.text = text;
+            _buttonText.color = textColor;
+            _mainButton.interactable = interactable;
+        }
+
+        // Автономный изолированный метод раскатки Диорамы на скелет куклы [ВАШ ОРИГИНАЛЬНЫЙ КОД]
         private void ApplyCustomBonesDirect(Transform character, string jsonFileName)
         {
             string customAnimFullPath = Path.Combine(ConfigManager.CustomAnimsPath, jsonFileName);
@@ -158,7 +174,6 @@ namespace FurnitureAnimationsMod
                     }
                 }
 
-                // Замораживаем аниматор куклы прямо на выходе из цикла
                 Animator anim = character.GetComponent<Animator>();
                 if (anim != null)
                 {
