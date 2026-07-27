@@ -231,52 +231,62 @@ namespace FurnitureAnimationsMod
                 btnTextRect.offsetMin = btnTextRect.offsetMax = Vector2.zero;
 
                 // ==========================================================
-                // 🖼️ 6. СОЗДАНИЕ КАСТОМНОГО ПРЕВЬЮ ДЛЯ ЗАЩИТЫ ОТ СКРИНШОТОВ ИГРЫ
+                // 🖼️ 6. ТОЧЕЧНАЯ ПОДСТАНОВКА ИКОНКИ ЧЕРЕЗ ОБЪЕКТ 'profile'
                 // ==========================================================
                 if (previewTexture != null)
                 {
-                    // Находим оригинальный RawImage игры
-                    var oldRawImage = _myCustomDialogInstance.GetComponentInChildren<UnityEngine.UI.RawImage>(true);
+                    // Рекурсивно находим именно тот GameObject 'profile', который вы увидели
+                    Transform profileTransform = _myCustomDialogInstance.transform.Find("profile");
 
-                    // Создаем НАШ полностью независимый RawImage для превью
-                    GameObject customPreviewGo = new GameObject("Mod_UltimatePreviewOverlay", typeof(RectTransform), typeof(UnityEngine.UI.RawImage));
+                    // Если он лежит глубже (например, внутри контейнера fram (3)), ищем его там
+                    if (profileTransform == null)
+                        profileTransform = _myCustomDialogInstance.transform.Find("fram (3)/profile");
 
-                    if (oldRawImage != null)
+                    if (profileTransform != null)
                     {
-                        // Сажаем на того же родителя, где висело оригинальное превью игры
-                        customPreviewGo.transform.SetParent(oldRawImage.transform.parent, false);
+                        // Берем оригинальный RawImage игры, который висит на объекте profile
+                        var oldRawImage = profileTransform.GetComponent<UnityEngine.UI.RawImage>();
 
-                        // Копируем координаты и размеры один в один, чтобы встать ровно на его место
-                        RectTransform targetPreviewRect = customPreviewGo.GetComponent<RectTransform>();
-                        RectTransform sourcePreviewRect = oldRawImage.GetComponent<RectTransform>();
+                        if (oldRawImage != null)
+                        {
+                            Plugin.Log.LogInfo("[EditorUiManager] Успешно привязались к объекту превью 'profile'.");
 
-                        targetPreviewRect.anchorMin = sourcePreviewRect.anchorMin;
-                        targetPreviewRect.anchorMax = sourcePreviewRect.anchorMax;
-                        targetPreviewRect.pivot = sourcePreviewRect.pivot;
-                        targetPreviewRect.anchoredPosition = sourcePreviewRect.anchoredPosition;
-                        targetPreviewRect.sizeDelta = sourcePreviewRect.sizeDelta;
+                            // Создаем наш независимый оверлей для картинки
+                            GameObject customPreviewGo = new GameObject("Mod_UltimatePreviewOverlay", typeof(RectTransform), typeof(UnityEngine.UI.RawImage));
 
-                        // Скрываем ванильный RawImage игры, чтобы он не моргал скриншотами на заднем плане
-                        oldRawImage.gameObject.SetActive(false);
+                            // Сажаем его внутрь того же объекта 'profile'
+                            customPreviewGo.transform.SetParent(profileTransform, false);
+
+                            // Растягиваем его ровно по границам объекта 'profile'
+                            RectTransform targetPreviewRect = customPreviewGo.GetComponent<RectTransform>();
+                            targetPreviewRect.anchorMin = Vector2.zero;
+                            targetPreviewRect.anchorMax = Vector2.one;
+                            targetPreviewRect.pivot = new Vector2(0.5f, 0.5f);
+                            targetPreviewRect.anchoredPosition = Vector2.zero;
+                            targetPreviewRect.sizeDelta = Vector2.zero;
+
+                            // Скрываем старый RawImage игры, чтобы под ним не моргал скриншот экрана
+                            oldRawImage.enabled = false;
+
+                            // Заливаем иконку готовой позы в наш новый оверлей
+                            UnityEngine.UI.RawImage myPreviewComp = customPreviewGo.GetComponent<UnityEngine.UI.RawImage>();
+                            myPreviewComp.texture = previewTexture;
+
+                            // Прячем картинку на задний план внутри объекта 'profile', 
+                            // чтобы фигурные рамочки игры накрыли её сверху
+                            customPreviewGo.transform.SetAsFirstSibling();
+                            customPreviewGo.SetActive(true);
+                        }
+                        else
+                        {
+                            Plugin.Log.LogError("[EditorUiManager] Ошибка: Компонент RawImage отсутствует на объекте 'profile'!");
+                        }
                     }
                     else
                     {
-                        // Подстраховка по координатам правой панели клона, если старый компонент не нашелся
-                        customPreviewGo.transform.SetParent(_myCustomDialogInstance.transform, false);
-                        RectTransform targetPreviewRect = customPreviewGo.GetComponent<RectTransform>();
-                        targetPreviewRect.anchorMin = new Vector2(0.05f, 0.35f);
-                        targetPreviewRect.anchorMax = new Vector2(0.32f, 0.90f);
-                        targetPreviewRect.offsetMin = targetPreviewRect.offsetMax = Vector2.zero;
+                        Plugin.Log.LogError("[EditorUiManager] Ошибка: GameObject с именем 'profile' не найден в иерархии окна!");
                     }
-
-                    // Заливаем в нашу защищенную плашку правильную текстуру позы!
-                    UnityEngine.UI.RawImage myPreviewComp = customPreviewGo.GetComponent<UnityEngine.UI.RawImage>();
-                    myPreviewComp.texture = previewTexture;
-                    customPreviewGo.SetActive(true);
-
-                    Plugin.Log.LogInfo($"[EditorUiManager] Защищенное превью создано. Передана иконка позы размером: {previewTexture.width}x{previewTexture.height}");
                 }
-
 
 
                 _myCustomDialogInstance.SetActive(true);
