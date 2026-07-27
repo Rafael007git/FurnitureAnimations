@@ -1,5 +1,6 @@
 ﻿using BepInEx;
 using BepInEx.Logging;
+using FurnitureAnimations;
 using HarmonyLib;
 
 namespace FurnitureAnimationsMod
@@ -42,6 +43,11 @@ namespace FurnitureAnimationsMod
             {
                 Log.LogError($"[FurnitureMod] Сбой при загрузке плагина: {ex.Message}");
             }
+
+            // Встраиваем наш слушатель в глобальный поток логов BepInEx
+            BepInEx.Logging.Logger.Listeners.Add(new AnimatedPoseLogListener());
+            Plugin.Log.LogWarning("[FurnitureAnimations] Перехватчик логов AnimatedPose успешно зарегистрирован!");
+
         }
 
         private void OnDestroy()
