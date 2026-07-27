@@ -183,12 +183,12 @@ namespace FurnitureAnimationsMod
                 promptText,
                 finalPreview,
                 () => {
-                    SavePoseToDataFolder(furnitureName, controllerName, exactLocPos, exactLocRot, isCustomBakeMode, characterComp);
+                    SavePoseToDataFolder(furnitureName, controllerName, exactLocPos, exactLocRot, currentState, characterComp);
                 }
             );
         }
 
-        private static void SavePoseToDataFolder(string furnitureName, string controller, Vector3 pos, Vector3 rot, bool isCustom, CharacterCustomization character)
+        private static void SavePoseToDataFolder(string furnitureName, string controller, Vector3 pos, Vector3 rot, CharacterPoseState poseState, CharacterCustomization character)
         {
             try
             {
@@ -210,32 +210,30 @@ namespace FurnitureAnimationsMod
 
                 if (configToSave.InteractionPoses == null) configToSave.InteractionPoses = new List<PoseData>();
 
+                bool isCustom = (poseState == CharacterPoseState.CustomPoseJSON);
                 // Красивое имя в списке
                 string generatedPoseName = isCustom ? $"Custom Pose — {DateTime.Now:dd.MM HH:mm}" : $"Animation — {controller}";
                 string customAnimFileName = isCustom ? $"{furnitureName}_{timestamp}.json" : "";
 
-                // =========================================================================
-                // НАЧАЛО ИСПРАВЛЕНИЯ: Вычисляем точный тип позы для сохранения в JSON
-                // =========================================================================
+                // ВЫЧИСЛЯЕМ СТРОКОВЫЙ ТИП НА ОСНОВЕ НАШЕГО ENUM
                 string savedType = "Vanilla";
-
-                if (isCustom)
+                switch (poseState)
                 {
-                    savedType = "CustomJSON";
+                    case CharacterPoseState.CustomPoseJSON:
+                        savedType = "CustomJSON";
+                        break;
+                    case CharacterPoseState.PoseAnimationsModActive:
+                        savedType = "PoseAnimationsMod"; // <--- Теперь в файл запишется этот тип!
+                        break;
+                    case CharacterPoseState.GameAnimatorActive:
+                        savedType = "Vanilla";
+                        break;
                 }
-                else if (CharacterStateHelper.IsPoseAnimationsInstalled &&
-                         controller == CharacterStateHelper.GetActiveModAnimationName(character))
-                {
-                    savedType = "PoseAnimationsMod"; // <--- Маркируем внешнюю JSON-анимацию
-                }
-                // =========================================================================
-                // КОНЕЦ ИСПРАВЛЕНИЯ
-                // =========================================================================
 
                 PoseData newPoseData = new PoseData
                 {
                     DisplayName = generatedPoseName,
-                    Type = savedType, // <--- Записываем вычисленное значение вместо старого тернарного оператора
+                    Type = savedType, // <--- Передаем вычисленное строковое значение
                     ControllerName = controller,
                     JsonFileName = customAnimFileName,
                     LocPosition = new Vector3Data { x = (float)Math.Round(pos.x, 4), y = (float)Math.Round(pos.y, 4), z = (float)Math.Round(pos.z, 4) },
