@@ -112,38 +112,73 @@ namespace FurnitureAnimationsMod
             }
 
             // ==========================================================
-            // 🔀 ЖЕЛЕЗНОЕ РАЗДЕЛЕНИЕ НА 3 ТИПА (С чистого листа по вашей формуле)
+            // 🔀 ТРОЙНОЕ РАЗДЕЛЕНИЕ НАШИМ СОБСТВЕННЫМ ДЕТЕКТОРОМ
             // ==========================================================
 
             // Получаем реальное техническое имя анимации персонажа из его контроллера
             string rawControllerName = (characterComp?.anim?.runtimeAnimatorController?.name ?? "None");
 
-            // Проверяем: JSON или Unity? (Ищем только маркеры текстового JSON!)
-            bool isAnimatedPoseMod = rawControllerName.EndsWith(".json") || rawControllerName.Contains("JSON");
+            // 🕵️ Проверяем: JSON или Unity? 
+            // Если имя содержит .json, "JSON", или характерные префиксы кастомных файлов из лога ("Dance", "A_")
+            bool isAnimatedPoseMod = rawControllerName.EndsWith(".json") ||
+                                     rawControllerName.Contains("JSON") ||
+                                     rawControllerName.StartsWith("Dance") ||
+                                     rawControllerName.StartsWith("A_");
 
+            controllerName = rawControllerName;
             string buttonText = "Link Preset Pose for Furniture"; // Тип 1: Ванильная Unity-поза
             string typeText = "Pose/Animation from the game";
             Texture2D finalPreview = _lastCapturedIcon; // По умолчанию берем то, что в памяти
 
             if (isCustomBakeMode)
             {
-                // ТИП 2: Гизмо (Текст и превью-скриншот уже подготовлены в Сценарии Б выше)
+                // 🛠️ ТИП 2: Гизмо (Ручное запекание костей)
+                controllerName = "CustomJSON";
                 buttonText = "Save Custom Pose for Furniture";
                 typeText = "User-made Custom Pose";
+
+                // Делаем фотопревью камерой, так как готовой иконки у гизмо нет
+                var photoComp = uiInstance.GetComponent<TakePhotos>();
+                if (photoComp != null && Global.code != null && Global.code.freeCamera != null)
+                {
+                    Camera cam = Global.code.freeCamera.GetComponent<Camera>();
+                    finalPreview = photoComp.CameraCapture(cam, new Rect(0f, 0f, 300f, 300f), "");
+                    _lastCapturedIcon = finalPreview;
+                }
             }
             else if (isAnimatedPoseMod)
             {
-                // ТИП 3: Иконка -> JSON (Кастомная анимация из AnimatedPose)
-                controllerName = rawControllerName;
-                buttonText = "Link Animated Pose for Furniture"; // Наша новая правильная надпись!
+                // 💃 ТИП 3: Иконка -> JSON (Кастомная анимация из AnimatedPose)
+                buttonText = "Link Animated Pose for Furniture"; // Наша новая надпись на сцене!
                 typeText = "External Mod Animation (AnimatedPose)";
-                Plugin.Log.LogInfo($"[PoseExporter] Обнаружена JSON-анимация. Передаем легальную иконку для '{controllerName}'.");
+
+                Plugin.Log.LogWarning($"[PoseExporter] Детектор: Поймали JSON-анимацию '{controllerName}'! Ищем её легальную иконку...");
+
+                // Так как AnimatedPose легально пушит свои трансформы в RM.code.allFreePoses (стр 15 PDF),
+                // мы вытаскиваем иконку танца прямо оттуда по точному совпадению имени!
+                if (RM.code != null && RM.code.allFreePoses != null)
+                {
+                    foreach (Transform t in RM.code.allFreePoses.items)
+                    {
+                        if (t == null) continue;
+                        if (t.name == controllerName) // В модовых кнопках имя объекта равно названию анимации!
+                        {
+                            var p = t.GetComponent<global::Pose>();
+                            if (p != null && p.icon != null)
+                            {
+                                finalPreview = p.icon;
+                                _lastCapturedIcon = p.icon;
+                                Plugin.Log.LogInfo($"[PoseExporter] 🎉 Легальная иконка мода для '{controllerName}' успешно извлечена из каталога!");
+                            }
+                            break;
+                        }
+                    }
+                }
             }
             else
             {
-                // ТИП 1: Иконка -> Unity (Ванильная поза игры)
-                controllerName = rawControllerName;
-                Plugin.Log.LogInfo($"[PoseExporter] Обнаружена Unity-поза. Передаем оригинальную иконку для '{controllerName}'.");
+                // 🎮 ТИП 1: Иконка -> Unity (Ванильная поза игры)
+                Plugin.Log.LogInfo($"[PoseExporter] Обнаружена ванильная Unity-поза. Передаем оригинальную иконку для '{controllerName}'.");
             }
 
             // Динамически меняем текст нашей кнопки интерактива на сцене игры
@@ -154,12 +189,12 @@ namespace FurnitureAnimationsMod
                 buttonTextComp.text = buttonText;
             }
 
-            // Расчет локального смещения относительно мебели (Ваш родной код)
+            // Расчет локального смещения относительно мебели
             Vector3 exactLocPos = closestFurniture.transform.InverseTransformPoint(playerPos);
             Quaternion localQuaternion = Quaternion.Inverse(closestFurniture.transform.rotation) * uiInstance.selectedCharacter.rotation;
             Vector3 exactLocRot = localQuaternion.eulerAngles;
 
-            // Формируем текст сообщения для диалога
+            // Формируем текст сообщения для нашего идеального диалога
             string promptText = $"Do you want to save this pose for <color=yellow>{furnitureName}</color>?\n" +
                                 $"Type: {typeText}\n" +
                                 $"Identifier: {controllerName}";
@@ -171,13 +206,12 @@ namespace FurnitureAnimationsMod
                 uiInstance.creatorName = "ModAuthor";
             }
 
-            // Шаг Б: Вызываем наше отлаженное диалоговое окно (передаем строго правильный finalPreview)
+            // Шаг Б: Вызываем наше отлаженное диалоговое окно (передаем promptText и ИМЕННО КОРРЕКТНУЮ finalPreview)
             EditorUiManager.ShowNativeStyleDialog(
                 uiInstance,
                 promptText,
                 finalPreview,
                 () => {
-                    // При нажатии запускаем физическую запись файлов конфига мода
                     SavePoseToDataFolder(furnitureName, controllerName, exactLocPos, exactLocRot, isCustomBakeMode, characterComp);
                 }
             );
