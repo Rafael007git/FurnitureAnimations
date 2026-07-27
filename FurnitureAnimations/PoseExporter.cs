@@ -8,7 +8,7 @@ namespace FurnitureAnimationsMod
 {
     public static class PoseExporter
     {
-        private static Texture2D _lastCapturedIcon = null;
+        public static Texture2D _lastCapturedIcon = null;
 
         public static void OnSaveInteractClicked(UIFreePose uiInstance)
         {
