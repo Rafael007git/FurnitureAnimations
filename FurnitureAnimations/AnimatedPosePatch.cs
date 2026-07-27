@@ -1,90 +1,67 @@
 ﻿using FurnitureAnimationsMod;
 using HarmonyLib;
-using System.Linq;
 using UnityEngine;
 
 namespace FurnitureAnimations
 {
-    // 🕵️ ХАРМОНИ-ПЕРЕХВАТ ЯДРА ANIMATED POSE (РАБОТАЕТ ПРИ ЛЮБОМ ВКЛЮЧЕНИИ АНИМАЦИИ)
-    // Патчим класс BepInExPlugin и метод LateUpdate (или метод установки анимации),
-    // Но так как имя метода установки может отличаться, мы внедримся в Update или LateUpdate, 
-    // где проверяется словарь currentlyPosing!
+    // 🕵️ УЛЬТИМАТИВНЫЙ ПЕРЕХВАТ КЛИКА В ЯДРЕ ANIMATED POSE
+    // Патчим метод, который выводит строчку "Setting Player to animation..."
+    [HarmonyPatch("PoseAnimations.BepInExPlugin", "SetToAnimation")]
+    [HarmonyPatch(new System.Type[] { typeof(string), typeof(CharacterCustomization) })]
 
-    [HarmonyPatch("PoseAnimations.BepInExPlugin", "LateUpdate")]
-    public static class AnimatedPose_Core_Tracker
+    public static class AnimatedPose_Method_Overtake
     {
-        private static string _lastDetectedAnim = "";
-
-        public static void Postfix()
+        public static void Postfix(string name, CharacterCustomization character)
         {
             try
             {
-                // Проверяем, открыт ли вообще режим Free Pose
-                if (Global.code == null || Global.code.uiFreePose == null || !Global.code.uiFreePose.enabled) return;
+                if (string.IsNullOrEmpty(name) || character == null) return;
 
-                var selectedChar = Global.code.uiFreePose.selectedCharacter;
-                if (selectedChar == null) return;
+                Plugin.Log.LogWarning($"[HARMONY_OVERTAKE] Поймали активацию танца: '{name}' на персонаже {character.name}");
 
-                var characterComp = selectedChar.GetComponent<CharacterCustomization>();
-                if (characterComp == null || characterComp.anim == null || characterComp.anim.runtimeAnimatorController == null) return;
-
-                // Получаем текущее имя контроллера (имя JSON-файла танца)
-                string currentAnimName = characterComp.anim.runtimeAnimatorController.name;
-
-                // Проверяем: это JSON-анимация мода?
-                bool isJsonAnim = currentAnimName.EndsWith(".json") || currentAnimName.Contains("JSON") || currentAnimName.StartsWith("Dance") || currentAnimName.StartsWith("A_");
-
-                if (isJsonAnim)
+                // 1. Находим объект позы в каталоге игры, чтобы забрать легальную иконку мода
+                if (RM.code != null && RM.code.allFreePoses != null)
                 {
-                    // Если анимация сменилась, обновляем данные один раз, чтобы не спамить в Update
-                    if (_lastDetectedAnim != currentAnimName)
+                    foreach (Transform t in RM.code.allFreePoses.items)
                     {
-                        _lastDetectedAnim = currentAnimName;
-                        Plugin.Log.LogWarning($"[CORE_OVERTAKE] Детектор: Обнаружена активная JSON-анимация '{currentAnimName}' на персонаже!");
-
-                        // 1. Пытаемся вытащить легальную иконку этой позы из общего реестра игры
-                        if (RM.code != null && RM.code.allFreePoses != null)
+                        if (t != null && t.name == name)
                         {
-                            foreach (Transform t in RM.code.allFreePoses.items)
+                            var p = t.GetComponent<global::Pose>();
+                            if (p != null && p.icon != null)
                             {
-                                if (t == null) continue;
-                                var p = t.GetComponent<global::Pose>();
-                                if (p != null && p.name == currentAnimName)
-                                {
-                                    // Записываем её в наше поле превью (через рефлексию для безопасности доступа)
-                                    var field = typeof(PoseExporter).GetField("_lastCapturedIcon", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
-                                    if (field != null)
-                                    {
-                                        field.SetValue(null, p.icon);
-                                        Plugin.Log.LogInfo($"[CORE_OVERTAKE] Легальная иконка для '{currentAnimName}' успешно перехвачена.");
-                                    }
-                                    break;
-                                }
+                                // Записываем иконку в наше скрытое поле через рефлексию
+                                var field = typeof(PoseExporter).GetField("_lastCapturedIcon", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+                                field?.SetValue(null, p.icon);
+                                Plugin.Log.LogInfo($"[HARMONY_OVERTAKE] Легальная иконка для '{name}' успешно перехвачена.");
                             }
-                        }
-
-                        // 2. Железно переключаем текст нашей ультимативной кнопки на сцене
-                        Transform sdkBtnTrans = Global.code.uiFreePose.transform.Find("Button_SaveInteract");
-                        var buttonTextComp = sdkBtnTrans?.GetComponentInChildren<UnityEngine.UI.Text>();
-                        if (buttonTextComp != null)
-                        {
-                            buttonTextComp.text = "Link Animated Pose for Furniture";
-                            Plugin.Log.LogInfo("[CORE_OVERTAKE] Кнопка интерактива переведена в режим 'Link Animated Pose'.");
+                            break;
                         }
                     }
                 }
-                else
+
+                // 2. Мгновенно меняем текст и цвет нашей кнопки интерактива на сцене
+                var uiFreePose = GameObject.FindObjectOfType<UIFreePose>();
+                if (uiFreePose != null)
                 {
-                    // Если персонаж переключился обратно на обычную позу
-                    if (_lastDetectedAnim != "" && !string.IsNullOrEmpty(currentAnimName) && !currentAnimName.Contains("CustomJSON"))
+                    Transform sdkBtnTrans = uiFreePose.transform.Find("Button_SaveInteract");
+                    var buttonTextComp = sdkBtnTrans?.GetComponentInChildren<UnityEngine.UI.Text>();
+                    var buttonImageComp = sdkBtnTrans?.GetComponent<UnityEngine.UI.Image>();
+
+                    if (buttonTextComp != null)
                     {
-                        _lastDetectedAnim = "";
+                        buttonTextComp.text = "Link Animated Pose for Furniture";
                     }
+                    if (buttonImageComp != null)
+                    {
+                        // Вспыхиваем красивым фиолетовым цветом мода в рантайме!
+                        buttonImageComp.color = new Color(0.6f, 0.2f, 0.8f, 1f);
+                    }
+                    Plugin.Log.LogInfo("[HARMONY_OVERTAKE] Кнопка на сцене мгновенно переведена в режим 'Link Animated Pose'.");
                 }
             }
             catch (System.Exception ex)
             {
-                // Подавляем спам в логах, если что-то не инициализировалось при старте сцены
+                Plugin.Log.LogError($"[HARMONY_OVERTAKE] Ошибка перехвата в SetToAnimation: {ex}");
             }
         }
     }
