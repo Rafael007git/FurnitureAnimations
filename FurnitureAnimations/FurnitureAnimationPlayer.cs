@@ -90,6 +90,11 @@ namespace FurnitureAnimationsMod
             _reversing = false;
         }
 
+        // Возвращает имя текущей проигрываемой JSON-анимации.
+        public string GetPlayingAnimationName()
+        {
+            return _animData != null ? _animData.name : string.Empty;
+        }
         private void LateUpdate()
         {
             if (_character == null || _animData == null) return;

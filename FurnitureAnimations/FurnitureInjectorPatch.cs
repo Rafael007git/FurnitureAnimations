@@ -253,6 +253,7 @@ namespace FurnitureAnimationsMod
             ProcessPoseClick(activeChar, parentFurniture, uiPoseName, uiCtrlName);
         }
 
+
         private static void ProcessPoseClick(CharacterCustomization characterComp, Furniture furniture, string uiPoseName, string uiCtrlName)
         {
             if (characterComp == null || furniture == null) return;
@@ -275,21 +276,41 @@ namespace FurnitureAnimationsMod
 
                 if (currentPoseData == null) return;
 
-                // ХИРУРГИЧЕСКАЯ ПРАВКА №2: ОБРАБОТКА ХОДА ДЛЯ ВНЕШНЕГО ПЛЕЕРА JSON АНИМАЦИЙ 💃
+                // =========================================================================
+                // УМНЫЙ ПЕРЕХВАТ ДЛЯ СМЕНЫ И ОСТАНОВКИ АНИМАЦИЙ 🛑💃
+                // =========================================================================
+
+                // 1. Проверяем, запущен ли наш встроенный плеер на персонаже прямо сейчас
+                var activePlayer = characterComp.gameObject.GetComponent<FurnitureAnimationPlayer>();
+
+                if (activePlayer != null)
+                {
+                    // Узнаем имя анимации, которая крутится в данный момент
+                    string currentlyPlayingAnim = activePlayer.GetPlayingAnimationName();
+
+                    // ЕСЛИ КЛИКНУЛИ ПО ТОЙ ЖЕ ИКОНКЕ -> Просто останавливаем «горшочек»
+                    if (currentPoseData.Type.Equals("PoseAnimationsMod", StringComparison.OrdinalIgnoreCase) &&
+                        currentPoseData.ControllerName == currentlyPlayingAnim)
+                    {
+                        Plugin.Log.LogWarning($"[SDK_Icon] Клик по той же анимации '{currentlyPlayingAnim}'. Останавливаем плеер.");
+                        UnityEngine.Object.Destroy(activePlayer);
+                        return; // Мгновенный выход, ничего нового не запускаем
+                    }
+
+                    // ЕСЛИ КЛИКНУЛИ ПО ЛЮБОЙ ДРУГОЙ ИКОНКЕ -> Сносим старый плеер и даем коду идти дальше
+                    Plugin.Log.LogWarning($"[SDK_Icon] Переключение! Удаляем старую анимацию '{currentlyPlayingAnim}' перед запуском нового режима.");
+                    UnityEngine.Object.Destroy(activePlayer);
+                }
+
+                // =========================================================================
+
+                // Логика запуска внешней JSON-анимации мода
                 if (currentPoseData.Type.Equals("PoseAnimationsMod", StringComparison.OrdinalIgnoreCase))
                 {
                     Plugin.Log.LogWarning($"[SDK_Icon] Активирован локальный встроенный плеер для анимации: {currentPoseData.ControllerName}");
 
-                    // 1. Очищаем старый плеер, если он уже крутился на персонаже
-                    var oldPlayer = characterComp.gameObject.GetComponent<FurnitureAnimationPlayer>();
-                    if (oldPlayer != null) UnityEngine.Object.Destroy(oldPlayer);
-
-                    // 2. Добавляем новый плеер на игровой объект куклы
                     var newPlayer = characterComp.gameObject.AddComponent<FurnitureAnimationPlayer>();
-
-                    // 3. Запускаем плеер, передавая ему персонажа, имя анимации, объект мебели и данные оффсета
                     newPlayer.Play(characterComp, currentPoseData.ControllerName, furniture, currentPoseData);
-
                     return;
                 }
 
@@ -304,6 +325,7 @@ namespace FurnitureAnimationsMod
                 }
             }
         }
+
 
         private static System.Collections.IEnumerator ExecuteBonesInjectionDelayed(CharacterCustomization characterComp, string jsonFileName)
         {
