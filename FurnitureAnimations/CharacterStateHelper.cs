@@ -97,51 +97,49 @@ namespace FurnitureAnimationsMod
             return "UnknownModAnimation";
         }
 
+        // ИСПРАВЛЕНИЕ В CHARACTERSTATEHELPER.CS (внутри класса PoseAnimationsBridge):
+
         [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
         public static void PlayExternalAnimation(CharacterCustomization character, string animationName)
         {
             try
             {
-                // 1. Проверяем, существует ли вообще такая анимация в базе данных мода (строка 675)
+                // 1. Проверяем наличие анимации в базе данных оригинального мода
                 if (PoseAnimations.BepInExPlugin.animationDict != null &&
-                    PoseAnimations.BepInExPlugin.animationDict.ContainsKey(animationName))
+                    PoseAnimations.BepInExPlugin.animationDict.TryGetValue(animationName, out var animData))
                 {
-                    Plugin.Log.LogInfo($"[PoseBridge] Анимация '{animationName}' верифицирована. Ищем её игровой объект-кнопку...");
+                    Plugin.Log.LogWarning($"[PoseBridge] Запуск анимации '{animationName}' через динамический вызов конструктора...");
 
-                    // 2. Ищем сгенерированный автором трансформ позы в глобальном реестре игры (строка 355)
-                    if (RM.code != null && RM.code.allFreePoses != null)
+                    if (PoseAnimations.BepInExPlugin.currentlyPosing != null)
                     {
-                        Transform targetPoseTransform = null;
-                        foreach (Transform t in RM.code.allFreePoses.items)
+                        if (PoseAnimations.BepInExPlugin.currentlyPosing.ContainsKey(character))
                         {
-                            if (t != null && t.name == animationName)
-                            {
-                                targetPoseTransform = t;
-                                break;
-                            }
+                            PoseAnimations.BepInExPlugin.currentlyPosing.Remove(character);
                         }
 
-                        // 3. Эмулируем клик игрока для бесшовного запуска! (строка 359)
-                        if (targetPoseTransform != null)
+                        // 2. ОБХОД ОШИБКИ CS1729 ЧЕРЕЗ АКТИВАТОР:
+                        // Динамически создаем объект PoseAnimationInstance в рантайме.
+                        // Если декомпилятор ошибся со структурой, активатор сам найдет конструктор (character, animData).
+                        object instance = Activator.CreateInstance(typeof(PoseAnimations.PoseAnimationInstance), new object[] { character, animData });
+
+                        if (instance != null)
                         {
-                            Plugin.Log.LogWarning($"[PoseBridge] Инициализируем принудительный нативный старт анимации через PoseButtonClicked!");
-                            PoseAnimations.BepInExPlugin.PoseButtonClicked(targetPoseTransform);
-                        }
-                        else
-                        {
-                            Plugin.Log.LogError($"[PoseBridge] Сбой: Объект позы '{animationName}' не зарегистрирован в RM.code.allFreePoses!");
+                            // Кладим созданный объект в статический словарь оригинального мода
+                            PoseAnimations.BepInExPlugin.currentlyPosing[character] = (PoseAnimations.PoseAnimationInstance)instance;
+                            Plugin.Log.LogInfo($"[PoseBridge] Персонаж {character.name} успешно запущен через Активатор!");
                         }
                     }
                 }
                 else
                 {
-                    Plugin.Log.LogError($"[PoseBridge] Сбой: Анимация '{animationName}' отсутствует в animationDict мода!");
+                    Plugin.Log.LogError($"[PoseBridge] Сбой: Анимация '{animationName}' отсутствует в базе мода!");
                 }
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogError($"[PoseBridge] Критический краш при вызове PoseButtonClicked: {ex.Message}");
+                Plugin.Log.LogError($"[PoseBridge] Критический краш создания PoseAnimationInstance: {ex.Message}");
             }
         }
+
     }
 }
