@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
+using UnityEngine.Networking; // Обязательно для загрузки аудио
 
 namespace FurnitureAnimationsMod
 {
@@ -9,13 +10,13 @@ namespace FurnitureAnimationsMod
     {
         private CharacterCustomization _character;
         private PoseAnimationData _animData;
+        private AudioSource _audioSource; // Наш звуковой движок
 
         private float _deltaTime = 0f;
         private int _currentDelta = 0;
         private int _currentFrame = 0;
         private bool _reversing = false;
 
-        // Переменные для динамического расчета положения персонажа в пространстве
         private Vector3 _baseWorldPos;
         private Quaternion _baseWorldRot;
         private Quaternion _modelRotationModifier;
@@ -26,6 +27,7 @@ namespace FurnitureAnimationsMod
         {
             _character = character;
 
+            // 1. Загрузка JSON анимации (твой рабочий код)
             string assetPath = Path.Combine(BepInEx.Paths.PluginPath, "PoseAnimations", $"{animationName}.json");
             if (!File.Exists(assetPath))
             {
@@ -54,26 +56,36 @@ namespace FurnitureAnimationsMod
                 return;
             }
 
-            // 1. ВЫЧИСЛЯЕМ БАЗОВУЮ ТОЧКУ ОТСЧЕТА НА МЕБЕЛИ
+            // =========================================================================
+            // НОВАЯ ФИЧА: ДИНАМИЧЕСКИЙ СИНХРОННЫЙ АУДИО-ПЛЕЕР 🎵
+            // =========================================================================
+            // Ищем звук с таким же именем в папке анимаций (.wav, .mp3, .ogg)
+            string audioFolder = Path.Combine(BepInEx.Paths.PluginPath, "PoseAnimations");
+            string matchedAudioPath = null;
+            AudioType detectedType = AudioType.UNKNOWN;
+
+            if (File.Exists(Path.Combine(audioFolder, $"{animationName}.wav"))) { matchedAudioPath = Path.Combine(audioFolder, $"{animationName}.wav"); detectedType = AudioType.WAV; }
+            else if (File.Exists(Path.Combine(audioFolder, $"{animationName}.mp3"))) { matchedAudioPath = Path.Combine(audioFolder, $"{animationName}.mp3"); detectedType = AudioType.MPEG; }
+            else if (File.Exists(Path.Combine(audioFolder, $"{animationName}.ogg"))) { matchedAudioPath = Path.Combine(audioFolder, $"{animationName}.ogg"); detectedType = AudioType.OGGVORBIS; }
+
+            if (!string.IsNullOrEmpty(matchedAudioPath))
+            {
+                // Запускаем корутину фоновой загрузки аудиофайла в память Unity
+                StartCoroutine(LoadAndPlayAudio(matchedAudioPath, detectedType));
+            }
+            // =========================================================================
+
+            // 2. Применение оффсетов мебели (твой рабочий код)
             if (furniture != null && poseConfig != null)
             {
-                _baseWorldPos = furniture.transform.TransformPoint(
-                    new Vector3(poseConfig.LocPosition.x, poseConfig.LocPosition.y, poseConfig.LocPosition.z)
-                );
-
-                _baseWorldRot = furniture.transform.rotation * Quaternion.Euler(
-                    new Vector3(poseConfig.LocRotation.x, poseConfig.LocRotation.y, poseConfig.LocRotation.z)
-                );
-
-                // Модификатор вращения автора для правильного наложения смещений (Страница 4, строка 185)
+                _baseWorldPos = furniture.transform.TransformPoint(new Vector3(poseConfig.LocPosition.x, poseConfig.LocPosition.y, poseConfig.LocPosition.z));
+                _baseWorldRot = furniture.transform.rotation * Quaternion.Euler(new Vector3(poseConfig.LocRotation.x, poseConfig.LocRotation.y, poseConfig.LocRotation.z));
                 _modelRotationModifier = _baseWorldRot * Quaternion.Inverse(Quaternion.Euler(ArrayToVector3(_animData.startRot)));
-
-                // Выставляем персонажа в стартовую позицию интерактива
                 _character.transform.position = _baseWorldPos;
                 _character.transform.rotation = _baseWorldRot;
             }
 
-            // 2. Замораживаем оригинальный Animator Юнити
+            // 3. Замораживаем Animator Юнити
             if (_character.anim != null)
             {
                 _character.anim.applyRootMotion = false;
@@ -88,6 +100,41 @@ namespace FurnitureAnimationsMod
             _currentDelta = 0;
             _currentFrame = 0;
             _reversing = false;
+        }
+
+        // КОРУТИНА СТРИМИНГА ЗВУКА С ДИСКА
+        private System.Collections.IEnumerator LoadAndPlayAudio(string filePath, AudioType type)
+        {
+            // Формируем легальный локальный URI для UnityWebRequest
+            string fileUri = "file://" + filePath.Replace("\\", "/");
+
+            using (UnityWebRequest multimediaRequest = UnityWebRequestMultimedia.GetAudioClip(fileUri, type))
+            {
+                yield return multimediaRequest.SendWebRequest();
+
+                if (multimediaRequest.result == UnityWebRequest.Result.ConnectionError || multimediaRequest.result == UnityWebRequest.Result.ProtocolError)
+                {
+                    Plugin.Log.LogError($"[AudioEngine] Ошибка загрузки звука: {multimediaRequest.error}");
+                }
+                else
+                {
+                    AudioClip clip = DownloadHandlerAudioClip.GetContent(multimediaRequest);
+                    if (clip != null)
+                    {
+                        // Вешаем AudioSource прямо на персонажа (или берем существующий)
+                        _audioSource = gameObject.GetComponent<AudioSource>() ?? gameObject.AddComponent<AudioSource>();
+                        _audioSource.clip = clip;
+                        _audioSource.loop = _animData.loop; // Звук зацикливается синхронно с JSON-анимацией!
+                        _audioSource.spatialBlend = 1f;     // 3D звук (затухает, если отойти от стула!)
+                        _audioSource.minDistance = 2f;
+                        _audioSource.maxDistance = 15f;
+                        _audioSource.volume = 0.8f;         // Громкость (потом выведем на кнопку!)
+
+                        _audioSource.Play();
+                        Plugin.Log.LogWarning($"[AudioEngine] 🎉 Саундтрек '{clip.name}' успешно запущен в 3D-пространстве мебели!");
+                    }
+                }
+            }
         }
 
         // Возвращает имя текущей проигрываемой JSON-анимации.
@@ -248,9 +295,17 @@ namespace FurnitureAnimationsMod
 
         private void OnDestroy()
         {
+            // ТУШИМ ЗВУК: Чтобы музыка не продолжала орать в воздухе
+            if (_audioSource != null && _audioSource.isPlaying)
+            {
+                _audioSource.Stop();
+                Plugin.Log.LogInfo("[AudioEngine] Музыка интерактива успешно остановлена.");
+            }
+
             if (_character != null && _character.anim != null)
             {
-                _character.anim.enabled = true; _character.anim.speed = 1f;
+                _character.anim.enabled = true;
+                _character.anim.speed = 1f;
             }
             Plugin.Log.LogWarning("[LocalPlayer] Встроенный движок выключен, управление возвращено Юнити.");
         }
