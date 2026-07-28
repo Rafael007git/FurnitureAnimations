@@ -83,11 +83,13 @@
     <Compile Include="ConfigManager.cs" />
     <Compile Include="DioramaConstants.cs" />
     <Compile Include="EditorUiManager.cs" />
+    <Compile Include="FurnitureAnimationPlayer.cs" />
     <Compile Include="FurnitureInjectorPatch.cs" />
     <Compile Include="FurnitureSdkButtonController.cs" />
     <Compile Include="LogOvertake.cs" />
     <Compile Include="Models.cs" />
     <Compile Include="Plugin.cs" />
+    <Compile Include="PoseAnimationData.cs" />
     <Compile Include="PoseExporter.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

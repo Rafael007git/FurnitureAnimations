@@ -278,18 +278,18 @@ namespace FurnitureAnimationsMod
                 // ХИРУРГИЧЕСКАЯ ПРАВКА №2: ОБРАБОТКА ХОДА ДЛЯ ВНЕШНЕГО ПЛЕЕРА JSON АНИМАЦИЙ 💃
                 if (currentPoseData.Type.Equals("PoseAnimationsMod", StringComparison.OrdinalIgnoreCase))
                 {
-                    Plugin.Log.LogWarning($"[SDK_Icon] Поймали клик внешней анимации мода! Идентификатор: {currentPoseData.ControllerName}");
+                    Plugin.Log.LogWarning($"[SDK_Icon] Активирован локальный встроенный плеер для анимации: {currentPoseData.ControllerName}");
 
-                    if (CharacterStateHelper.IsPoseAnimationsInstalled)
-                    {
-                        // Запускаем через наш изолированный рантайм-мост
-                        PoseAnimationsBridge.PlayExternalAnimation(characterComp, currentPoseData.ControllerName);
-                    }
-                    else
-                    {
-                        if (Global.code != null && Global.code.uiCombat != null)
-                            Global.code.uiCombat.AddPrompt("This animation requires PoseAnimations mod!");
-                    }
+                    // 1. Очищаем старый плеер, если он уже крутился на персонаже
+                    var oldPlayer = characterComp.gameObject.GetComponent<FurnitureAnimationPlayer>();
+                    if (oldPlayer != null) UnityEngine.Object.Destroy(oldPlayer);
+
+                    // 2. Добавляем новый плеер на игровой объект куклы
+                    var newPlayer = characterComp.gameObject.AddComponent<FurnitureAnimationPlayer>();
+
+                    // 3. Запускаем плеер, передавая ему персонажа, имя анимации, объект мебели и данные оффсета
+                    newPlayer.Play(characterComp, currentPoseData.ControllerName, furniture, currentPoseData);
+
                     return;
                 }
 
