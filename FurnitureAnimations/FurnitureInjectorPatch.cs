@@ -293,13 +293,13 @@ namespace FurnitureAnimationsMod
                         currentPoseData.ControllerName == currentlyPlayingAnim)
                     {
                         Plugin.Log.LogWarning($"[SDK_Icon] Клик по той же анимации '{currentlyPlayingAnim}'. Останавливаем плеер.");
-                        UnityEngine.Object.Destroy(activePlayer);
+                        UnityEngine.Object.Destroy(activePlayer as UnityEngine.Component);
                         return; // Мгновенный выход, ничего нового не запускаем
                     }
 
                     // ЕСЛИ КЛИКНУЛИ ПО ЛЮБОЙ ДРУГОЙ ИКОНКЕ -> Сносим старый плеер и даем коду идти дальше
                     Plugin.Log.LogWarning($"[SDK_Icon] Переключение! Удаляем старую анимацию '{currentlyPlayingAnim}' перед запуском нового режима.");
-                    UnityEngine.Object.Destroy(activePlayer);
+                    UnityEngine.Object.Destroy(activePlayer as UnityEngine.Component);
                 }
 
                 // =========================================================================

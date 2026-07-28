@@ -61,7 +61,7 @@ namespace FurnitureAnimationsMod
             // =========================================================================
             // Ищем музыку в папке ВАШЕГО мода, внутри подпапки "Audio"
             string myModFolder = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
-            string audioFolder = Path.Combine(myModFolder, "Audio");
+            string audioFolder = Path.Combine(BepInEx.Paths.PluginPath, "FurnitureAnimations", "Audio");
 
             // На всякий случай создаем папку Audio, если игрок её забыл сделать
             if (!Directory.Exists(audioFolder))
