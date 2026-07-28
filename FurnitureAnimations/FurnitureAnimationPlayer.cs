@@ -57,23 +57,53 @@ namespace FurnitureAnimationsMod
             }
 
             // =========================================================================
-            // НОВАЯ ФИЧА: ДИНАМИЧЕСКИЙ СИНХРОННЫЙ АУДИО-ПЛЕЕР 🎵
+            // УЛЬТИМАТИВНЫЙ ПОИСК АУДИО В ПАПКЕ ВАШЕГО МОДА 🎵
             // =========================================================================
-            // Ищем звук с таким же именем в папке анимаций (.wav, .mp3, .ogg)
-            string audioFolder = Path.Combine(BepInEx.Paths.PluginPath, "PoseAnimations");
+            // Ищем музыку в папке ВАШЕГО мода, внутри подпапки "Audio"
+            string myModFolder = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
+            string audioFolder = Path.Combine(myModFolder, "Audio");
+
+            // На всякий случай создаем папку Audio, если игрок её забыл сделать
+            if (!Directory.Exists(audioFolder))
+            {
+                Directory.CreateDirectory(audioFolder);
+            }
+
+            Plugin.Log.LogWarning($"[AudioDebug] Поиск звука для анимации '{animationName}'");
+            Plugin.Log.LogInfo($"[AudioDebug] Ожидаемый путь к папке: {audioFolder}");
+
             string matchedAudioPath = null;
             AudioType detectedType = AudioType.UNKNOWN;
 
-            if (File.Exists(Path.Combine(audioFolder, $"{animationName}.wav"))) { matchedAudioPath = Path.Combine(audioFolder, $"{animationName}.wav"); detectedType = AudioType.WAV; }
-            else if (File.Exists(Path.Combine(audioFolder, $"{animationName}.mp3"))) { matchedAudioPath = Path.Combine(audioFolder, $"{animationName}.mp3"); detectedType = AudioType.MPEG; }
-            else if (File.Exists(Path.Combine(audioFolder, $"{animationName}.ogg"))) { matchedAudioPath = Path.Combine(audioFolder, $"{animationName}.ogg"); detectedType = AudioType.OGGVORBIS; }
+            string[] extensions = new string[] { ".wav", ".mp3", ".ogg" };
+            AudioType[] types = new AudioType[] { AudioType.WAV, AudioType.MPEG, AudioType.OGGVORBIS };
+
+            for (int i = 0; i < extensions.Length; i++)
+            {
+                string checkPath = Path.Combine(audioFolder, animationName + extensions[i]);
+                bool exists = File.Exists(checkPath);
+
+                Plugin.Log.LogInfo($"[AudioDebug] Проверка: {animationName + extensions[i]} -> {exists}");
+
+                if (exists)
+                {
+                    matchedAudioPath = checkPath;
+                    detectedType = types[i];
+                    break;
+                }
+            }
 
             if (!string.IsNullOrEmpty(matchedAudioPath))
             {
-                // Запускаем корутину фоновой загрузки аудиофайла в память Unity
+                Plugin.Log.LogWarning($"[AudioDebug] Файл найден! Запускаем стриминг: {Path.GetFileName(matchedAudioPath)}");
                 StartCoroutine(LoadAndPlayAudio(matchedAudioPath, detectedType));
             }
+            else
+            {
+                Plugin.Log.LogError($"[AudioDebug] Музыка не найдена. Положите файл '{animationName}.mp3' (или .wav/.ogg) в папку: {audioFolder}");
+            }
             // =========================================================================
+
 
             // 2. Применение оффсетов мебели (твой рабочий код)
             if (furniture != null && poseConfig != null)
@@ -105,7 +135,6 @@ namespace FurnitureAnimationsMod
         // КОРУТИНА СТРИМИНГА ЗВУКА С ДИСКА
         private System.Collections.IEnumerator LoadAndPlayAudio(string filePath, AudioType type)
         {
-            // Формируем легальный локальный URI для UnityWebRequest
             string fileUri = "file://" + filePath.Replace("\\", "/");
 
             using (UnityWebRequest multimediaRequest = UnityWebRequestMultimedia.GetAudioClip(fileUri, type))
@@ -114,28 +143,34 @@ namespace FurnitureAnimationsMod
 
                 if (multimediaRequest.result == UnityWebRequest.Result.ConnectionError || multimediaRequest.result == UnityWebRequest.Result.ProtocolError)
                 {
-                    Plugin.Log.LogError($"[AudioEngine] Ошибка загрузки звука: {multimediaRequest.error}");
+                    Plugin.Log.LogError($"[AudioEngine] Ошибка UnityWebRequest: {multimediaRequest.error}");
                 }
                 else
                 {
                     AudioClip clip = DownloadHandlerAudioClip.GetContent(multimediaRequest);
                     if (clip != null)
                     {
-                        // Вешаем AudioSource прямо на персонажа (или берем существующий)
                         _audioSource = gameObject.GetComponent<AudioSource>() ?? gameObject.AddComponent<AudioSource>();
                         _audioSource.clip = clip;
-                        _audioSource.loop = _animData.loop; // Звук зацикливается синхронно с JSON-анимацией!
-                        _audioSource.spatialBlend = 1f;     // 3D звук (затухает, если отойти от стула!)
-                        _audioSource.minDistance = 2f;
-                        _audioSource.maxDistance = 15f;
-                        _audioSource.volume = 0.8f;         // Громкость (потом выведем на кнопку!)
+                        _audioSource.loop = _animData.loop;
+
+                        // НАСТРОЙКИ ПРОБИТИЯ ИГРОВОГО ЭМБИЕНТА 📣
+                        _audioSource.bypassEffects = true;       // Игнорировать глобальные эффекты зоны игры
+                        _audioSource.bypassListenerEffects = true;
+                        _audioSource.priority = 0;               // Максимальный приоритет в движке Unity (0 = первый)
+
+                        // Делаем звук 2D, чтобы он играл на полную мощность прямо в уши игрока,
+                        // пока мы тестируем и отлаживаем корутину (потом вернем 3D, если нужно)
+                        _audioSource.spatialBlend = 0f;
+                        _audioSource.volume = 1.0f;              // Полная громкость
 
                         _audioSource.Play();
-                        Plugin.Log.LogWarning($"[AudioEngine] 🎉 Саундтрек '{clip.name}' успешно запущен в 3D-пространстве мебели!");
+                        Plugin.Log.LogWarning($"[AudioEngine] 🎉 Звуковой файл '{clip.name}' успешно пробился в рантайм и запущен!");
                     }
                 }
             }
         }
+
 
         // Возвращает имя текущей проигрываемой JSON-анимации.
         public string GetPlayingAnimationName()
