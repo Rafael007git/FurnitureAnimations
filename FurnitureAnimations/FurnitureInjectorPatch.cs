@@ -31,12 +31,14 @@ namespace FurnitureAnimationsMod
             // Ищем, есть ли для этой мебели конфигурация в нашем моде
             if (ConfigManager.LoadedConfigs.TryGetValue(furnitureName, out FurnitureConfig config))
             {
-                Plugin.Log.LogWarning($"[Injector] Ультимативное слияние поз для мебели: {furnitureName}");
+                Plugin.Log.LogWarning($"[Injector] Инжекция кастомных поз для мебели: {furnitureName} (Ванильные позы БУДУТ сохранены!)");
 
+                // --- КРИТИЧЕСКИЙ ФИКС №1: БОЛЬШЕ НЕ УНИЧТОЖАЕМ "posesGroup" И НЕ ОЧИЩАЕМ СПИСКИ КАМЕР/ПОЗ ИГРЫ! ---
+                // Если у мебели почему-то нет инициализированных списков — создаем их (защита от краша)
                 if (__instance.poses == null) __instance.poses = new CommonArray();
                 if (__instance.cameras == null) __instance.cameras = new CommonArray();
 
-                // Изолированная папка для НАШИХ кастомных файлов (чтобы не мешать ванильным)
+                // Находим или создаем кастомную подпапку для НАШИХ поз внутри мебели, чтобы не захламлять оригинальный posesGroup
                 Transform modPosesGroup = __instance.transform.Find("Mod_CustomPosesGroup");
                 if (modPosesGroup == null)
                 {
@@ -45,90 +47,114 @@ namespace FurnitureAnimationsMod
                     modPosesGroup = modGroupObj.transform;
                 }
 
-                // Собираем оригинальные ванильные позы, которые игра УЖЕ нашла в своей папке posesGroup при старте
-                List<Transform> vanillaTransforms = new List<Transform>();
-                Transform gamePosesGroup = __instance.transform.Find("posesGroup");
-                if (gamePosesGroup != null)
-                {
-                    foreach (Transform child in gamePosesGroup)
-                    {
-                        if (child != null && !vanillaTransforms.Contains(child))
-                        {
-                            vanillaTransforms.Add(child);
-                        }
-                    }
-                }
-
                 Pose[] allGamePoses = Resources.FindObjectsOfTypeAll<Pose>();
                 RuntimeAnimatorController[] allControllers = Resources.FindObjectsOfTypeAll<RuntimeAnimatorController>();
 
-                // Очищаем текущий рабочий массив, чтобы пересобрать его без дубликатов и сбоев иконок
-                __instance.poses.ClearItems();
-
-                // 1. ПЕРВЫМ ДЕЛОМ возвращаем на место ВСЕ родные ванильные позы из папки мебели
-                foreach (Transform vanillaTrans in vanillaTransforms)
-                {
-                    if (vanillaTrans != null)
-                    {
-                        __instance.poses.AddItem(vanillaTrans);
-                    }
-                }
-
-                // 2. СЛЕДОМ накатываем кастомные позы из нашего JSON конфигурации
+                // Проходим циклом по позам из нашего JSON конфига
                 foreach (PoseData poseConfig in config.InteractionPoses)
                 {
                     if (poseConfig == null) continue;
 
-                    bool isCustomPose = poseConfig.Type.Equals("CustomJSON", System.StringComparison.OrdinalIgnoreCase) || poseConfig.Type.Contains("Кастомная");
-                    bool isExternalModAnim = poseConfig.Type.Equals("PoseAnimationsMod", System.StringComparison.OrdinalIgnoreCase);
-
-                    // ЕСЛИ ПОЗА ВАНИЛЬНАЯ (Пресетная): Мы её только что добавили выше, повторно создавать объект НЕ НУЖНО
-                    if (!isCustomPose && !isExternalModAnim)
-                    {
-                        continue;
-                    }
-
-                    // Защита от дублирования кастомных элементов
-                    bool alreadyExists = false;
+                    // --- КРИТИЧЕСКИЙ ФИКС №2: ИСКЛЮЧАЕМ ДУБЛИРОВАНИЕ ПРИ СЛУЧАЙНОМ ПОВТОРНОМ ВЫЗОВЕ ---
+                    bool alreadyInjected = false;
                     foreach (Transform existingPose in __instance.poses.items)
                     {
                         if (existingPose != null && existingPose.name == poseConfig.DisplayName)
                         {
-                            alreadyExists = true; break;
+                            alreadyInjected = true;
+                            break;
                         }
                     }
-                    if (alreadyExists) continue;
+                    if (alreadyInjected) continue; // Если поза уже добавлена к этой мебели — идем дальше
 
-                    // Создаем GameObject строго для КАСТОМНОЙ позы нашего мода
+                    bool isCustomPose = poseConfig.Type.Equals("CustomJSON", System.StringComparison.OrdinalIgnoreCase) || poseConfig.Type.Contains("Кастомная");
+                    bool isExternalModAnim = poseConfig.Type.Equals("PoseAnimationsMod", System.StringComparison.OrdinalIgnoreCase);
+
+                    RuntimeAnimatorController targetController = null;
+                    string searchName = (isCustomPose || isExternalModAnim) ? "UnarmedController" : poseConfig.ControllerName;
+
+                    foreach (var rc in allControllers)
+                    {
+                        if (rc != null && rc.name == searchName) { targetController = rc; break; }
+                    }
+
+                    if (targetController == null && !isCustomPose && !isExternalModAnim) continue;
+
+                    // Создаем новый GameObject для НАШЕЙ кастомной позы
                     GameObject newPoseObj = new GameObject(poseConfig.DisplayName);
-                    newPoseObj.transform.SetParent(modPosesGroup, false);
+                    newPoseObj.transform.SetParent(modPosesGroup, false); // Кладем в нашу изолированную папку мода
 
                     Pose newPose = newPoseObj.AddComponent<Pose>();
-                    newPose.categoryName = "Custom";
+                    newPose.controller = targetController;
                     newPose.notshown = false;
                     newPose.locked = false;
                     newPose.crystals = 0;
 
-                    // Загружаем иконку кастомной позы строго с диска
-                    string iconName = isCustomPose ? poseConfig.JsonFileName.Replace(".json", ".png") : $"{poseConfig.ControllerName}.png";
-                    string iconFullPath = Path.Combine(ConfigManager.IconsPath, iconName);
-
-                    if (File.Exists(iconFullPath))
+                    // Инжекция картинки-иконки с диска
+                    if (isCustomPose || isExternalModAnim)
                     {
-                        try
+                        newPose.categoryName = "Custom";
+                        string iconName = isCustomPose ? poseConfig.JsonFileName.Replace(".json", ".png") : $"{poseConfig.ControllerName}.png";
+                        string iconFullPath = Path.Combine(ConfigManager.IconsPath, iconName);
+
+                        if (File.Exists(iconFullPath))
                         {
-                            byte[] imgBytes = File.ReadAllBytes(iconFullPath);
-                            Texture2D customTex = new Texture2D(2, 2);
-                            customTex.LoadImage(imgBytes);
-                            newPose.icon = customTex;
+                            try
+                            {
+                                byte[] imgBytes = File.ReadAllBytes(iconFullPath);
+                                Texture2D customTex = new Texture2D(2, 2);
+                                customTex.LoadImage(imgBytes);
+                                newPose.icon = customTex;
+                            }
+                            catch (Exception ex)
+                            {
+                                Plugin.Log.LogError($"[Injector] Сбой загрузки иконки {iconName}: {ex.Message}");
+                            }
                         }
-                        catch (Exception ex)
+                    }
+                    else
+                    {
+                        Pose exactVanillaPose = null;
+                        foreach (var p in allGamePoses)
                         {
-                            Plugin.Log.LogError($"[Injector] Сбой загрузки иконки мода {iconName}: {ex.Message}");
+                            if (p != null && p.controller != null && p.controller.name == poseConfig.ControllerName && p.icon != null)
+                            {
+                                exactVanillaPose = p; break;
+                            }
+                        }
+
+                        if (exactVanillaPose != null && exactVanillaPose.icon != null)
+                        {
+                            try
+                            {
+                                // --- ГЛУБОКОЕ КОПИРОВАНИЕ ТЕКСТУРЫ ДЛЯ ЗАЩИТЫ ОТ UNLOAD 🌟 ---
+                                Texture2D sourceTex = exactVanillaPose.icon;
+
+                                // Создаем чистую рантайм-текстуру точно такого же размера и формата
+                                Texture2D clonedTex = new Texture2D(sourceTex.width, sourceTex.height, sourceTex.format, sourceTex.mipmapCount > 1);
+
+                                // Программный дубликат на уровне графического чипа
+                                Graphics.CopyTexture(sourceTex, clonedTex);
+
+                                newPose.icon = clonedTex;
+                            }
+                            catch (Exception ex)
+                            {
+                                // Фаллбэк на случай, если текстура защищена от чтения/записи (Read/Write Disabled)
+                                newPose.icon = UnityEngine.Object.Instantiate(exactVanillaPose.icon);
+                                Plugin.Log.LogInfo($"[Injector] Использован Instantiate-клон для иконки {poseConfig.DisplayName}: {ex.Message}");
+                            }
+
+                            newPose.categoryName = exactVanillaPose.categoryName;
+                            newPose.mood = exactVanillaPose.mood;
+                        }
+                        else
+                        {
+                            newPose.categoryName = "Dances";
                         }
                     }
 
-                    // Координаты локатора позы
+                    // Настройка координат локатора позы
                     GameObject locObj = new GameObject("loc");
                     locObj.transform.SetParent(newPoseObj.transform, false);
                     locObj.transform.localPosition = new Vector3(poseConfig.LocPosition.x, poseConfig.LocPosition.y, poseConfig.LocPosition.z);
@@ -137,21 +163,21 @@ namespace FurnitureAnimationsMod
 
                     newPoseObj.SetActive(false);
 
-                    // Пушим кастомную позу мода строго в хвост списка
+                    // --- КРИТИЧЕСКИЙ ФИКС №3: СЛИЯНИЕ НА УРОВНЕ КОЛЛЕКЦИИ ---
+                    // Аккуратно пушим нашу позу в КОНЕЦ оригинального списка игры. Ванильные позы остаются на позициях 0, 1, 2...
                     __instance.poses.AddItem(newPoseObj.transform);
                 }
 
-                // Обновляем глобальный трекер интерактивов игры
+                // Перерегистрируем мебель в глобальном трекере интерактивов, чтобы игра обновила кэш меню взаимодействия
                 if (Global.code != null && Global.code.interactableFurnitures != null)
                 {
                     Global.code.interactableFurnitures.items.Remove(__instance.transform);
                     Global.code.interactableFurnitures.AddItemDifferentObject(__instance.transform);
                 }
 
-                Plugin.Log.LogWarning($"[Injector] Монолитное слияние завершено! Ванильные иконки защищены. Всего поз: {__instance.poses.items.Count}");
+                Plugin.Log.LogWarning($"[Injector] Слияние завершено! Всего доступных поз для {furnitureName}: {__instance.poses.items.Count} (включая ванильные и кастомные).");
             }
         }
-
 
     }
 
@@ -498,7 +524,7 @@ namespace FurnitureAnimationsMod
             newButtonObj.SetActive(true);
         }
     }
-    
+
     [HarmonyPatch(typeof(UIFreePose), "SelectPose")]
     public class UIFreePoseSelectPoseTracker
     {
