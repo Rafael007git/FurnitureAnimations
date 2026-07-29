@@ -286,7 +286,27 @@ namespace FurnitureAnimationsMod
                     currentPoseData = config.InteractionPoses.Find(p => p != null && p.Type.Equals("CustomJSON", StringComparison.OrdinalIgnoreCase));
                 }
 
-                if (currentPoseData == null) return;
+                // --- КРИТИЧЕСКИЙ ФИКС СЛИЯНИЯ: ЕСЛИ ПОЗА НЕ НАЙДЕНА В КОНФИГЕ МОДА ---
+                if (currentPoseData == null)
+                {
+                    // Это значит, что игрок кликнул по оригинальной ВАНИЛЬНОЙ позе игры!
+                    // Сносим наш кастомный плеер анимаций (используем уникальное имя переменной, чтобы не было конфликта)
+                    var vanillaCleanupPlayer = characterComp.gameObject.GetComponent<FurnitureAnimationPlayer>();
+                    if (vanillaCleanupPlayer != null)
+                    {
+                        UnityEngine.Object.Destroy(vanillaCleanupPlayer);
+                    }
+
+                    // Включаем встроенный аниматор игры обратно, чтобы ванильная поза могла запуститься!
+                    if (characterComp.anim != null)
+                    {
+                        characterComp.anim.enabled = true;
+                        characterComp.anim.speed = 1f;
+                    }
+
+                    Plugin.Log.LogInfo($"[SDK_Icon] Клик по ванильной позе '{uiPoseName}'. Наш плеер уничтожен, управление возвращено игре.");
+                    return; // Просто выходим, позволяя игре выполнить её стандартный метод DoPose
+                }
 
                 // =========================================================================
                 // УМНЫЙ ПЕРЕХВАТ ДЛЯ СМЕНЫ И ОСТАНОВКИ АНИМАЦИЙ 🛑💃
