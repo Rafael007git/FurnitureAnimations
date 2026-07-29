@@ -75,9 +75,11 @@ namespace FurnitureAnimationsMod
                 // Запоминаем ссылку на текущую рантайм-текстуру скриншота, чтобы очистить её при закрытии окна
                 _activeRuntimePreviewTexture = previewTexture;
 
-                // 1. Открываем оригинальное окно
-                uiFreePose.OpenSaveFreePosePanel();
-                uiFreePose.savePosePanel.SetActive(false); // Прячем оригинал
+                // Просто убеждаемся, что ванильная панель отключена, чтобы под нашим клоном ничего не двоилось
+                if (uiFreePose.savePosePanel != null)
+                {
+                    uiFreePose.savePosePanel.SetActive(false);
+                }
 
                 // 2. Создаем независимый клон панели
                 _myCustomDialogInstance = GameObject.Instantiate(uiFreePose.savePosePanel, uiFreePose.savePosePanel.transform.parent);
