@@ -123,9 +123,28 @@ namespace FurnitureAnimationsMod
                             }
                         }
 
-                        if (exactVanillaPose != null)
+                        if (exactVanillaPose != null && exactVanillaPose.icon != null)
                         {
-                            newPose.icon = exactVanillaPose.icon;
+                            try
+                            {
+                                // --- ГЛУБОКОЕ КОПИРОВАНИЕ ТЕКСТУРЫ ДЛЯ ЗАЩИТЫ ОТ UNLOAD 🌟 ---
+                                Texture2D sourceTex = exactVanillaPose.icon;
+
+                                // Создаем чистую рантайм-текстуру точно такого же размера и формата
+                                Texture2D clonedTex = new Texture2D(sourceTex.width, sourceTex.height, sourceTex.format, sourceTex.mipmapCount > 1);
+
+                                // Программный дубликат на уровне графического чипа
+                                Graphics.CopyTexture(sourceTex, clonedTex);
+
+                                newPose.icon = clonedTex;
+                            }
+                            catch (Exception ex)
+                            {
+                                // Фаллбэк на случай, если текстура защищена от чтения/записи (Read/Write Disabled)
+                                newPose.icon = UnityEngine.Object.Instantiate(exactVanillaPose.icon);
+                                Plugin.Log.LogInfo($"[Injector] Использован Instantiate-клон для иконки {poseConfig.DisplayName}: {ex.Message}");
+                            }
+
                             newPose.categoryName = exactVanillaPose.categoryName;
                             newPose.mood = exactVanillaPose.mood;
                         }
@@ -265,7 +284,6 @@ namespace FurnitureAnimationsMod
             ProcessPoseClick(activeChar, parentFurniture, uiPoseName, uiCtrlName);
         }
 
-
         private static void ProcessPoseClick(CharacterCustomization characterComp, Furniture furniture, string uiPoseName, string uiCtrlName)
         {
             if (characterComp == null || furniture == null) return;
@@ -357,7 +375,6 @@ namespace FurnitureAnimationsMod
                 }
             }
         }
-
 
         private static System.Collections.IEnumerator ExecuteBonesInjectionDelayed(CharacterCustomization characterComp, string jsonFileName)
         {
