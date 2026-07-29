@@ -14,12 +14,16 @@ namespace FurnitureAnimationsMod
         private UnityEngine.UI.Text _buttonText;
         private float _updateTimer = 0f;
 
+        // Кэш для мгновенного доступа к трансформациям скелета (смерть микрофризам! ⚡)
+        private Dictionary<string, Transform> _boneCache = new Dictionary<string, Transform>();
+        private GameObject _lastCachedCharacter = null;
+
         public void Setup(UIFreePose ui)
         {
             _uiInstance = ui;
             _mainButton = GetComponent<UnityEngine.UI.Button>();
             _buttonText = GetComponentInChildren<UnityEngine.UI.Text>();
-            Plugin.Log.LogInfo("[SDK_Controller] Нативный Update-трекер запущен в дипломатическом режиме с поддержкой модов.");
+            Plugin.Log.LogInfo("[SDK_Controller] Нативный Update-трекер запущен в дипломатическом режиме с оптимизированным кэшем скелета.");
         }
 
         private void Update()
@@ -51,7 +55,6 @@ namespace FurnitureAnimationsMod
                 }
 
                 // 2. ДИПЛОМАТИЧЕСКИЙ РАНТАЙМ-ПЕРЕХВАТ А-ПОЗЫ В ОБХОД ВСЕХ МОДОВ
-                // [ВАШ НАДЕЖНЫЙ КОД ПОЛНОСТЬЮ СОХРАНЕН]
                 if (characterComp.interactingObject != null)
                 {
                     string furnitureName = characterComp.interactingObject.name.Replace("(Clone)", "").Trim();
@@ -71,7 +74,7 @@ namespace FurnitureAnimationsMod
                                 characterComp.anim.enabled == true)
                             {
                                 Plugin.Log.LogWarning($"[SDK_Mono_Bypass] Обнаружена А-поза для '{activePoseNameInUi}'. Исправляем скелет напрямую из MonoBehaviour...");
-                                ApplyCustomBonesDirect(characterComp.transform, currentPoseData.JsonFileName);
+                                ApplyCustomBonesDirect(characterComp.gameObject, currentPoseData.JsonFileName);
                             }
                         }
                     }
@@ -80,24 +83,19 @@ namespace FurnitureAnimationsMod
                 // ==========================================================
                 // 3. ОБНОВЛЕННОЕ АВТО-ПЕРЕКЛЮЧЕНИЕ ЦВЕТА И ТЕКСТА КНОПКИ SDK
                 // ==========================================================
-                // Запрашиваем состояние у нашего безопасного хелпера (с поддержкой PoseAnimations)
                 CharacterPoseState state = CharacterStateHelper.GetCurrentState(characterComp);
 
                 switch (state)
                 {
                     case CharacterPoseState.PoseAnimationsModActive:
-                        // Фиолетовый режим: Поймали внешнюю JSON-анимацию другого мода
                         SetButtonState("Link Animated Pose for Furniture", new Color(0.6f, 0.2f, 0.8f, 1f), true);
                         break;
 
                     case CharacterPoseState.GameAnimatorActive:
-                        // Зеленый режим: Найдена ванильная поза/пресет игры
                         SetButtonState("Link Preset Pose for Furniture", Color.green, true);
                         break;
 
                     case CharacterPoseState.CustomPoseJSON:
-                        // Циановый режим: Ручное гизмо или замороженный скелет
-                        // Если персонаж просто стоит в дефолтном Idle и его аниматор включен — гасим кнопку
                         bool isIdle = currentCtrlName.Contains("idle") || currentCtrlName.Contains("unarmed") || string.IsNullOrEmpty(currentCtrlName);
 
                         if (isIdle && characterComp.anim.enabled == true)
@@ -124,8 +122,8 @@ namespace FurnitureAnimationsMod
             _mainButton.interactable = interactable;
         }
 
-        // Автономный изолированный метод раскатки Диорамы на скелет куклы [ВАШ ОРИГИНАЛЬНЫЙ КОД]
-        private void ApplyCustomBonesDirect(Transform character, string jsonFileName)
+        // Автономный изолированный метод раскатки Диорамы на скелет куклы с ПОЛНОЙ ОПТИМИЗАЦИЕЙ КЭША
+        private void ApplyCustomBonesDirect(GameObject characterObj, string jsonFileName)
         {
             string customAnimFullPath = Path.Combine(ConfigManager.CustomAnimsPath, jsonFileName);
             if (!File.Exists(customAnimFullPath)) return;
@@ -136,22 +134,27 @@ namespace FurnitureAnimationsMod
                 var rawBonesData = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, BakedElementData>>(jsonContent);
                 if (rawBonesData == null) return;
 
-                Transform FindChildRecursive(Transform parent, string name)
+                // --- СВЕРХБЫСТРОЕ КЭШИРОВАНИЕ СКЕЛЕТА ПРИ СМЕНЕ ПЕРСОНАЖА 🌟 ---
+                if (_lastCachedCharacter != characterObj)
                 {
-                    if (parent == null) return null;
-                    if (parent.name == name) return parent;
-                    for (int i = 0; i < parent.childCount; i++)
+                    _boneCache.Clear();
+                    _lastCachedCharacter = characterObj;
+
+                    foreach (Transform child in characterObj.GetComponentsInChildren<Transform>(true))
                     {
-                        Transform found = FindChildRecursive(parent.GetChild(i), name);
-                        if (found != null) return found;
+                        if (DioramaConstants.AnatomyBoneRegistry.Contains(child.name))
+                        {
+                            _boneCache[child.name] = child;
+                        }
                     }
-                    return null;
+                    Plugin.Log.LogInfo($"[SDK_Cache] Успешно переиндексирован скелет для {characterObj.name}. В кэш мода занесено {_boneCache.Count} костей.");
                 }
 
+                // Накладываем позы на кости ИСКЛЮЧИТЕЛЬНО через O(1) Dictionary Lookups
                 foreach (var kp in rawBonesData)
                 {
-                    Transform boneTrans = FindChildRecursive(character, kp.Key);
-                    if (boneTrans == null || kp.Value == null) continue;
+                    if (!_boneCache.TryGetValue(kp.Key, out Transform boneTrans) || kp.Value == null)
+                        continue;
 
                     if ((kp.Value.type ?? "").Equals("Light", StringComparison.OrdinalIgnoreCase))
                     {
@@ -166,7 +169,16 @@ namespace FurnitureAnimationsMod
                     }
                     else
                     {
-                        if (kp.Value.rot != null) boneTrans.localEulerAngles = new Vector3(kp.Value.rot.x, kp.Value.rot.y, kp.Value.rot.z);
+                        // --- ИСПРАВЛЕНИЕ ХАРДКОДА СКРУЧИВАНИЯ HIPS И РОТАЦИИ СКЕЛЕТА ---
+                        // Принудительно стираем старый наклон кости, возвращая в локальную нейтраль родителя
+                        boneTrans.localRotation = Quaternion.identity;
+
+                        if (kp.Value.rot != null)
+                        {
+                            boneTrans.localEulerAngles = new Vector3(kp.Value.rot.x, kp.Value.rot.y, kp.Value.rot.z);
+                        }
+
+                        // Смещение позиции накладываем строго на разрешенные Позиционные объекты (например, тазовый 'hip')
                         if (DioramaConstants.PositionalObjectsRegistry.Contains(kp.Key) && kp.Value.pos != null)
                         {
                             boneTrans.localPosition = new Vector3(kp.Value.pos.x, kp.Value.pos.y, kp.Value.pos.z);
@@ -174,14 +186,14 @@ namespace FurnitureAnimationsMod
                     }
                 }
 
-                Animator anim = character.GetComponent<Animator>();
+                Animator anim = characterObj.GetComponent<Animator>();
                 if (anim != null)
                 {
                     anim.applyRootMotion = false;
                     anim.speed = 0f;
                     anim.enabled = false; // Усыпляем А-позу намертво!
                 }
-                Plugin.Log.LogWarning($"[SDK_Mono_Bypass] Кастомный скелет из файла {jsonFileName} успешно раскатан в обход Harmony!");
+                Plugin.Log.LogWarning($"[SDK_Mono_Bypass] Кастомный скелет из файла {jsonFileName} успешно раскатан БЕЗ микрофризов процессора!");
             }
             catch (Exception ex)
             {

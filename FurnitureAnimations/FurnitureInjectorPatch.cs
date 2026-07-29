@@ -28,40 +28,49 @@ namespace FurnitureAnimationsMod
 
             string furnitureName = __instance.name.Replace("(Clone)", "").Trim();
 
+            // Ищем, есть ли для этой мебели конфигурация в нашем моде
             if (ConfigManager.LoadedConfigs.TryGetValue(furnitureName, out FurnitureConfig config))
             {
-                Plugin.Log.LogWarning($"[Injector] Сборка/Рефреш списка поз для мебели: {furnitureName}");
+                Plugin.Log.LogWarning($"[Injector] Инжекция кастомных поз для мебели: {furnitureName} (Ванильные позы БУДУТ сохранены!)");
 
-                Transform oldGroup = __instance.transform.Find("posesGroup");
-                if (oldGroup != null)
+                // --- КРИТИЧЕСКИЙ ФИКС №1: БОЛЬШЕ НЕ УНИЧТОЖАЕМ "posesGroup" И НЕ ОЧИЩАЕМ СПИСКИ КАМЕР/ПОЗ ИГРЫ! ---
+                // Если у мебели почему-то нет инициализированных списков — создаем их (защита от краша)
+                if (__instance.poses == null) __instance.poses = new CommonArray();
+                if (__instance.cameras == null) __instance.cameras = new CommonArray();
+
+                // Находим или создаем кастомную подпапку для НАШИХ поз внутри мебели, чтобы не захламлять оригинальный posesGroup
+                Transform modPosesGroup = __instance.transform.Find("Mod_CustomPosesGroup");
+                if (modPosesGroup == null)
                 {
-                    UnityEngine.Object.Destroy(oldGroup.gameObject);
+                    GameObject modGroupObj = new GameObject("Mod_CustomPosesGroup");
+                    modGroupObj.transform.SetParent(__instance.transform, false);
+                    modPosesGroup = modGroupObj.transform;
                 }
-
-                GameObject poseGroupObj = new GameObject("posesGroup");
-                poseGroupObj.transform.SetParent(__instance.transform, false);
-                __instance.posesGroup = poseGroupObj.transform;
-
-                if (__instance.cameras != null) __instance.cameras.ClearItems();
-                if (__instance.poses != null) __instance.poses.ClearItems();
-                __instance.camerasGroup = null;
 
                 Pose[] allGamePoses = Resources.FindObjectsOfTypeAll<Pose>();
                 RuntimeAnimatorController[] allControllers = Resources.FindObjectsOfTypeAll<RuntimeAnimatorController>();
 
+                // Проходим циклом по позам из нашего JSON конфига
                 foreach (PoseData poseConfig in config.InteractionPoses)
                 {
                     if (poseConfig == null) continue;
 
-                    bool isCustomPose = poseConfig.Type.Equals("CustomJSON", System.StringComparison.OrdinalIgnoreCase) ||
-                                        poseConfig.Type.Contains("Кастомная");
+                    // --- КРИТИЧЕСКИЙ ФИКС №2: ИСКЛЮЧАЕМ ДУБЛИРОВАНИЕ ПРИ СЛУЧАЙНОМ ПОВТОРНОМ ВЫЗОВЕ ---
+                    bool alreadyInjected = false;
+                    foreach (Transform existingPose in __instance.poses.items)
+                    {
+                        if (existingPose != null && existingPose.name == poseConfig.DisplayName)
+                        {
+                            alreadyInjected = true;
+                            break;
+                        }
+                    }
+                    if (alreadyInjected) continue; // Если поза уже добавлена к этой мебели — идем дальше
 
-                    // ХИРУРГИЧЕСКАЯ ПРАВКА №1: Проверяем, является ли поза внешней JSON-анимацией
+                    bool isCustomPose = poseConfig.Type.Equals("CustomJSON", System.StringComparison.OrdinalIgnoreCase) || poseConfig.Type.Contains("Кастомная");
                     bool isExternalModAnim = poseConfig.Type.Equals("PoseAnimationsMod", System.StringComparison.OrdinalIgnoreCase);
 
                     RuntimeAnimatorController targetController = null;
-
-                    // Если это кастомные кости или внешний JSON мода — подсовываем Unarmed, чтобы не ломать логику игры
                     string searchName = (isCustomPose || isExternalModAnim) ? "UnarmedController" : poseConfig.ControllerName;
 
                     foreach (var rc in allControllers)
@@ -69,11 +78,11 @@ namespace FurnitureAnimationsMod
                         if (rc != null && rc.name == searchName) { targetController = rc; break; }
                     }
 
-                    // Если контроллер не нашелся, но это не кастом и не мод — пропускаем (защита от краша ванили)
                     if (targetController == null && !isCustomPose && !isExternalModAnim) continue;
 
+                    // Создаем новый GameObject для НАШЕЙ кастомной позы
                     GameObject newPoseObj = new GameObject(poseConfig.DisplayName);
-                    newPoseObj.transform.SetParent(__instance.posesGroup, false);
+                    newPoseObj.transform.SetParent(modPosesGroup, false); // Кладем в нашу изолированную папку мода
 
                     Pose newPose = newPoseObj.AddComponent<Pose>();
                     newPose.controller = targetController;
@@ -85,8 +94,6 @@ namespace FurnitureAnimationsMod
                     if (isCustomPose || isExternalModAnim)
                     {
                         newPose.categoryName = "Custom";
-
-                        // Пытаемся считать сохраненную PNG иконку (для мода имя файла равно controllerName.png)
                         string iconName = isCustomPose ? poseConfig.JsonFileName.Replace(".json", ".png") : $"{poseConfig.ControllerName}.png";
                         string iconFullPath = Path.Combine(ConfigManager.IconsPath, iconName);
 
@@ -128,7 +135,7 @@ namespace FurnitureAnimationsMod
                         }
                     }
 
-                    // Координаты локатора позы
+                    // Настройка координат локатора позы
                     GameObject locObj = new GameObject("loc");
                     locObj.transform.SetParent(newPoseObj.transform, false);
                     locObj.transform.localPosition = new Vector3(poseConfig.LocPosition.x, poseConfig.LocPosition.y, poseConfig.LocPosition.z);
@@ -136,18 +143,23 @@ namespace FurnitureAnimationsMod
                     newPose.loc = locObj.transform;
 
                     newPoseObj.SetActive(false);
+
+                    // --- КРИТИЧЕСКИЙ ФИКС №3: СЛИЯНИЕ НА УРОВНЕ КОЛЛЕКЦИИ ---
+                    // Аккуратно пушим нашу позу в КОНЕЦ оригинального списка игры. Ванильные позы остаются на позициях 0, 1, 2...
                     __instance.poses.AddItem(newPoseObj.transform);
                 }
 
+                // Перерегистрируем мебель в глобальном трекере интерактивов, чтобы игра обновила кэш меню взаимодействия
                 if (Global.code != null && Global.code.interactableFurnitures != null)
                 {
                     Global.code.interactableFurnitures.items.Remove(__instance.transform);
                     Global.code.interactableFurnitures.AddItemDifferentObject(__instance.transform);
                 }
 
-                Plugin.Log.LogWarning($"[Injector] Рефреш завершен! Всего актуальных поз в памяти мебели: {__instance.poses.items.Count}");
+                Plugin.Log.LogWarning($"[Injector] Слияние завершено! Всего доступных поз для {furnitureName}: {__instance.poses.items.Count} (включая ванильные и кастомные).");
             }
         }
+
     }
 
     // === ПАТЧ 2: АВТО-ПОЗА И ФИКСАЦИЯ КАМЕРЫ ПРИ ВХОДЕ ИНТЕРАКТИВА ===

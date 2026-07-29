@@ -7,7 +7,7 @@ namespace FurnitureAnimationsMod
     {
         private static EditorUiManager _instance;
 
-        // Переменные для состояния диалогового окна
+        // Переменные для состояния отладочного диалогового окна OnGUI
         private bool _isShowingDialog = false;
         private string _dialogText = string.Empty;
         private Texture2D _previewIcon = null;
@@ -15,6 +15,9 @@ namespace FurnitureAnimationsMod
 
         // Размеры окна подтверждения
         private Rect _windowRect = new Rect(0, 0, 400, 250);
+
+        // Статический хэндл для отслеживания текстуры текущего открытого нативного окна
+        private static Texture2D _activeRuntimePreviewTexture = null;
 
         public static void Initialize()
         {
@@ -25,10 +28,10 @@ namespace FurnitureAnimationsMod
             DontDestroyOnLoad(guiObj); // Чтобы объект не удалялся при перезагрузке комнат
             _instance = guiObj.AddComponent<EditorUiManager>();
 
-            Plugin.Log.LogInfo("[EditorUiManager] Графический интерфейс OnGUI успешно инициализирован.");
+            Plugin.Log.LogInfo("[EditorUiManager] Графический интерфейс OnGUI успешно инициализирован и готов к отладке нового функционала.");
         }
 
-        // Публичный метод вызова окна подтверждения из экспортера
+        // Публичный метод вызова окна подтверждения из экспортера (ОСТАВЛЕН ПОД ВАШУ ОТЛАДКУ)
         public static void ShowConfirmationDialog(string text, Texture2D icon, Action onConfirm)
         {
             if (_instance == null) Initialize();
@@ -48,7 +51,7 @@ namespace FurnitureAnimationsMod
             _instance._isShowingDialog = true;
         }
 
-        // Встроенный метод Unity для отрисовки классического GUI
+        // Встроенный метод Unity для отрисовки классического GUI (ПОЛНОСТЬЮ СОХРАНЕН)
         private void OnGUI()
         {
             if (!_isShowingDialog) return;
@@ -58,7 +61,6 @@ namespace FurnitureAnimationsMod
         }
 
 
-        // Сделайте метод статическим, чтобы вызывать его напрямую через имя класса
         private static GameObject _myCustomDialogInstance = null;
 
         public static void ShowNativeStyleDialog(UIFreePose uiFreePose, string messageText, Texture2D previewTexture, System.Action onConfirm)
@@ -67,10 +69,13 @@ namespace FurnitureAnimationsMod
             {
                 if (uiFreePose == null || uiFreePose.savePosePanel == null) return;
 
-                if (_myCustomDialogInstance != null)
-                    GameObject.Destroy(_myCustomDialogInstance);
+                // --- КРИТИЧЕСКИЙ ФИКС №1: УБИВАЕМ СТАРОЕ ОКНО И ЕГО ТЕКТУРУ ПЕРЕД СОЗДАНИЕМ НОВОГО ---
+                SafeCloseAndCleanTexture();
 
-                // 1. Открываем оригинальное окно (как в вашем оригинальном коде)
+                // Запоминаем ссылку на текущую рантайм-текстуру скриншота, чтобы очистить её при закрытии окна
+                _activeRuntimePreviewTexture = previewTexture;
+
+                // 1. Открываем оригинальное окно
                 uiFreePose.OpenSaveFreePosePanel();
                 uiFreePose.savePosePanel.SetActive(false); // Прячем оригинал
 
@@ -78,19 +83,18 @@ namespace FurnitureAnimationsMod
                 _myCustomDialogInstance = GameObject.Instantiate(uiFreePose.savePosePanel, uiFreePose.savePosePanel.transform.parent);
                 _myCustomDialogInstance.name = "Mod_CustomFurnitureSaveDialog";
 
-                // Удаляем скрипт игры с клона, чтобы он не сбрасывал вёрстку кадр за кадром
+                // Удаляем скрипт игры с клона
                 var duplicatedGameScript = _myCustomDialogInstance.GetComponent<UIFreePose>();
                 if (duplicatedGameScript != null)
                     GameObject.Destroy(duplicatedGameScript);
 
-                Color gameTextColor = new Color(0.8f, 0.8f, 0.8f, 1f); // Бежево-серый дефолт
+                Color gameTextColor = new Color(0.8f, 0.8f, 0.8f, 1f);
 
-                // 3. БЕЗОПАСНЫЙ ПОИСК И НАСТРОЙКА ОБЪЕКТОВ (Ваш оригинальный цикл чистки)
+                // 3. БЕЗОПАСНЫЙ ПОИСК И НАСТРОЙКА ОБЪЕКТОВ
                 foreach (Transform child in _myCustomDialogInstance.transform)
                 {
                     string childNameClean = child.name.Trim();
 
-                    // Извлекаем цвет игры и гасим старый заголовок "name"
                     if (childNameClean == "name")
                     {
                         var originalText = child.GetComponent<UnityEngine.UI.Text>();
@@ -98,23 +102,17 @@ namespace FurnitureAnimationsMod
                         child.gameObject.SetActive(false);
                     }
 
-                    // Прячем "Created By"
                     if (childNameClean == "txt created by (1)") child.gameObject.SetActive(false);
-
-                    // Прячем нижнюю дату "name (1)"
                     if (childNameClean == "name (1)") child.gameObject.SetActive(false);
-
-                    // ОСТАВЛЯЕМ красивую общую рамку панели
                     if (childNameClean == "fram (3)") child.gameObject.SetActive(true);
 
-                    // ПОЛНОСТЬЮ ВЫКЛЮЧАЕМ ПОЛЯ ВВОДА
                     if (childNameClean == "InputField Pose" || childNameClean == "InputField creator")
                     {
                         child.gameObject.SetActive(false);
                     }
                 }
 
-                // 4. НАСТРОЙКА НАШЕГО КАСТОМНОГО ТЕКСТА (Ваш идеальный блок верстки)
+                // 4. НАСТРОЙКА НАШЕГО КАСТОМНОГО ТЕКСТА
                 GameObject myTextGo = new GameObject("Mod_CustomMessageText", typeof(RectTransform), typeof(UnityEngine.UI.Text));
                 myTextGo.transform.SetParent(_myCustomDialogInstance.transform, false);
 
@@ -127,22 +125,17 @@ namespace FurnitureAnimationsMod
                 myTextComp.horizontalOverflow = HorizontalWrapMode.Wrap;
                 myTextComp.verticalOverflow = VerticalWrapMode.Overflow;
 
-                // Позиционируем текст на правой панели окна
                 RectTransform textRect = myTextGo.GetComponent<RectTransform>();
                 textRect.anchorMin = new Vector2(0.35f, 0.35f);
                 textRect.anchorMax = new Vector2(0.96f, 0.96f);
                 textRect.offsetMin = textRect.offsetMax = Vector2.zero;
 
-                // Подтягиваем шрифт игры
                 var fontSample = _myCustomDialogInstance.GetComponentInChildren<UnityEngine.UI.Text>(true);
                 if (fontSample != null && fontSample.font != null) myTextComp.font = fontSample.font;
 
-
                 // ==========================================================
-                // 💥 5. НАЛОЖЕНИЕ НОВОЙ КНОПКИ С ЗАКРЫТИЕМ СТАРОГО ТЕКСТА
+                // 5. НАЛОЖЕНИЕ НОВОЙ КНОПКИ С ЗАКРЫТИЕМ СТАРОГО ТЕКСТА 💥
                 // ==========================================================
-
-                // Сначала находим оригинальные кнопки в клоне
                 var vanillaButtons = _myCustomDialogInstance.GetComponentsInChildren<UnityEngine.UI.Button>(true);
                 UnityEngine.UI.Button oldGameSaveBtn = null;
                 UnityEngine.UI.Button oldGameCloseBtn = null;
@@ -155,46 +148,41 @@ namespace FurnitureAnimationsMod
                     if (bName == "Btn Close (4)") oldGameCloseBtn = b;
                 }
 
-                // Настраиваем крестик закрытия окна (чтобы работал штатно как отмена)
+                // Крестик закрытия окна (ОТМЕНА)
                 if (oldGameCloseBtn != null)
                 {
                     oldGameCloseBtn.onClick.RemoveAllListeners();
-                    oldGameCloseBtn.onClick.AddListener(() => GameObject.Destroy(_myCustomDialogInstance));
+                    // --- КРИТИЧЕСКИЙ ФИКС №2: Принудительная чистка памяти при клике на крестик ---
+                    oldGameCloseBtn.onClick.AddListener(() => SafeCloseAndCleanTexture());
                 }
 
-                // Создаем нашу кастомную кнопку ОБЯЗАТЕЛЬНО с Image подложкой
                 GameObject customBtnGo = new GameObject("Mod_UltimateSaveBtnOverlay", typeof(RectTransform), typeof(UnityEngine.UI.Button), typeof(UnityEngine.UI.Image));
 
                 if (oldGameSaveBtn != null)
                 {
-                    // Сажаем на того же родителя в контейнер, где лежала старая кнопка
                     customBtnGo.transform.SetParent(oldGameSaveBtn.transform.parent, false);
 
                     RectTransform targetRect = customBtnGo.GetComponent<RectTransform>();
                     RectTransform sourceRect = oldGameSaveBtn.GetComponent<RectTransform>();
 
-                    // Копируем базовую геометрию и привязки
                     targetRect.anchorMin = sourceRect.anchorMin;
                     targetRect.anchorMax = sourceRect.anchorMax;
                     targetRect.pivot = sourceRect.pivot;
 
-                    // 📐 СМЕЩЕНИЕ И ШИРИНА: Сдвигаем на 30 пикселей вправо, делаем шире на 40 пикселей
                     targetRect.anchoredPosition = new Vector2(sourceRect.anchoredPosition.x + 30f, sourceRect.anchoredPosition.y);
                     targetRect.sizeDelta = new Vector2(sourceRect.sizeDelta.x + 40f, sourceRect.sizeDelta.y);
 
-                    // 🎨 КОПИРУЕМ РОДНОЙ СТИЛЬ И ЦВЕТ ИГРЫ ОДИН В ОДИН (чтобы перекрыть старый текст)
                     var oldImg = oldGameSaveBtn.GetComponent<UnityEngine.UI.Image>();
                     var newImg = customBtnGo.GetComponent<UnityEngine.UI.Image>();
                     if (oldImg != null && newImg != null)
                     {
                         newImg.sprite = oldImg.sprite;
                         newImg.type = oldImg.type;
-                        newImg.color = oldImg.color; // Без перекрашивания, берем оригинальный оттенок игры!
+                        newImg.color = oldImg.color;
                     }
                 }
                 else
                 {
-                    // Дефолтная подстраховка, если оригинальная кнопка не была найдена
                     customBtnGo.transform.SetParent(_myCustomDialogInstance.transform, false);
                     RectTransform targetRect = customBtnGo.GetComponent<RectTransform>();
                     targetRect.anchorMin = new Vector2(0.40f, 0.12f);
@@ -202,13 +190,15 @@ namespace FurnitureAnimationsMod
                     targetRect.offsetMin = targetRect.offsetMax = Vector2.zero;
                 }
 
-                // Вешаем НАШЕ событие физического сохранения JSON мода
+                // Кнопка ПОДТВЕРЖДЕНИЯ сохранения
                 UnityEngine.UI.Button myButtonComp = customBtnGo.GetComponent<UnityEngine.UI.Button>();
                 myButtonComp.onClick.AddListener(() =>
                 {
                     Plugin.Log.LogWarning("[EditorUiManager] Клик по широкой наложенной кнопке зафиксирован!");
                     onConfirm?.Invoke(); // Вызов цепочки экспорта из PoseExporter
-                    GameObject.Destroy(_myCustomDialogInstance);
+
+                    // --- КРИТИЧЕСКИЙ ФИКС №3: Принудительная чистка памяти при подтверждении ---
+                    SafeCloseAndCleanTexture();
                 });
 
                 // Создаем ТЕКСТ внутри нашей новой широкой кнопки
@@ -231,7 +221,7 @@ namespace FurnitureAnimationsMod
                 btnTextRect.offsetMin = btnTextRect.offsetMax = Vector2.zero;
 
                 // ==========================================================
-                // 🖼️ 6. ТОЧЕЧНАЯ ПОДСТАНОВКА ИКОНКИ ЧЕРЕЗ ОБЪЕКТ 'profile'
+                // 6. ТОЧЕЧНАЯ ПОДСТАНОВКА ИКОНКИ ЧЕРЕЗ ОБЪЕКТ 'profile' 🖼
                 // ==========================================================
                 if (previewTexture != null)
                 {
@@ -288,7 +278,6 @@ namespace FurnitureAnimationsMod
                     }
                 }
 
-
                 _myCustomDialogInstance.SetActive(true);
             }
             catch (System.Exception ex)
@@ -297,6 +286,29 @@ namespace FurnitureAnimationsMod
             }
         }
 
+        /// <summary>
+        /// Централизованный метод закрытия окна и физической выгрузки RenderTexture/Texture из видеопамяти 🗑
+        /// </summary>
+        public static void SafeCloseAndCleanTexture()
+        {
+            if (_myCustomDialogInstance != null)
+            {
+                GameObject.Destroy(_myCustomDialogInstance);
+                _myCustomDialogInstance = null;
+            }
+
+            // Проверяем, удерживаем ли мы ссылку на временную рантайм-текстуру скриншота
+            if (_activeRuntimePreviewTexture != null)
+            {
+                string texName = _activeRuntimePreviewTexture.name;
+
+                // Физически уничтожаем текстуру из VRAM, освобождая хэндлы Mono
+                UnityEngine.Object.Destroy(_activeRuntimePreviewTexture);
+                _activeRuntimePreviewTexture = null;
+
+                Plugin.Log.LogInfo($"[MemoryGuard] Рантайм-текстура скриншота '{texName}' успешно выгружена из видеопамяти.");
+            }
+        }
 
         private void DrawDialogWindow(int windowID)
         {
@@ -361,6 +373,6 @@ namespace FurnitureAnimationsMod
             GUI.skin.button.fontSize = defaultButtonSize;
             GUI.skin.window.fontSize = defaultWindowSize;
         }
-
     }
 }
+

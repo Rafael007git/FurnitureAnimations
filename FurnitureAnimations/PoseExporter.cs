@@ -325,24 +325,22 @@ namespace FurnitureAnimationsMod
             {
                 var bakedPoseData = new Dictionary<string, object>();
 
-                // Локальная функция поиска дочерних объектов
-                Transform FindChildRecursive(Transform parent, string name)
+                // --- ОПТИМИЗАЦИЯ ПОИСКА: СБОР СКЕЛЕТА В СЛОВАРЬ ЗА ОДИН ПРОХОД ⚡ ---
+                Dictionary<string, Transform> exportBoneCache = new Dictionary<string, Transform>();
+                foreach (Transform child in user.GetComponentsInChildren<Transform>(true))
                 {
-                    if (parent == null) return null;
-                    if (parent.name == name) return parent;
-                    for (int i = 0; i < parent.childCount; i++)
+                    if (DioramaConstants.AnatomyBoneRegistry.Contains(child.name))
                     {
-                        Transform found = FindChildRecursive(parent.GetChild(i), name);
-                        if (found != null) return found;
+                        exportBoneCache[child.name] = child;
                     }
-                    return null;
-                } // <--- Функция поиска правильно закрывается
+                }
 
                 // Пробегаемся строго по нашему эталонному списку имен из реестра Диорамы
                 foreach (string targetName in DioramaConstants.AnatomyBoneRegistry)
                 {
-                    Transform element = FindChildRecursive(user.transform, targetName);
-                    if (element == null) continue;
+                    // Мгновенный поиск в словаре вместо рекурсивного обхода дерева O(1)
+                    if (!exportBoneCache.TryGetValue(targetName, out Transform element) || element == null)
+                        continue;
 
                     Light lightComponent = element.GetComponent<Light>();
                     if (lightComponent != null)
@@ -378,7 +376,7 @@ namespace FurnitureAnimationsMod
                     }
                 }
 
-                // Этот return честно возвращает JSON из самого метода ExportBonesToCustomJson!
+                // Возвращаем чистый JSON
                 return Newtonsoft.Json.JsonConvert.SerializeObject(bakedPoseData, Newtonsoft.Json.Formatting.Indented);
             }
             catch (Exception ex)
@@ -387,5 +385,6 @@ namespace FurnitureAnimationsMod
                 return "{}";
             }
         }
+
     }
 }
