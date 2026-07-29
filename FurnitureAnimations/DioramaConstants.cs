@@ -8,7 +8,8 @@ namespace FurnitureAnimationsMod
         public static readonly HashSet<string> AnatomyBoneRegistry = new HashSet<string>
         {
             // Корневые узлы и таз
-            "Player", "Kira", "Genesis8Female", "hip", "pelvis",
+            // "Player", "Kira", "Genesis8Female", "hip", "pelvis",
+            "Genesis8Female", "hip", "pelvis",
 
             // Интимная анатомия
             "Rectum", "Vagina", "Clitoris", "Colon",

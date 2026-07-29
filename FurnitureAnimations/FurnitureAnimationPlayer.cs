@@ -126,11 +126,64 @@ namespace FurnitureAnimationsMod
             _boneCache.Clear();
             CacheSkeletonRecursive(_character.transform);
 
+            // =========================================================================
+            // ВНЕДРЕНИЕ: Абсолютный сброс скелета перед стартом анимации 🌟
+            // =========================================================================
+            Dictionary<string, BoneDelta> firstFrameDatas = null;
+            if (_animData != null && _animData.deltas != null && _animData.deltas.Count > 0)
+            {
+                // Берем boneDatas из самого первого кадра в списке deltas
+                firstFrameDatas = _animData.deltas[0].boneDatas;
+            }
+
+            // Вызываем очистку скелета
+            AbsoluteSkeletalReset(firstFrameDatas);
+            // =========================================================================
+
             _deltaTime = 0f;
             _currentDelta = 0;
             _currentFrame = 0;
             _reversing = false;
         }
+
+        private void AbsoluteSkeletalReset(Dictionary<string, BoneDelta> firstFrameBoneDatas)
+        {
+            if (_character == null) return;
+
+            // Проходим по абсолютно ВСЕМ анатомическим костям из реестра DioramaConstants
+            foreach (string boneName in DioramaConstants.AnatomyBoneRegistry)
+            {
+                // Используем твой готовый _boneCache вместо тяжелого поиска!
+                if (!_boneCache.TryGetValue(boneName, out Transform boneTrans))
+                    continue;
+
+                // Принудительно стираем ЛЮБОЙ старый поворот от предыдущей позы (убирает вертикальный наклон hips)
+                boneTrans.localRotation = Quaternion.identity;
+
+                // Если в первом кадре новой анимации есть данные для этой конкретной кости:
+                if (firstFrameBoneDatas != null && firstFrameBoneDatas.TryGetValue(boneName, out BoneDelta delta))
+                {
+                    // Накатываем точные углы поворота из JSON поверх сброшенного нуля
+                    if (delta.endRot != null && delta.endRot.Length >= 4)
+                    {
+                        boneTrans.localRotation = new Quaternion(delta.endRot[0], delta.endRot[1], delta.endRot[2], delta.endRot[3]);
+                    }
+                    else if (delta.endRot != null && delta.endRot.Length == 3) // На случай углов Эйлера
+                    {
+                        boneTrans.localRotation = Quaternion.Euler(delta.endRot[0], delta.endRot[1], delta.endRot[2]);
+                    }
+
+                    // Накатываем точную локальную позицию (высоту/смещение якоря) из JSON
+                    if (delta.endPos != null && delta.endPos.Length >= 3)
+                    {
+                        boneTrans.localPosition = new Vector3(delta.endPos[0], delta.endPos[1], delta.endPos[2]);
+                    }
+                }
+            }
+
+            Plugin.Log.LogInfo($"[FurnitureAnimations] Скелет {_character.name} успешно очищен от старых поз. Якорь 'hip' выставлен в первый кадр.");
+        }
+
 
         // КОРУТИНА СТРИМИНГА ЗВУКА С ДИСКА
         private System.Collections.IEnumerator LoadAndPlayAudio(string filePath, AudioType type)
