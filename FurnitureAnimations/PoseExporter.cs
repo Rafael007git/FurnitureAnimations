@@ -184,7 +184,8 @@ namespace FurnitureAnimationsMod
                 finalPreview,
                 () => {
                     SavePoseToDataFolder(furnitureName, controllerName, exactLocPos, exactLocRot, currentState, characterComp);
-                }
+                },
+                currentState // <-- ПРОСТО ДОПИШИТЕ ЭТУ ПЕРЕМЕННУЮ СЮДА ЧЕРЕЗ ЗАПЯТУЮ! 🌟
             );
         }
 

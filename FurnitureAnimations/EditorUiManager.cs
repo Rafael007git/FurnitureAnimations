@@ -6,6 +6,7 @@ namespace FurnitureAnimationsMod
     public class EditorUiManager : MonoBehaviour
     {
         private static EditorUiManager _instance;
+        private static CharacterPoseState _currentDialogPoseState;
 
         // Переменные для состояния отладочного диалогового окна OnGUI
         private bool _isShowingDialog = false;
@@ -18,7 +19,7 @@ namespace FurnitureAnimationsMod
 
         // Статический хэндл для отслеживания текстуры текущего открытого нативного окна
         private static Texture2D _activeRuntimePreviewTexture = null;
-
+                
         public static void Initialize()
         {
             if (_instance != null) return;
@@ -63,11 +64,14 @@ namespace FurnitureAnimationsMod
 
         private static GameObject _myCustomDialogInstance = null;
 
-        public static void ShowNativeStyleDialog(UIFreePose uiFreePose, string messageText, Texture2D previewTexture, System.Action onConfirm)
+        public static void ShowNativeStyleDialog(UIFreePose uiFreePose, string messageText, Texture2D previewTexture, System.Action onConfirm, CharacterPoseState poseState)
         {
             try
             {
                 if (uiFreePose == null || uiFreePose.savePosePanel == null) return;
+
+                // 2. ЗАПОМИНАЕМ ТИП ПОЗЫ ДЛЯ ДЕСТРУКТОРA СТРОГО ДО ОЧИСТКИ! 🌟
+                _currentDialogPoseState = poseState;
 
                 // --- КРИТИЧЕСКИЙ ФИКС №1: УБИВАЕМ СТАРОЕ ОКНО И ЕГО ТЕКТУРУ ПЕРЕД СОЗДАНИЕМ НОВОГО ---
                 SafeCloseAndCleanTexture();
@@ -299,18 +303,26 @@ namespace FurnitureAnimationsMod
                 _myCustomDialogInstance = null;
             }
 
-            // Проверяем, удерживаем ли мы ссылку на временную рантайм-текстуру скриншота
             if (_activeRuntimePreviewTexture != null)
             {
-                string texName = _activeRuntimePreviewTexture.name;
+                // ХИРУРГИЧЕСКИЙ ФИКС БАГА ЧЕРНЫХ КВАДРАТОВ: 🛡️
+                // Физически уничтожаем текстуру из VRAM только если это наш динамический скриншот гизмо-режима!
+                if (_currentDialogPoseState == CharacterPoseState.CustomPoseJSON)
+                {
+                    string texName = _activeRuntimePreviewTexture.name;
+                    UnityEngine.Object.Destroy(_activeRuntimePreviewTexture);
+                    Plugin.Log.LogInfo($"[MemoryGuard] Динамический скриншот '{texName}' успешно удален из памяти.");
+                }
+                else
+                {
+                    // Ванильный ассет игры просто «отпускаем», не вызывая Destroy()
+                    Plugin.Log.LogInfo("[MemoryGuard] Ванильная иконка игры защищена от деструктора.");
+                }
 
-                // Физически уничтожаем текстуру из VRAM, освобождая хэндлы Mono
-                UnityEngine.Object.Destroy(_activeRuntimePreviewTexture);
                 _activeRuntimePreviewTexture = null;
-
-                Plugin.Log.LogInfo($"[MemoryGuard] Рантайм-текстура скриншота '{texName}' успешно выгружена из видеопамяти.");
             }
         }
+
 
         private void DrawDialogWindow(int windowID)
         {
