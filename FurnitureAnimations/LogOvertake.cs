@@ -59,7 +59,6 @@ namespace FurnitureAnimations
                         var buttonImageComp = sdkBtnTrans?.GetComponent<UnityEngine.UI.Image>();
 
                         if (buttonTextComp != null) buttonTextComp.text = "Link Animated Pose for Furniture";
-                        if (buttonImageComp != null) buttonImageComp.color = new Color(0.6f, 0.2f, 0.8f, 1f); // Фиолетовый
 
                         Plugin.Log.LogInfo("[LOG_OVERTAKE] Кнопка интерактива успешно переведена в режим танца.");
                     }
