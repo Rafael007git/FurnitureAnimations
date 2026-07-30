@@ -44,14 +44,29 @@ namespace FurnitureAnimationsMod
             {
                 string currentCtrlName = (characterComp.anim.runtimeAnimatorController?.name ?? "").ToLower();
 
-                // 1. КОНТРОЛЬ ГИЗМО BUGERRY
+                // 1. КОНТРОЛЬ ГИЗМО BUGERRY И МОДА DIORAMA (ДИПЛОМАТИЧЕСКИЙ bypass) 🛡️🌟
                 bool isGizmoActiveOnScene = false;
-                bool isUserActivelyRotating = false;
+                bool isUserMovingOrRotating = false;
 
                 if (TransformGizmo.transformGizmo_ != null)
                 {
+                    // Проверяем, запущен ли гизмо-режим на сцене
                     isGizmoActiveOnScene = TransformGizmo.transformGizmo_.runTransformGizmo;
-                    isUserActivelyRotating = TransformGizmo.transformGizmo_.isTransforming;
+
+                    // ХИРУРГИЧЕСКИЙ ФИКС: Проверяем, тянет ли игрок стрелочки прямо СЕЙЧАС.
+                    // moveOrRotateNow становится true, когда мышь зажата на осях перемещения/вращения куклы.
+                    isUserMovingOrRotating = TransformGizmo.transformGizmo_.isTransforming ||
+                                             TransformGizmo.transformGizmo_.moveOrRotateNow;
+                }
+
+                // --- КРИТИЧЕСКИЙ ШАГ: РАЗБЛОКИРОВКА СТРЕЛОЧЕК ПЕРЕМЕЩЕНИЯ ---
+                // Если гизмо активно и пользователь тащит персонажа мышкой — наш мод полностью 
+                // отключает свой рантайм-цикл костей. Это позволяет Advanced Free Pose усыпить физику,
+                // поднять ноги от пола и беспрепятственно сдвинуть тело!
+                if (isGizmoActiveOnScene && isUserMovingOrRotating)
+                {
+                    Plugin.Log.LogInfo("[SDK_Bypass] Персонаж перемещается/вращается гизмо. Уступаем приоритет Advanced Free Pose и Diorama.");
+                    return; // Мгновенно выходим, не вызывая ApplyCustomBonesDirect!
                 }
 
                 // 2. ДИПЛОМАТИЧЕСКИЙ РАНТАЙМ-ПЕРЕХВАТ А-ПОЗЫ В ОБХОД ВСЕХ МОДОВ
@@ -79,6 +94,9 @@ namespace FurnitureAnimationsMod
                         }
                     }
                 }
+
+                // 3. ОБНОВЛЕННОЕ АВТО-ПЕРЕКЛЮЧЕНИЕ ЦВЕТА И ТЕКСТА КНОПКИ SDK
+                // ... Дальше твой оригинальный switch(state) идет БЕЗ ИЗМЕНЕНИЙ ...
 
                 // ==========================================================
                 // 3. ОБНОВЛЕННОЕ АВТО-ПЕРЕКЛЮЧЕНИЕ ЦВЕТА И ТЕКСТА КНОПКИ SDK
