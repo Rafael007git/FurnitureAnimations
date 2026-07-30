@@ -88,7 +88,7 @@ namespace FurnitureAnimationsMod
                 switch (state)
                 {
                     case CharacterPoseState.PoseAnimationsModActive:
-                        SetButtonState("Link Animated Pose for Furniture", Color.magenta, true);
+                        SetButtonState("Link Animated Pose for Furniture", Color.white, true);
                         break;
 
                     case CharacterPoseState.GameAnimatorActive:
