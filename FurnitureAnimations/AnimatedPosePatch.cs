@@ -51,11 +51,7 @@ namespace FurnitureAnimations
                     {
                         buttonTextComp.text = "Link Animated Pose for Furniture";
                     }
-                    if (buttonImageComp != null)
-                    {
-                        // Вспыхиваем красивым фиолетовым цветом мода в рантайме!
-                        buttonImageComp.color = new Color(0.6f, 0.2f, 0.8f, 1f);
-                    }
+
                     Plugin.Log.LogInfo("[HARMONY_OVERTAKE] Кнопка на сцене мгновенно переведена в режим 'Link Animated Pose'.");
                 }
             }
