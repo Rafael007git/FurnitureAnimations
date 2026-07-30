@@ -45,7 +45,6 @@ namespace FurnitureAnimations
                 {
                     Transform sdkBtnTrans = uiFreePose.transform.Find("Button_SaveInteract");
                     var buttonTextComp = sdkBtnTrans?.GetComponentInChildren<UnityEngine.UI.Text>();
-                    var buttonImageComp = sdkBtnTrans?.GetComponent<UnityEngine.UI.Image>();
 
                     if (buttonTextComp != null)
                     {

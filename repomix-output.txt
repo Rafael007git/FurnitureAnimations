@@ -605,6 +605,132 @@ File: repomix.config.json
 }
 
 ================
+File: FurnitureAnimations/ConfigManager.cs
+================
+using System;
+using System.IO;
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace FurnitureAnimationsMod
+{
+    public static class ConfigManager
+    {
+        public static string PluginDirectory { get; private set; }
+        public static string PrefabsConfigPath { get; private set; }
+        public static string CustomAnimsPath { get; private set; }
+        public static string IconsPath { get; private set; }
+
+        public static Dictionary<string, FurnitureConfig> LoadedConfigs = new Dictionary<string, FurnitureConfig>(StringComparer.OrdinalIgnoreCase);
+
+        public static void Initialize()
+        {
+            try
+            {
+                // 1. Получаем путь к папке BepInEx\plugins\, где лежит наш .dll
+                string dllPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+                string pluginsFolder = Path.GetDirectoryName(dllPath);
+
+                // 2. Базовая именная папка мода
+                PluginDirectory = Path.Combine(pluginsFolder, "FurnitureAnimations");
+
+                // 3. АРХИТЕКТУРНЫЙ ФИКС ПУТЕЙ СЕЙВА:
+                PrefabsConfigPath = Path.Combine(PluginDirectory, "FurnitureConfigs");
+                CustomAnimsPath = Path.Combine(PluginDirectory, "CustomAnimations");
+                IconsPath = Path.Combine(CustomAnimsPath, "Icons"); // <-- Папка уехала в CustomAnimations\Icons
+
+                // 4. Создаем директории на диске, если их нет
+                if (!Directory.Exists(PrefabsConfigPath)) Directory.CreateDirectory(PrefabsConfigPath);
+                if (!Directory.Exists(CustomAnimsPath)) Directory.CreateDirectory(CustomAnimsPath);
+                if (!Directory.Exists(IconsPath)) Directory.CreateDirectory(IconsPath);
+
+                // Запускаем диагностику: смотрим, какие моды внедрились в мебель!
+                CheckDoPoseInterceptors();
+
+                Plugin.Log.LogWarning($"[ConfigManager] Истинные пути SDK мода установлены: {PluginDirectory}");
+
+                LoadAllConfigs();
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"[ConfigManager] Критическая ошибка инициализации путей: {ex.Message}");
+            }
+        }
+
+        private static void LoadAllConfigs()
+        {
+            LoadedConfigs.Clear();
+            // Считываем ВСЕ файлы .json в папке конфигураций мебели интерактивов
+            string[] files = Directory.GetFiles(PrefabsConfigPath, "*.json");
+
+            foreach (string file in files)
+            {
+                try
+                {
+                    string jsonContent = File.ReadAllText(file);
+                    FurnitureConfig config = Newtonsoft.Json.JsonConvert.DeserializeObject<FurnitureConfig>(jsonContent);
+
+                    if (config != null && !string.IsNullOrEmpty(config.FurniturePrefabName))
+                    {
+                        LoadedConfigs[config.FurniturePrefabName] = config;
+                        Plugin.Log.LogInfo($"[ConfigManager] Загружен конфиг мебели: {config.FurniturePrefabName} ({config.InteractionPoses?.Count ?? 0} поз)");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Log.LogError($"[ConfigManager] Ошибка чтения файла {Path.GetFileName(file)}: {ex.Message}");
+                }
+            }
+            Plugin.Log.LogWarning($"[ConfigManager] Всего проиндексировано префабов мебели в памяти: {LoadedConfigs.Count}");
+        }
+
+        public static void CheckDoPoseInterceptors()
+        {
+            try
+            {
+                var originalMethod = typeof(Furniture).GetMethod("DoPose", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                if (originalMethod == null) return;
+
+                var patchInfo = HarmonyLib.Harmony.GetPatchInfo(originalMethod);
+                if (patchInfo == null)
+                {
+                    Plugin.Log.LogWarning("[SDK_Registry] Метод Furniture.DoPose абсолютно чист от чужих патчей.");
+                    return;
+                }
+
+                Plugin.Log.LogError($"[SDK_Registry] === КАРТА ВОЙНЫ МОДОВ ДЛЯ Furniture.DoPose ===");
+
+                // ИСПРАВЛЕНО: Используем правильные свойства PatchMethod и owner из актуального HarmonyЛиб
+                if (patchInfo.Prefixes != null)
+                {
+                    foreach (var p in patchInfo.Prefixes)
+                    {
+                        string ownerName = p.owner ?? "UnknownMod";
+                        string methodName = p.PatchMethod != null ? p.PatchMethod.Name : "UnknownMethod";
+                        Plugin.Log.LogError($" -> КРИТИЧЕСКИЙ ПЕРЕХВАТ (Prefix): Мод: {ownerName} | Метод: {methodName}");
+                    }
+                }
+                if (patchInfo.Postfixes != null)
+                {
+                    foreach (var p in patchInfo.Postfixes)
+                    {
+                        string ownerName = p.owner ?? "UnknownMod";
+                        string methodName = p.PatchMethod != null ? p.PatchMethod.Name : "UnknownMethod";
+                        Plugin.Log.LogWarning($" -> Постфикс мода: {ownerName} | Метод: {methodName}");
+                    }
+                }
+                Plugin.Log.LogError("=================================================");
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"Ошибка сканера: {ex.Message}");
+            }
+        }
+
+    }
+}
+
+================
 File: FurnitureAnimations/DioramaConstants.cs
 ================
 using System.Collections.Generic;
@@ -686,87 +812,6 @@ namespace FurnitureAnimationsMod
             "Point Light (5)",
             "Point Light (9)"
         };
-    }
-}
-
-================
-File: FurnitureAnimations/LogOvertake.cs
-================
-using BepInEx.Logging;
-using FurnitureAnimationsMod;
-using System.Linq;
-using UnityEngine;
-
-namespace FurnitureAnimations
-{
-    // 🕵️ ГЛОБАЛЬНЫЙ ПЕРЕХВАТЧИК ЛОГОВ БЕЗ НАГРУЗКИ НА UPDATE
-    public class AnimatedPoseLogListener : ILogListener
-    {
-        public void LogEvent(object sender, LogEventArgs eventArgs)
-        {
-            try
-            {
-                // Нам интересны только информационные или предупреждающие сообщения
-                if (eventArgs.Level != LogLevel.Info && eventArgs.Level != LogLevel.Warning && eventArgs.Level != LogLevel.Message) return;
-
-                string logMessage = eventArgs.Data?.ToString();
-                if (string.IsNullOrEmpty(logMessage)) return;
-
-                // 🎯 ЛОВИМ ТЕКСТ ЗЛОДЕЯ ИЗ ВАШЕГО ЛОГА!
-                if (logMessage.Contains("Setting Player to animation"))
-                {
-                    // Вытаскиваем имя анимации. Из строки "Setting Player to animation DanceAround01" 
-                    // мы забираем всё, что идет после слова "animation "
-                    string keyword = "animation ";
-                    int index = logMessage.IndexOf(keyword);
-                    if (index == -1) return;
-
-                    string animationName = logMessage.Substring(index + keyword.Length).Trim();
-                    Plugin.Log.LogWarning($"[LOG_OVERTAKE] 🎉 Успешно перехвачен лог AnimatedPose! Включен танец: '{animationName}'");
-
-                    // 1. Ищем легальную иконку этого танца в каталоге игры
-                    if (RM.code != null && RM.code.allFreePoses != null)
-                    {
-                        foreach (Transform t in RM.code.allFreePoses.items)
-                        {
-                            if (t != null && t.name == animationName)
-                            {
-                                var p = t.GetComponent<global::Pose>();
-                                if (p != null && p.icon != null)
-                                {
-                                    // Записываем иконку в скрытое поле PoseExporter через рефлексию
-                                    var field = typeof(PoseExporter).GetField("_lastCapturedIcon", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
-                                    field?.SetValue(null, p.icon);
-                                    Plugin.Log.LogInfo($"[LOG_OVERTAKE] Легальная иконка для '{animationName}' успешно сохранена в память.");
-                                }
-                                break;
-                            }
-                        }
-                    }
-
-                    // 2. Мгновенно перекрашиваем кнопку интерактива на сцене
-                    var uiFreePose = GameObject.FindObjectOfType<UIFreePose>();
-                    if (uiFreePose != null)
-                    {
-                        Transform sdkBtnTrans = uiFreePose.transform.Find("Button_SaveInteract");
-                        var buttonTextComp = sdkBtnTrans?.GetComponentInChildren<UnityEngine.UI.Text>();
-                        var buttonImageComp = sdkBtnTrans?.GetComponent<UnityEngine.UI.Image>();
-
-                        if (buttonTextComp != null) buttonTextComp.text = "Link Animated Pose for Furniture";
-                        if (buttonImageComp != null) buttonImageComp.color = new Color(0.6f, 0.2f, 0.8f, 1f); // Фиолетовый
-
-                        Plugin.Log.LogInfo("[LOG_OVERTAKE] Кнопка интерактива успешно переведена в режим танца.");
-                    }
-                }
-            }
-            catch (System.Exception ex)
-            {
-                Plugin.Log.LogError($"[LOG_OVERTAKE] Ошибка разбора строки лога: {ex}");
-            }
-        }
-
-        // Обязательные методы интерфейса ILogListener (просто оставляем пустыми)
-        public void Dispose() { }
     }
 }
 
@@ -888,6 +933,86 @@ namespace FurnitureAnimationsMod
 }
 
 ================
+File: FurnitureAnimations/LogOvertake.cs
+================
+using BepInEx.Logging;
+using FurnitureAnimationsMod;
+using System.Linq;
+using UnityEngine;
+
+namespace FurnitureAnimations
+{
+    // 🕵️ ГЛОБАЛЬНЫЙ ПЕРЕХВАТЧИК ЛОГОВ БЕЗ НАГРУЗКИ НА UPDATE
+    public class AnimatedPoseLogListener : ILogListener
+    {
+        public void LogEvent(object sender, LogEventArgs eventArgs)
+        {
+            try
+            {
+                // Нам интересны только информационные или предупреждающие сообщения
+                if (eventArgs.Level != LogLevel.Info && eventArgs.Level != LogLevel.Warning && eventArgs.Level != LogLevel.Message) return;
+
+                string logMessage = eventArgs.Data?.ToString();
+                if (string.IsNullOrEmpty(logMessage)) return;
+
+                // 🎯 ЛОВИМ ТЕКСТ ЗЛОДЕЯ ИЗ ВАШЕГО ЛОГА!
+                if (logMessage.Contains("Setting Player to animation"))
+                {
+                    // Вытаскиваем имя анимации. Из строки "Setting Player to animation DanceAround01" 
+                    // мы забираем всё, что идет после слова "animation "
+                    string keyword = "animation ";
+                    int index = logMessage.IndexOf(keyword);
+                    if (index == -1) return;
+
+                    string animationName = logMessage.Substring(index + keyword.Length).Trim();
+                    Plugin.Log.LogWarning($"[LOG_OVERTAKE] 🎉 Успешно перехвачен лог AnimatedPose! Включен танец: '{animationName}'");
+
+                    // 1. Ищем легальную иконку этого танца в каталоге игры
+                    if (RM.code != null && RM.code.allFreePoses != null)
+                    {
+                        foreach (Transform t in RM.code.allFreePoses.items)
+                        {
+                            if (t != null && t.name == animationName)
+                            {
+                                var p = t.GetComponent<global::Pose>();
+                                if (p != null && p.icon != null)
+                                {
+                                    // Записываем иконку в скрытое поле PoseExporter через рефлексию
+                                    var field = typeof(PoseExporter).GetField("_lastCapturedIcon", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+                                    field?.SetValue(null, p.icon);
+                                    Plugin.Log.LogInfo($"[LOG_OVERTAKE] Легальная иконка для '{animationName}' успешно сохранена в память.");
+                                }
+                                break;
+                            }
+                        }
+                    }
+
+                    // 2. Мгновенно перекрашиваем кнопку интерактива на сцене
+                    var uiFreePose = GameObject.FindObjectOfType<UIFreePose>();
+                    if (uiFreePose != null)
+                    {
+                        Transform sdkBtnTrans = uiFreePose.transform.Find("Button_SaveInteract");
+                        var buttonTextComp = sdkBtnTrans?.GetComponentInChildren<UnityEngine.UI.Text>();
+                        var buttonImageComp = sdkBtnTrans?.GetComponent<UnityEngine.UI.Image>();
+
+                        if (buttonTextComp != null) buttonTextComp.text = "Link Animated Pose for Furniture";
+
+                        Plugin.Log.LogInfo("[LOG_OVERTAKE] Кнопка интерактива успешно переведена в режим танца.");
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                Plugin.Log.LogError($"[LOG_OVERTAKE] Ошибка разбора строки лога: {ex}");
+            }
+        }
+
+        // Обязательные методы интерфейса ILogListener (просто оставляем пустыми)
+        public void Dispose() { }
+    }
+}
+
+================
 File: FurnitureAnimations/AnimatedPosePatch.cs
 ================
 using FurnitureAnimationsMod;
@@ -943,11 +1068,7 @@ namespace FurnitureAnimations
                     {
                         buttonTextComp.text = "Link Animated Pose for Furniture";
                     }
-                    if (buttonImageComp != null)
-                    {
-                        // Вспыхиваем красивым фиолетовым цветом мода в рантайме!
-                        buttonImageComp.color = new Color(0.6f, 0.2f, 0.8f, 1f);
-                    }
+
                     Plugin.Log.LogInfo("[HARMONY_OVERTAKE] Кнопка на сцене мгновенно переведена в режим 'Link Animated Pose'.");
                 }
             }
@@ -1102,132 +1223,6 @@ namespace FurnitureAnimationsMod
             catch (Exception ex)
             {
                 Plugin.Log.LogError($"[PoseBridge] Критический краш создания PoseAnimationInstance: {ex.Message}");
-            }
-        }
-
-    }
-}
-
-================
-File: FurnitureAnimations/ConfigManager.cs
-================
-using System;
-using System.IO;
-using System.Collections.Generic;
-using UnityEngine;
-
-namespace FurnitureAnimationsMod
-{
-    public static class ConfigManager
-    {
-        public static string PluginDirectory { get; private set; }
-        public static string PrefabsConfigPath { get; private set; }
-        public static string CustomAnimsPath { get; private set; }
-        public static string IconsPath { get; private set; }
-
-        public static Dictionary<string, FurnitureConfig> LoadedConfigs = new Dictionary<string, FurnitureConfig>(StringComparer.OrdinalIgnoreCase);
-
-        public static void Initialize()
-        {
-            try
-            {
-                // 1. Получаем путь к папке BepInEx\plugins\, где лежит наш .dll
-                string dllPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
-                string pluginsFolder = Path.GetDirectoryName(dllPath);
-
-                // 2. Базовая именная папка мода
-                PluginDirectory = Path.Combine(pluginsFolder, "FurnitureAnimations");
-
-                // 3. АРХИТЕКТУРНЫЙ ФИКС ПУТЕЙ СЕЙВА:
-                PrefabsConfigPath = Path.Combine(PluginDirectory, "FurnitureConfigs");
-                CustomAnimsPath = Path.Combine(PluginDirectory, "CustomAnimations");
-                IconsPath = Path.Combine(CustomAnimsPath, "Icons"); // <-- Папка уехала в CustomAnimations\Icons
-
-                // 4. Создаем директории на диске, если их нет
-                if (!Directory.Exists(PrefabsConfigPath)) Directory.CreateDirectory(PrefabsConfigPath);
-                if (!Directory.Exists(CustomAnimsPath)) Directory.CreateDirectory(CustomAnimsPath);
-                if (!Directory.Exists(IconsPath)) Directory.CreateDirectory(IconsPath);
-
-                // Запускаем диагностику: смотрим, какие моды внедрились в мебель!
-                CheckDoPoseInterceptors();
-
-                Plugin.Log.LogWarning($"[ConfigManager] Истинные пути SDK мода установлены: {PluginDirectory}");
-
-                LoadAllConfigs();
-            }
-            catch (Exception ex)
-            {
-                Plugin.Log.LogError($"[ConfigManager] Критическая ошибка инициализации путей: {ex.Message}");
-            }
-        }
-
-        private static void LoadAllConfigs()
-        {
-            LoadedConfigs.Clear();
-            // Считываем ВСЕ файлы .json в папке конфигураций мебели интерактивов
-            string[] files = Directory.GetFiles(PrefabsConfigPath, "*.json");
-
-            foreach (string file in files)
-            {
-                try
-                {
-                    string jsonContent = File.ReadAllText(file);
-                    FurnitureConfig config = Newtonsoft.Json.JsonConvert.DeserializeObject<FurnitureConfig>(jsonContent);
-
-                    if (config != null && !string.IsNullOrEmpty(config.FurniturePrefabName))
-                    {
-                        LoadedConfigs[config.FurniturePrefabName] = config;
-                        Plugin.Log.LogInfo($"[ConfigManager] Загружен конфиг мебели: {config.FurniturePrefabName} ({config.InteractionPoses?.Count ?? 0} поз)");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Plugin.Log.LogError($"[ConfigManager] Ошибка чтения файла {Path.GetFileName(file)}: {ex.Message}");
-                }
-            }
-            Plugin.Log.LogWarning($"[ConfigManager] Всего проиндексировано префабов мебели в памяти: {LoadedConfigs.Count}");
-        }
-
-        public static void CheckDoPoseInterceptors()
-        {
-            try
-            {
-                var originalMethod = typeof(Furniture).GetMethod("DoPose", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-                if (originalMethod == null) return;
-
-                var patchInfo = HarmonyLib.Harmony.GetPatchInfo(originalMethod);
-                if (patchInfo == null)
-                {
-                    Plugin.Log.LogWarning("[SDK_Registry] Метод Furniture.DoPose абсолютно чист от чужих патчей.");
-                    return;
-                }
-
-                Plugin.Log.LogError($"[SDK_Registry] === КАРТА ВОЙНЫ МОДОВ ДЛЯ Furniture.DoPose ===");
-
-                // ИСПРАВЛЕНО: Используем правильные свойства PatchMethod и owner из актуального HarmonyЛиб
-                if (patchInfo.Prefixes != null)
-                {
-                    foreach (var p in patchInfo.Prefixes)
-                    {
-                        string ownerName = p.owner ?? "UnknownMod";
-                        string methodName = p.PatchMethod != null ? p.PatchMethod.Name : "UnknownMethod";
-                        Plugin.Log.LogError($" -> КРИТИЧЕСКИЙ ПЕРЕХВАТ (Prefix): Мод: {ownerName} | Метод: {methodName}");
-                    }
-                }
-                if (patchInfo.Postfixes != null)
-                {
-                    foreach (var p in patchInfo.Postfixes)
-                    {
-                        string ownerName = p.owner ?? "UnknownMod";
-                        string methodName = p.PatchMethod != null ? p.PatchMethod.Name : "UnknownMethod";
-                        Plugin.Log.LogWarning($" -> Постфикс мода: {ownerName} | Метод: {methodName}");
-                    }
-                }
-                Plugin.Log.LogError("=================================================");
-            }
-            catch (Exception ex)
-            {
-                Plugin.Log.LogError($"Ошибка сканера: {ex.Message}");
             }
         }
 
@@ -1844,7 +1839,7 @@ namespace FurnitureAnimationsMod
                 switch (state)
                 {
                     case CharacterPoseState.PoseAnimationsModActive:
-                        SetButtonState("Link Animated Pose for Furniture", new Color(0.6f, 0.2f, 0.8f, 1f), true);
+                        SetButtonState("Link Animated Pose for Furniture", Color.yellow, true);
                         break;
 
                     case CharacterPoseState.GameAnimatorActive:
@@ -1977,7 +1972,7 @@ namespace FurnitureAnimationsMod
     {
         public const string PluginGuid = "com.lorifel007.furnitureanimations";
         public const string PluginName = "Furniture Animations Mod";
-        public const string PluginVersion = "1.3.4";
+        public const string PluginVersion = "1.3.5";
 
         public static ManualLogSource Log;
         private Harmony harmony;
@@ -2211,7 +2206,8 @@ namespace FurnitureAnimationsMod
                 finalPreview,
                 () => {
                     SavePoseToDataFolder(furnitureName, controllerName, exactLocPos, exactLocRot, currentState, characterComp);
-                }
+                },
+                currentState // <-- ПРОСТО ДОПИШИТЕ ЭТУ ПЕРЕМЕННУЮ СЮДА ЧЕРЕЗ ЗАПЯТУЮ! 🌟
             );
         }
 
@@ -2428,6 +2424,7 @@ namespace FurnitureAnimationsMod
     public class EditorUiManager : MonoBehaviour
     {
         private static EditorUiManager _instance;
+        private static CharacterPoseState _currentDialogPoseState;
 
         // Переменные для состояния отладочного диалогового окна OnGUI
         private bool _isShowingDialog = false;
@@ -2440,7 +2437,7 @@ namespace FurnitureAnimationsMod
 
         // Статический хэндл для отслеживания текстуры текущего открытого нативного окна
         private static Texture2D _activeRuntimePreviewTexture = null;
-
+                
         public static void Initialize()
         {
             if (_instance != null) return;
@@ -2485,11 +2482,14 @@ namespace FurnitureAnimationsMod
 
         private static GameObject _myCustomDialogInstance = null;
 
-        public static void ShowNativeStyleDialog(UIFreePose uiFreePose, string messageText, Texture2D previewTexture, System.Action onConfirm)
+        public static void ShowNativeStyleDialog(UIFreePose uiFreePose, string messageText, Texture2D previewTexture, System.Action onConfirm, CharacterPoseState poseState)
         {
             try
             {
                 if (uiFreePose == null || uiFreePose.savePosePanel == null) return;
+
+                // 2. ЗАПОМИНАЕМ ТИП ПОЗЫ ДЛЯ ДЕСТРУКТОРA СТРОГО ДО ОЧИСТКИ! 🌟
+                _currentDialogPoseState = poseState;
 
                 // --- КРИТИЧЕСКИЙ ФИКС №1: УБИВАЕМ СТАРОЕ ОКНО И ЕГО ТЕКТУРУ ПЕРЕД СОЗДАНИЕМ НОВОГО ---
                 SafeCloseAndCleanTexture();
@@ -2721,18 +2721,26 @@ namespace FurnitureAnimationsMod
                 _myCustomDialogInstance = null;
             }
 
-            // Проверяем, удерживаем ли мы ссылку на временную рантайм-текстуру скриншота
             if (_activeRuntimePreviewTexture != null)
             {
-                string texName = _activeRuntimePreviewTexture.name;
+                // ХИРУРГИЧЕСКИЙ ФИКС БАГА ЧЕРНЫХ КВАДРАТОВ: 🛡️
+                // Физически уничтожаем текстуру из VRAM только если это наш динамический скриншот гизмо-режима!
+                if (_currentDialogPoseState == CharacterPoseState.CustomPoseJSON)
+                {
+                    string texName = _activeRuntimePreviewTexture.name;
+                    UnityEngine.Object.Destroy(_activeRuntimePreviewTexture);
+                    Plugin.Log.LogInfo($"[MemoryGuard] Динамический скриншот '{texName}' успешно удален из памяти.");
+                }
+                else
+                {
+                    // Ванильный ассет игры просто «отпускаем», не вызывая Destroy()
+                    Plugin.Log.LogInfo("[MemoryGuard] Ванильная иконка игры защищена от деструктора.");
+                }
 
-                // Физически уничтожаем текстуру из VRAM, освобождая хэндлы Mono
-                UnityEngine.Object.Destroy(_activeRuntimePreviewTexture);
                 _activeRuntimePreviewTexture = null;
-
-                Plugin.Log.LogInfo($"[MemoryGuard] Рантайм-текстура скриншота '{texName}' успешно выгружена из видеопамяти.");
             }
         }
+
 
         private void DrawDialogWindow(int windowID)
         {

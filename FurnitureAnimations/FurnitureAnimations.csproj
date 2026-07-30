@@ -97,7 +97,6 @@
     <Compile Include="FurnitureAnimationPlayer.cs" />
     <Compile Include="FurnitureInjectorPatch.cs" />
     <Compile Include="FurnitureSdkButtonController.cs" />
-    <Compile Include="LogOvertake.cs" />
     <Compile Include="Models.cs" />
     <Compile Include="Plugin.cs" />
     <Compile Include="PoseAnimationData.cs" />
