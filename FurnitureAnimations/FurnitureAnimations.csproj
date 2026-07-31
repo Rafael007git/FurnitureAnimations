@@ -90,6 +90,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AnimatedPosePatch.cs" />
+    <Compile Include="AnimationControls.cs" />
     <Compile Include="CharacterStateHelper.cs" />
     <Compile Include="ConfigManager.cs" />
     <Compile Include="DioramaConstants.cs" />

@@ -2,15 +2,25 @@
 using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
-using UnityEngine.Networking; // Обязательно для загрузки аудио
+using UnityEngine.Networking;
 
 namespace FurnitureAnimationsMod
 {
+    public enum EaseMode
+    {
+        Linear,
+        Global,
+        PerFrame
+    }
+
     public class FurnitureAnimationPlayer : MonoBehaviour
     {
+        // Синглтон для управления из UI
+        public static FurnitureAnimationPlayer Instance { get; private set; }
+
         private CharacterCustomization _character;
         private PoseAnimationData _animData;
-        private AudioSource _audioSource; // Наш звуковой движок
+        private AudioSource _audioSource;
 
         private float _deltaTime = 0f;
         private int _currentDelta = 0;
@@ -23,11 +33,16 @@ namespace FurnitureAnimationsMod
 
         private readonly Dictionary<string, Transform> _boneCache = new Dictionary<string, Transform>();
 
+        // Модификаторы рантайма
+        private float _speedModifier = 1.0f;
+        private EaseMode _currentEaseMode = EaseMode.Linear;
+
         public void Play(CharacterCustomization character, string animationName, Furniture furniture, PoseData poseConfig)
         {
+            Instance = this;
             _character = character;
 
-            // 1. Загрузка JSON анимации (твой рабочий код)
+            // 1. Загрузка JSON анимации
             string assetPath = Path.Combine(BepInEx.Paths.PluginPath, "PoseAnimations", $"{animationName}.json");
             if (!File.Exists(assetPath))
             {
@@ -56,36 +71,19 @@ namespace FurnitureAnimationsMod
                 return;
             }
 
-            // =========================================================================
-            // УЛЬТИМАТИВНЫЙ ПОИСК АУДИО В ПАПКЕ ВАШЕГО МОДА 🎵
-            // =========================================================================
-            // Ищем музыку в папке ВАШЕГО мода, внутри подпапки "Audio"
-            string myModFolder = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
+            // УЛЬТИМАТИВНЫЙ ПОИСК АУДИО
             string audioFolder = Path.Combine(BepInEx.Paths.PluginPath, "FurnitureAnimations", "Audio");
-
-            // На всякий случай создаем папку Audio, если игрок её забыл сделать
-            if (!Directory.Exists(audioFolder))
-            {
-                Directory.CreateDirectory(audioFolder);
-            }
-
-            Plugin.Log.LogWarning($"[AudioDebug] Поиск звука для анимации '{animationName}'");
-            Plugin.Log.LogInfo($"[AudioDebug] Ожидаемый путь к папке: {audioFolder}");
+            if (!Directory.Exists(audioFolder)) Directory.CreateDirectory(audioFolder);
 
             string matchedAudioPath = null;
             AudioType detectedType = AudioType.UNKNOWN;
-
             string[] extensions = new string[] { ".wav", ".mp3", ".ogg" };
             AudioType[] types = new AudioType[] { AudioType.WAV, AudioType.MPEG, AudioType.OGGVORBIS };
 
             for (int i = 0; i < extensions.Length; i++)
             {
                 string checkPath = Path.Combine(audioFolder, animationName + extensions[i]);
-                bool exists = File.Exists(checkPath);
-
-                Plugin.Log.LogInfo($"[AudioDebug] Проверка: {animationName + extensions[i]} -> {exists}");
-
-                if (exists)
+                if (File.Exists(checkPath))
                 {
                     matchedAudioPath = checkPath;
                     detectedType = types[i];
@@ -95,17 +93,10 @@ namespace FurnitureAnimationsMod
 
             if (!string.IsNullOrEmpty(matchedAudioPath))
             {
-                Plugin.Log.LogWarning($"[AudioDebug] Файл найден! Запускаем стриминг: {Path.GetFileName(matchedAudioPath)}");
                 StartCoroutine(LoadAndPlayAudio(matchedAudioPath, detectedType));
             }
-            else
-            {
-                Plugin.Log.LogError($"[AudioDebug] Музыка не найдена. Положите файл '{animationName}.mp3' (или .wav/.ogg) в папку: {audioFolder}");
-            }
-            // =========================================================================
 
-
-            // 2. Применение оффсетов мебели (твой рабочий код)
+            // 2. Применение оффсетов мебели
             if (furniture != null && poseConfig != null)
             {
                 _baseWorldPos = furniture.transform.TransformPoint(new Vector3(poseConfig.LocPosition.x, poseConfig.LocPosition.y, poseConfig.LocPosition.z));
@@ -126,66 +117,85 @@ namespace FurnitureAnimationsMod
             _boneCache.Clear();
             CacheSkeletonRecursive(_character.transform);
 
-            // =========================================================================
-            // ВНЕДРЕНИЕ: Абсолютный сброс скелета перед стартом анимации 🌟
-            // =========================================================================
             Dictionary<string, BoneDelta> firstFrameDatas = null;
             if (_animData != null && _animData.deltas != null && _animData.deltas.Count > 0)
             {
-                // Берем boneDatas из самого первого кадра в списке deltas
                 firstFrameDatas = _animData.deltas[0].boneDatas;
             }
 
-            // Вызываем очистку скелета
             AbsoluteSkeletalReset(firstFrameDatas);
-            // =========================================================================
 
             _deltaTime = 0f;
             _currentDelta = 0;
             _currentFrame = 0;
             _reversing = false;
         }
+        // Публичные методы управления скоростью для UI
+        public void ChangeSpeed(float delta)
+        {
+            _speedModifier = Mathf.Clamp(_speedModifier + delta, 0.1f, 3.0f);
+            Plugin.Log.LogInfo($"[SpeedManager] Текущая скорость: {_speedModifier * 100:F0}%");
+        }
+
+        public float GetSpeed() => _speedModifier;
+
+        // Публичные методы переключения сглаживания для UI
+        public void ToggleEaseMode()
+        {
+            _currentEaseMode = (EaseMode)(((int)_currentEaseMode + 1) % 3);
+            Plugin.Log.LogWarning($"[EaseManager] Режим сглаживания изменен на: {_currentEaseMode}");
+        }
+
+        public EaseMode GetEaseMode() => _currentEaseMode;
+
+        // Функция математического расчета сглаживания (SmoothStep)
+        private float ApplyEasing(float fraction)
+        {
+            switch (_currentEaseMode)
+            {
+                case EaseMode.Global:
+                    return fraction * fraction * (3f - 2f * fraction);
+
+                case EaseMode.PerFrame:
+                    return Mathf.SmoothStep(0f, 1f, fraction);
+
+                case EaseMode.Linear:
+                default:
+                    return fraction;
+            }
+        }
 
         private void AbsoluteSkeletalReset(Dictionary<string, BoneDelta> firstFrameBoneDatas)
         {
             if (_character == null) return;
 
-            // Проходим по абсолютно ВСЕМ анатомическим костям из реестра DioramaConstants
             foreach (string boneName in DioramaConstants.AnatomyBoneRegistry)
             {
-                // Используем твой готовый _boneCache вместо тяжелого поиска!
                 if (!_boneCache.TryGetValue(boneName, out Transform boneTrans))
                     continue;
 
-                // Принудительно стираем ЛЮБОЙ старый поворот от предыдущей позы (убирает вертикальный наклон hips)
                 boneTrans.localRotation = Quaternion.identity;
 
-                // Если в первом кадре новой анимации есть данные для этой конкретной кости:
                 if (firstFrameBoneDatas != null && firstFrameBoneDatas.TryGetValue(boneName, out BoneDelta delta))
                 {
-                    // Накатываем точные углы поворота из JSON поверх сброшенного нуля
                     if (delta.endRot != null && delta.endRot.Length >= 4)
                     {
                         boneTrans.localRotation = new Quaternion(delta.endRot[0], delta.endRot[1], delta.endRot[2], delta.endRot[3]);
                     }
-                    else if (delta.endRot != null && delta.endRot.Length == 3) // На случай углов Эйлера
+                    else if (delta.endRot != null && delta.endRot.Length == 3)
                     {
                         boneTrans.localRotation = Quaternion.Euler(delta.endRot[0], delta.endRot[1], delta.endRot[2]);
                     }
 
-                    // Накатываем точную локальную позицию (высоту/смещение якоря) из JSON
                     if (delta.endPos != null && delta.endPos.Length >= 3)
                     {
                         boneTrans.localPosition = new Vector3(delta.endPos[0], delta.endPos[1], delta.endPos[2]);
                     }
                 }
             }
-
-            Plugin.Log.LogInfo($"[FurnitureAnimations] Скелет {_character.name} успешно очищен от старых поз. Якорь 'hip' выставлен в первый кадр.");
+            Plugin.Log.LogInfo($"[FurnitureAnimations] Скелет {_character.name} очищен. Якорь 'hip' выставлен.");
         }
 
-
-        // КОРУТИНА СТРИМИНГА ЗВУКА С ДИСКА
         private System.Collections.IEnumerator LoadAndPlayAudio(string filePath, AudioType type)
         {
             string fileUri = "file://" + filePath.Replace("\\", "/");
@@ -207,25 +217,19 @@ namespace FurnitureAnimationsMod
                         _audioSource.clip = clip;
                         _audioSource.loop = _animData.loop;
 
-                        // НАСТРОЙКИ ПРОБИТИЯ ИГРОВОГО ЭМБИЕНТА 📣
-                        _audioSource.bypassEffects = true;       // Игнорировать глобальные эффекты зоны игры
+                        _audioSource.bypassEffects = true;
                         _audioSource.bypassListenerEffects = true;
-                        _audioSource.priority = 0;               // Максимальный приоритет в движке Unity (0 = первый)
-
-                        // Делаем звук 2D, чтобы он играл на полную мощность прямо в уши игрока,
-                        // пока мы тестируем и отлаживаем корутину (потом вернем 3D, если нужно)
+                        _audioSource.priority = 0;
                         _audioSource.spatialBlend = 0f;
-                        _audioSource.volume = 1.0f;              // Полная громкость
+                        _audioSource.volume = 1.0f;
 
                         _audioSource.Play();
-                        Plugin.Log.LogWarning($"[AudioEngine] 🎉 Звуковой файл '{clip.name}' успешно пробился в рантайм и запущен!");
+                        Plugin.Log.LogWarning($"[AudioEngine] Звуковой файл '{clip.name}' запущен!");
                     }
                 }
             }
         }
 
-
-        // Возвращает имя текущей проигрываемой JSON-анимации.
         public string GetPlayingAnimationName()
         {
             return _animData != null ? _animData.name : string.Empty;
@@ -234,7 +238,8 @@ namespace FurnitureAnimationsMod
         {
             if (_character == null || _animData == null) return;
 
-            _deltaTime += Time.deltaTime;
+            // Накопление времени с учетом модификатора скорости воспроизведения
+            _deltaTime += Time.deltaTime * _speedModifier;
             if (_deltaTime < _animData.rate) return;
 
             _deltaTime = 0f;
@@ -302,32 +307,28 @@ namespace FurnitureAnimationsMod
             try
             {
                 PoseAnimationDelta currentDeltaData = _animData.deltas[_currentDelta];
-                float lerpFraction = (float)(_currentFrame + 1) / (float)currentDeltaData.frames;
 
-                // =========================================================================
-                // АВТОРСКИЙ ДИНАМИЧЕСКИЙ РАСЧЕТ ДВИЖЕНИЯ ТЕЛА (Страница 4 декомпилятора) 🏃‍♀️
-                // =========================================================================
+                // Расчет коэффициента интерполяции с применением сглаживания
+                float rawFraction = (float)(_currentFrame + 1) / (float)currentDeltaData.frames;
+                float lerpFraction = ApplyEasing(rawFraction);
+
+                // Динамический расчет движения корпуса персонажа
                 Vector3 startFramePos = _baseWorldPos;
                 Quaternion startFrameRot = _baseWorldRot;
 
-                // Накапливаем смещения из предыдущих дельт, если мы ушли дальше первого кадра
                 if (_currentDelta > 0)
                 {
                     startFrameRot *= Quaternion.Euler(ArrayToVector3(_animData.deltas[_currentDelta - 1].endRotDelta));
                     startFramePos += _modelRotationModifier * ArrayToVector3(_animData.deltas[_currentDelta - 1].endPosDelta);
                 }
 
-                // Вычисляем финальную точку, куда персонаж должен прийти к концу текущей дельты
                 Quaternion endFrameRot = _baseWorldRot * Quaternion.Euler(ArrayToVector3(currentDeltaData.endRotDelta));
                 Vector3 endFramePos = _baseWorldPos + _modelRotationModifier * ArrayToVector3(currentDeltaData.endPosDelta);
 
-                // ПЛАВНО ПЕРЕМЕЩАЕМ КОРПУС ПЕРСОНАЖА В ПРОСТРАНСТВЕ (Елозим, прыгаем, смещаемся)
                 _character.transform.position = Vector3.Lerp(startFramePos, endFramePos, lerpFraction);
                 _character.transform.rotation = Quaternion.Lerp(startFrameRot, endFrameRot, lerpFraction);
 
-                // =========================================================================
-                // ПЛАВНЫЙ LERP ДЛЯ ВСЕХ ОСТАЛЬНЫХ КОСТЕЙ СКЕЛЕТА
-                // =========================================================================
+                // Плавный Lerp для всех остальных костей скелета
                 foreach (var keyValuePair in currentDeltaData.boneDatas)
                 {
                     string boneName = keyValuePair.Key;
@@ -364,7 +365,8 @@ namespace FurnitureAnimationsMod
             string cleanName = FixBoneName(parent.name);
             if (!_boneCache.ContainsKey(cleanName)) _boneCache[cleanName] = parent;
 
-            for (int i = 0; i < parent.childCount; i++) CacheSkeletonRecursive(parent.GetChild(i));
+            for (int i = 0; i < parent.childCount; i++)
+                CacheSkeletonRecursive(parent.GetChild(i));
         }
 
         private string FixBoneName(string name)
@@ -383,7 +385,8 @@ namespace FurnitureAnimationsMod
 
         private void OnDestroy()
         {
-            // ТУШИМ ЗВУК: Чтобы музыка не продолжала орать в воздухе
+            if (Instance == this) Instance = null;
+
             if (_audioSource != null && _audioSource.isPlaying)
             {
                 _audioSource.Stop();
