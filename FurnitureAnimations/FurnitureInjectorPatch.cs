@@ -246,7 +246,7 @@ namespace FurnitureAnimationsMod
         }
     }
 
-    // === П ПАТЧ 4: УЛЬТИМАТИВНЫЙ ПОСТФИКС-ПЕРЕХВАТ ДЛЯ ОКНА UIPOSE (RELEASE 0.2.0 STABLE) ===
+    // === ПАТЧ 4: УЛЬТИМАТИВНЫЙ ПОСТФИКС-ПЕРЕХВАТ ДЛЯ ОКНА UIPOSE (RELEASE 0.2.0 STABLE) ===
     [HarmonyPatch(typeof(PoseIcon), "Click")]
     public class PoseIconClickDioramaPatch
     {

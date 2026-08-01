@@ -5,103 +5,134 @@ using FurnitureAnimationsMod;
 
 namespace FurnitureAnimations
 {
-    [HarmonyPatch(typeof(UIFreePose), "Start")]
-    public static class UIFreePose_Start_SpeedButtonsPatch
+    // 1. Патч на открытие меню UIPose — создаем и позиционируем нашу панель
+    [HarmonyPatch(typeof(UIPose), "Open")]
+    public static class UIPose_Open_SpeedButtonsPatch
     {
-        public static void Postfix(UIFreePose __instance)
+        public static void Postfix(UIPose __instance)
         {
             try
             {
-                Plugin.Log.LogInfo("[SDK_UI] Старт инициализации кастомной UI-панели мода...");
+                Plugin.Log.LogInfo("[SDK_UI] Старт создания панели на основе ванильного panelTakeOffClothes...");
 
-                // 1. Находим корневой родительский UI-элемент, где лежат панели позы
                 Transform uiPoseRoot = __instance.transform;
 
-                // Ищем оригинальный фоновый контейнер ванильной панели
-                Transform vanillaBgContainer = uiPoseRoot.Find("Takeoff Buttons BG");
-                if (vanillaBgContainer == null)
+                // Проверяем главную ванильную панель раздевания
+                GameObject vanillaTakeoffPanel = __instance.panelTakeOffClothes;
+                if (vanillaTakeoffPanel == null)
                 {
-                    Plugin.Log.LogError("[SDK_UI] Критическая ошибка: Контейнер 'Takeoff Buttons BG' не найден в структуре UIPose!");
+                    Plugin.Log.LogError("[SDK_UI] Критическая ошибка: Ванильный 'panelTakeOffClothes' не найден в UIPose!");
                     return;
                 }
 
-                // 2. КЛОНИРУЕМ ВСЮ ПАНЕЛЬ ЦЕЛИКОМ под наши нужды
-                GameObject modPanelBgGo = GameObject.Instantiate(vanillaBgContainer.gameObject, uiPoseRoot);
+                // Предотвращаем дублирование при повторном открытии интерфейса
+                Transform existingPanel = uiPoseRoot.Find("Mod_FurnitureAnimationControls_BG");
+                if (existingPanel != null)
+                {
+                    existingPanel.gameObject.SetActive(true);
+                    return;
+                }
+
+                // Клонируем ванильный контейнер (это скопирует и красивый оригинальный фон с затемнением)
+                GameObject modPanelBgGo = GameObject.Instantiate(vanillaTakeoffPanel, uiPoseRoot, false);
                 modPanelBgGo.name = "Mod_FurnitureAnimationControls_BG";
+                modPanelBgGo.SetActive(true); // Принудительно включаем наш клон
 
-                // Принудительно ВКЛЮЧАЕМ нашу кастомную панель, исправляя ванильное затухание
-                modPanelBgGo.SetActive(true);
-
-                // 3. Корректируем позиционирование новой панели, чтобы она встала ровно ПОД ванильной
+                // Настраиваем габариты под оригинальный RectTransform
                 RectTransform modPanelBgRect = modPanelBgGo.GetComponent<RectTransform>();
-                RectTransform vanillaBgRect = vanillaBgContainer.GetComponent<RectTransform>();
+                RectTransform vanillaBgRect = vanillaTakeoffPanel.GetComponent<RectTransform>();
 
-                // Смещаем панель-клон вниз (оффсет подбирается под высоту ванильной панели, обычно около -200f или -220f)
-                Vector3 newPanelPos = vanillaBgRect.anchoredPosition;
+                modPanelBgRect.anchorMin = vanillaBgRect.anchorMin;
+                modPanelBgRect.anchorMax = vanillaBgRect.anchorMax;
+                modPanelBgRect.pivot = vanillaBgRect.pivot;
+                modPanelBgRect.sizeDelta = vanillaBgRect.sizeDelta;
+
+                // Сдвигаем нашу кастомную панель ниже оригинальной
+                Vector2 newPanelPos = vanillaBgRect.anchoredPosition;
                 newPanelPos.y -= 220f;
                 modPanelBgRect.anchoredPosition = newPanelPos;
 
-                // 4. Находим внутренний контейнер для кнопок внутри нашего клона
-                Transform modButtonsContainer = modPanelBgGo.transform.Find("Takeoff Buttons");
-                if (modButtonsContainer == null)
+                // Вычищаем из клона ванильные кнопки раздевания, чтобы освободить место
+                Transform modButtonsContainer = modPanelBgGo.transform.Find("Takeoff Buttons") ?? modPanelBgGo.transform;
+                if (modButtonsContainer != modPanelBgGo.transform)
                 {
-                    Plugin.Log.LogError("[SDK_UI] Сбой: Внутри клона панели не найден контейнер 'Takeoff Buttons'!");
-                    return;
+                    modButtonsContainer.name = "Mod_AnimationButtonsContainer";
+                    RectTransform modBtnContainerRect = modButtonsContainer.GetComponent<RectTransform>();
+                    if (modBtnContainerRect != null) modBtnContainerRect.anchoredPosition = Vector2.zero;
                 }
-                modButtonsContainer.name = "Mod_AnimationButtonsContainer";
 
-                // 5. ПОЛНАЯ ЗАЧИСТКА ВАНИЛЬНОГО ХЛАМА внутри нашего контейнера
-                // Удаляем старые кнопки раздевания персонажа, чтобы они не двоились
                 foreach (Transform child in modButtonsContainer)
                 {
+                    if (child.GetComponent<Image>() != null && child.GetComponent<Button>() == null)
+                        continue; // Не удаляем плашку фона
+
                     GameObject.Destroy(child.gameObject);
                 }
 
-                // 6. ИСПОЛЬЗУЕМ КНОПКУ-ПРЕФАБ ИЗ ОРИГИНАЛЬНОЙ ПАНЕЛИ ДЛЯ СОХРАНЕНИЯ СТИЛЯ
-                Transform origBtnPrefab = vanillaBgContainer.Find("Takeoff Buttons/Btn takeoff highheels");
+                // Берем оригинальную кнопку как префаб, чтобы сохранить ванильный стиль (шрифты, рамки, Hover-эффекты)
+                Transform origBtnPrefab = vanillaTakeoffPanel.transform.Find("Takeoff Buttons/Btn takeoff highheels")
+                                          ?? vanillaTakeoffPanel.GetComponentInChildren<Button>()?.transform;
+
                 if (origBtnPrefab == null)
                 {
-                    Plugin.Log.LogError("[SDK_UI] Сбой: Оригинальный префаб кнопки 'Btn takeoff highheels' не найден для копирования стилей!");
+                    Plugin.Log.LogError("[SDK_UI] Сбой: Оригинальный префаб кнопки не найден внутри panelTakeOffClothes!");
                     return;
                 }
 
-                // 7. НАПОЛНЯЕМ НАШУ ПАНЕЛЬ НОВЫМИ КНОПКАМИ
-                Vector3 nextBtnPos = new Vector3(0f, 0f, 0f); // Первая кнопка встанет в самый верх панели
-                float buttonSpacing = -45f;                   // Вертикальный шаг сетки интерфейса игры
+                // Строим сетку кнопок управления
+                Vector3 nextBtnPos = new Vector3(0f, 0f, 0f);
+                float buttonSpacing = -45f;
 
-                // Кнопка Уменьшения скорости
+                // Кнопка Скорость -
                 CreateModButton(modButtonsContainer, origBtnPrefab, "Mod_BtnSpeedMinus", "Speed -10%", nextBtnPos, () => {
                     if (FurnitureAnimationPlayer.Instance != null)
                         FurnitureAnimationPlayer.Instance.ChangeSpeed(-0.1f);
                 });
 
-                // Смещаемся ниже для следующей кнопки
                 nextBtnPos.y += buttonSpacing;
 
-                // Кнопка Увеличения скорости
+                // Кнопка Скорость +
                 CreateModButton(modButtonsContainer, origBtnPrefab, "Mod_BtnSpeedPlus", "Speed +10%", nextBtnPos, () => {
                     if (FurnitureAnimationPlayer.Instance != null)
                         FurnitureAnimationPlayer.Instance.ChangeSpeed(0.1f);
                 });
 
-                Plugin.Log.LogWarning("[SDK_UI] Независимая кастомная панель мода успешно создана и активирована!");
+                nextBtnPos.y += buttonSpacing;
+
+                // Кнопка Интерполяции (Сглаживания)
+                CreateModButton(modButtonsContainer, origBtnPrefab, "Mod_BtnEaseToggle", "Interpolation: Linear", nextBtnPos, () => {
+                    if (FurnitureAnimationPlayer.Instance != null)
+                    {
+                        FurnitureAnimationPlayer.Instance.ToggleEaseMode();
+
+                        GameObject btnGo = GameObject.Find("Mod_BtnEaseToggle");
+                        if (btnGo != null)
+                        {
+                            Text textComp = btnGo.GetComponentInChildren<Text>();
+                            if (textComp != null)
+                            {
+                                textComp.text = $"Interpolation: {FurnitureAnimationPlayer.Instance.GetEaseMode()}";
+                            }
+                        }
+                    }
+                });
+
+                Plugin.Log.LogInfo("[SDK_UI] Панель мода успешно инжектирована на базе panelTakeOffClothes!");
             }
             catch (System.Exception ex)
             {
-                Plugin.Log.LogError($"[SDK_UI] Критический краш при изоляции кастомной панели: {ex.Message}");
+                Plugin.Log.LogError($"[SDK_UI] Ошибка инъекции в UIPose.Open: {ex.Message}\n{ex.StackTrace}");
             }
         }
 
         private static void CreateModButton(Transform parent, Transform baseButtonPrefab, string objName, string buttonLabel, Vector3 anchoredPos, System.Action onClickAction)
         {
-            // Клонируем оригинальный префаб кнопки со всеми нативными Hover/Press эффектами игры
             GameObject newBtnGo = GameObject.Instantiate(baseButtonPrefab.gameObject, parent);
             newBtnGo.name = objName;
 
             RectTransform rect = newBtnGo.GetComponent<RectTransform>();
             rect.anchoredPosition = anchoredPos;
 
-            // Настраиваем логику клика
             Button btnComp = newBtnGo.GetComponent<Button>();
             if (btnComp != null)
             {
@@ -109,7 +140,6 @@ namespace FurnitureAnimations
                 btnComp.onClick.AddListener(() => onClickAction?.Invoke());
             }
 
-            // Настраиваем текст
             Text txtComp = newBtnGo.GetComponentInChildren<Text>();
             if (txtComp != null)
             {
@@ -119,6 +149,20 @@ namespace FurnitureAnimations
             }
 
             newBtnGo.SetActive(true);
+        }
+    }
+
+    // 2. Патч на закрытие меню UIPose — аккуратно тушим нашу панель вместе с интерфейсом
+    [HarmonyPatch(typeof(UIPose), "Close")]
+    public static class UIPose_Close_SpeedButtonsPatch
+    {
+        public static void Postfix(UIPose __instance)
+        {
+            Transform modPanel = __instance.transform.Find("Mod_FurnitureAnimationControls_BG");
+            if (modPanel != null)
+            {
+                modPanel.gameObject.SetActive(false);
+            }
         }
     }
 }
