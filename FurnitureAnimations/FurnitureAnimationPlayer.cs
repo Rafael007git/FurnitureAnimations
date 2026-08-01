@@ -228,26 +228,31 @@ namespace FurnitureAnimationsMod
 
             try
             {
-                // Рассчитываем ЧИСТЫЙ плавный коэффициент интерполяции от 0.0 до 1.0 
-                // на основе реального времени, а не дискретных номеров кадров!
+                // Рассчитываем плавный коэффициент интерполяции
                 float rawFraction = Mathf.Clamp01(_currentFrameTime / deltaDuration);
-
-                // ТЕПЕРЬ СГЛАЖИВАНИЕ БУДЕТ РАБОТАТЬ ИДЕАЛЬНО ПЛАВНО
                 float lerpFraction = ApplyEasing(rawFraction);
 
-                // Динамический расчет движения корпуса персонажа
+                // ИСПРАВЛЕНИЕ КООРДИНАТ: Базовые точки интерполяции корпуса
                 Vector3 startFramePos = _baseWorldPos;
                 Quaternion startFrameRot = _baseWorldRot;
 
+                // Если это первая дельта, мы должны учесть стартовое смещение из анимации,
+                // иначе Lerp начнется из некорректной нулевой точки мебели
                 if (_currentDelta > 0)
                 {
                     startFrameRot *= Quaternion.Euler(ArrayToVector3(_animData.deltas[_currentDelta - 1].endRotDelta));
                     startFramePos += _modelRotationModifier * ArrayToVector3(_animData.deltas[_currentDelta - 1].endPosDelta);
                 }
+                else if (_animData.startPos != null && _animData.startPos.Length >= 3)
+                {
+                    // Для самой первой дельты стартуем строго из запеченной позиции анимации
+                    startFramePos = _baseWorldPos + _modelRotationModifier * ArrayToVector3(_animData.startPos);
+                }
 
                 Quaternion endFrameRot = _baseWorldRot * Quaternion.Euler(ArrayToVector3(currentDeltaData.endRotDelta));
                 Vector3 endFramePos = _baseWorldPos + _modelRotationModifier * ArrayToVector3(currentDeltaData.endPosDelta);
 
+                // Мягко перемещаем персонажа
                 _character.transform.position = Vector3.Lerp(startFramePos, endFramePos, lerpFraction);
                 _character.transform.rotation = Quaternion.Lerp(startFrameRot, endFrameRot, lerpFraction);
 
