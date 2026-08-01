@@ -17,20 +17,15 @@ namespace FurnitureAnimationsMod
                 UIPose uiPose = GameObject.FindObjectOfType<UIPose>();
                 if (uiPose == null) return;
 
-                // 1. ИЩЕМ СУЩЕСТВУЮЩУЮ ПАНЕЛЬ ВМЕСТО ЕЁ УНИЧТОЖЕНИЯ
                 Transform existingPanel = uiPose.transform.Find("Mod_FurnitureAnimationControls_BG");
-
                 if (existingPanel != null)
                 {
                     _uiPanelInstance = existingPanel.gameObject;
-                    _uiPanelInstance.SetActive(true); // Просто активируем её
-
-                    // Обновляем текст кнопки интерполяции под текущий режим плеера
+                    _uiPanelInstance.SetActive(true);
                     UpdateText("Mod_BtnEaseToggle", $"Interpolation: {_player.GetEaseMode()}");
-                    return; // Выходим, не плодя новые копии
+                    return;
                 }
 
-                // 2. ЕСЛИ ПАНЕЛИ НЕТ — СОЗДАЕМ ОДИН РАЗ
                 GameObject vanillaTakeoffPanel = uiPose.panelTakeOffClothes;
                 if (vanillaTakeoffPanel == null) return;
 
@@ -46,7 +41,6 @@ namespace FurnitureAnimationsMod
                 modRect.pivot = vanRect.pivot;
                 modRect.sizeDelta = vanRect.sizeDelta;
 
-                // Офсеты позиции (под ванильную panelTakeOffClothes)
                 Vector2 pos = vanRect.anchoredPosition;
                 pos.x += 250f;
                 pos.y -= 150f;
@@ -74,22 +68,18 @@ namespace FurnitureAnimationsMod
                     Vector3 btnPos = Vector3.zero;
                     float spacing = -45f;
 
-                    // 1. Кнопка Скорость -
                     CreateUiButton(container, btnPrefab, "Mod_BtnSpeedMinus", "Speed -10%", btnPos, () => _player.ChangeSpeed(-0.1f));
                     btnPos.y += spacing;
 
-                    // 2. Кнопка Скорость +
                     CreateUiButton(container, btnPrefab, "Mod_BtnSpeedPlus", "Speed +10%", btnPos, () => _player.ChangeSpeed(0.1f));
                     btnPos.y += spacing;
 
-                    // 3. Кнопка Сглаживания
                     CreateUiButton(container, btnPrefab, "Mod_BtnEaseToggle", $"Interpolation: {_player.GetEaseMode()}", btnPos, () => {
                         _player.ToggleEaseMode();
                         UpdateText("Mod_BtnEaseToggle", $"Interpolation: {_player.GetEaseMode()}");
                     });
                     btnPos.y += spacing;
 
-                    // 4. Кнопка Mute Звука
                     CreateUiButton(container, btnPrefab, "Mod_BtnMuteToggle", "Sound: ON", btnPos, () => {
                         if (AnimationAudioManager.Instance != null)
                         {
@@ -101,7 +91,7 @@ namespace FurnitureAnimationsMod
             }
             catch (System.Exception ex)
             {
-                Plugin.Log.LogError($"[UI] Критический краш при инициализации панели: {ex.Message}");
+                Plugin.Log.LogError($"[UI] Ошибка инициализации UI панели: {ex.Message}");
             }
         }
 
@@ -137,13 +127,14 @@ namespace FurnitureAnimationsMod
             if (t != null) t.text = newText;
         }
 
-        // МЕНЯЕМ И НАЗВАНИЕ МЕТОДА: Теперь мы её просто тушим при выходе
         public void HidePanel()
         {
-            if (_uiPanelInstance != null)
-            {
-                _uiPanelInstance.SetActive(false);
-            }
+            if (_uiPanelInstance != null) _uiPanelInstance.SetActive(false);
+        }
+
+        private void OnDestroy()
+        {
+            HidePanel();
         }
     }
 }

@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -11,125 +10,80 @@ namespace FurnitureAnimationsMod
         public static AnimationAudioManager Instance { get; private set; }
 
         private AudioSource _audioSource;
-        private List<string> _audioPlaylist = new List<string>();
-        private int _currentTrackIndex = 0;
+        private bool _loopAudio = false;
         private bool _isMuted = false;
-        private bool _loopPlaylist = false;
 
-        public void Initialize(string animDataModName, bool loopPlaylist)
+        public void Initialize(string animationName, bool loopAudio)
         {
             Instance = this;
-            _loopPlaylist = loopPlaylist;
+            _loopAudio = loopAudio;
 
             string audioFolder = Path.Combine(BepInEx.Paths.PluginPath, "FurnitureAnimations", "Audio");
-            if (!Directory.Exists(audioFolder)) Directory.CreateDirectory(audioFolder);
+            if (!Directory.Exists(audioFolder))
+                Directory.CreateDirectory(audioFolder);
 
-            _audioPlaylist.Clear();
-            _currentTrackIndex = 0;
+            string matchedAudioPath = null;
+            AudioType detectedType = AudioType.UNKNOWN;
+            string[] extensions = new string[] { ".wav", ".mp3", ".ogg" };
+            AudioType[] types = new AudioType[] { AudioType.WAV, AudioType.MPEG, AudioType.OGGVORBIS };
 
-            string specificAudioDir = Path.Combine(audioFolder, animDataModName);
-            string[] extensions = new string[] { "*.wav", "*.mp3", "*.ogg" };
-
-            // Сканируем папку с именем позы (для поддержки нескольких треков)
-            if (Directory.Exists(specificAudioDir))
+            for (int i = 0; i < extensions.Length; i++)
             {
-                foreach (string ext in extensions)
+                string checkPath = Path.Combine(audioFolder, animationName + extensions[i]);
+                if (File.Exists(checkPath))
                 {
-                    _audioPlaylist.AddRange(Directory.GetFiles(specificAudioDir, ext));
+                    matchedAudioPath = checkPath;
+                    detectedType = types[i];
+                    break;
                 }
             }
 
-            // Если папки нет или она пуста, ищем одиночный трек в корне
-            if (_audioPlaylist.Count == 0)
+            if (!string.IsNullOrEmpty(matchedAudioPath))
             {
-                foreach (string ext in extensions)
-                {
-                    string singleTrack = Path.Combine(audioFolder, animDataModName + ext.Substring(1));
-                    if (File.Exists(singleTrack)) _audioPlaylist.Add(singleTrack);
-                }
+                StartCoroutine(LoadAndPlayAudio(matchedAudioPath, detectedType));
             }
-
-            if (_audioPlaylist.Count > 0)
-            {
-                StartNextTrack();
-            }
-        }
-
-        private void StartNextTrack()
-        {
-            if (_audioPlaylist.Count == 0) return;
-
-            if (_currentTrackIndex >= _audioPlaylist.Count)
-            {
-                if (_loopPlaylist) _currentTrackIndex = 0;
-                else return;
-            }
-
-            string trackPath = _audioPlaylist[_currentTrackIndex];
-            AudioType type = AudioType.UNKNOWN;
-
-            if (trackPath.EndsWith(".wav", StringComparison.OrdinalIgnoreCase)) type = AudioType.WAV;
-            else if (trackPath.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase)) type = AudioType.MPEG;
-            else if (trackPath.EndsWith(".ogg", StringComparison.OrdinalIgnoreCase)) type = AudioType.OGGVORBIS;
-
-            StartCoroutine(LoadAndPlayAudio(trackPath, type));
-            _currentTrackIndex++;
         }
 
         private System.Collections.IEnumerator LoadAndPlayAudio(string filePath, AudioType type)
         {
             string fileUri = "file://" + filePath.Replace("\\", "/");
 
-            using (UnityWebRequest request = UnityWebRequestMultimedia.GetAudioClip(fileUri, type))
+            using (UnityWebRequest multimediaRequest = UnityWebRequestMultimedia.GetAudioClip(fileUri, type))
             {
-                yield return request.SendWebRequest();
+                yield return multimediaRequest.SendWebRequest();
 
-                if (request.result == UnityWebRequest.Result.ConnectionError || request.result == UnityWebRequest.Result.ProtocolError)
+                if (multimediaRequest.result == UnityWebRequest.Result.ConnectionError || multimediaRequest.result == UnityWebRequest.Result.ProtocolError)
                 {
-                    Plugin.Log.LogError($"[Audio] WebRequest error: {request.error}");
-                    yield break;
+                    Plugin.Log.LogError($"[AudioEngine] Ошибка UnityWebRequest: {multimediaRequest.error}");
                 }
-
-                AudioClip clip = DownloadHandlerAudioClip.GetContent(request);
-                if (clip != null)
+                else
                 {
-                    if (_audioSource == null)
+                    AudioClip clip = DownloadHandlerAudioClip.GetContent(multimediaRequest);
+                    if (clip != null)
                     {
                         _audioSource = gameObject.GetComponent<AudioSource>() ?? gameObject.AddComponent<AudioSource>();
-                    }
-                    _audioSource.clip = clip;
-                    _audioSource.loop = (_audioPlaylist.Count == 1) && _loopPlaylist; // Loop встроенный только если файл один
+                        _audioSource.clip = clip;
+                        _audioSource.loop = _loopAudio;
 
-                    _audioSource.bypassEffects = true;
-                    _audioSource.bypassListenerEffects = true;
-                    _audioSource.spatialBlend = 0f;
-                    _audioSource.volume = 1.0f;
-                    _audioSource.mute = _isMuted;
+                        _audioSource.bypassEffects = true;
+                        _audioSource.bypassListenerEffects = true;
+                        _audioSource.priority = 0;
+                        _audioSource.spatialBlend = 0f;
+                        _audioSource.volume = 1.0f;
+                        _audioSource.mute = _isMuted;
 
-                    _audioSource.Play();
-                    Plugin.Log.LogInfo($"[Audio] Запущен трек: '{clip.name}'");
-
-                    // Если треков несколько, следим за концом для переключения
-                    if (_audioPlaylist.Count > 1)
-                    {
-                        StopCoroutine("TrackEndWatcher");
-                        StartCoroutine(TrackEndWatcher(clip.length));
+                        _audioSource.Play();
+                        Plugin.Log.LogWarning($"[AudioEngine] Звуковой файл '{clip.name}' запущен!");
                     }
                 }
             }
-        }
-
-        private System.Collections.IEnumerator TrackEndWatcher(float duration)
-        {
-            yield return new WaitForSecondsRealtime(duration);
-            StartNextTrack();
         }
 
         public void ToggleMute()
         {
             _isMuted = !_isMuted;
             if (_audioSource != null) _audioSource.mute = _isMuted;
-            Plugin.Log.LogInfo($"[Audio] Режим тишины: {(_isMuted ? "ВКЛ" : "ВЫКЛ")}");
+            Plugin.Log.LogInfo($"[AudioEngine] Режим тишины: {(_isMuted ? "ВКЛ" : "ВЫКЛ")}");
         }
 
         public bool IsMuted() => _isMuted;
@@ -137,7 +91,12 @@ namespace FurnitureAnimationsMod
         private void OnDestroy()
         {
             if (Instance == this) Instance = null;
-            if (_audioSource != null) _audioSource.Stop();
+
+            if (_audioSource != null && _audioSource.isPlaying)
+            {
+                _audioSource.Stop();
+                Plugin.Log.LogInfo("[AudioEngine] Музыка интерактива успешно остановлена.");
+            }
         }
     }
 }
