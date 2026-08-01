@@ -1,4 +1,5 @@
 ﻿using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace FurnitureAnimationsMod
@@ -129,6 +130,13 @@ namespace FurnitureAnimationsMod
             RectTransform r = btnGo.GetComponent<RectTransform>();
             r.anchoredPosition = localPos;
 
+            // ИСПРАВЛЕНИЕ: Полностью уничтожаем ванильный EventTrigger, чтобы кнопка перестала раздевать персонажа
+            EventTrigger trigger = btnGo.GetComponent<EventTrigger>();
+            if (trigger != null)
+            {
+                GameObject.DestroyImmediate(trigger);
+            }
+
             Button b = btnGo.GetComponent<Button>();
             if (b != null)
             {
@@ -145,6 +153,7 @@ namespace FurnitureAnimationsMod
             }
             btnGo.SetActive(true);
         }
+
 
         private void UpdateText(string objName, string newText)
         {
