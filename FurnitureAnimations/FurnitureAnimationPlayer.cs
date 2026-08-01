@@ -173,8 +173,15 @@ namespace FurnitureAnimationsMod
         {
             if (_character == null || _animData == null) return;
 
-            _deltaTime += Time.deltaTime * _speedModifier;
-            if (_deltaTime < _animData.rate) return;
+            // Накапливаем чистое стандартное время
+            _deltaTime += Time.deltaTime;
+
+            // Расчитываем динамический интервал кадров: делим дефолтный rate на модификатор скорости.
+            // Например, при скорости 200% (2.0f) интервал между кадрами станет в 2 раза меньше, 
+            // и анимация побежит в два раза быстрее!
+            float dynamicRate = _animData.rate / _speedModifier;
+
+            if (_deltaTime < dynamicRate) return;
 
             _deltaTime = 0f;
             int nextFrame;

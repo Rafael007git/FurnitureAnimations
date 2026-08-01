@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System.ComponentModel;
+using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
@@ -90,11 +91,18 @@ namespace FurnitureAnimationsMod
                     Vector3 btnPos = Vector3.zero;
                     float spacing = -45f; // На случай, если LayoutGroup потребует ручного смещения, но вообще VerticalLayoutGroup расставит сам
 
-                    // Складываем кастомные кнопки строго внутрь Mod_AnimationButtonsContainer, где живет VerticalLayoutGroup!
-                    CreateUiButton(buttonsContainer, btnPrefab, "Mod_BtnSpeedMinus", "Speed -10%", btnPos, () => _player.ChangeSpeed(-0.1f));
+                    // 1. Кнопка Скорость -
+                    CreateUiButton(buttonsContainer, btnPrefab, "Mod_BtnSpeedMinus", $"Speed: {Mathf.RoundToInt(_player.GetSpeed() * 100)}% (-10)", btnPos, () => {
+                        _player.ChangeSpeed(-0.1f);
+                        UpdateSpeedButtonsText();
+                    });
                     btnPos.y += spacing;
 
-                    CreateUiButton(buttonsContainer, btnPrefab, "Mod_BtnSpeedPlus", "Speed +10%", btnPos, () => _player.ChangeSpeed(0.1f));
+                    // 2. Кнопка Скорость +
+                    CreateUiButton(buttonsContainer, btnPrefab, "Mod_BtnSpeedPlus", $"Speed: {Mathf.RoundToInt(_player.GetSpeed() * 100)}% (+10)", btnPos, () => {
+                        _player.ChangeSpeed(0.1f);
+                        UpdateSpeedButtonsText();
+                    });
                     btnPos.y += spacing;
 
                     CreateUiButton(buttonsContainer, btnPrefab, "Mod_BtnEaseToggle", $"Interpolation: {_player.GetEaseMode()}", btnPos, () => {
@@ -168,6 +176,13 @@ namespace FurnitureAnimationsMod
         private void OnDestroy()
         {
             HidePanel();
+        }
+
+        private void UpdateSpeedButtonsText()
+        {
+            int percent = Mathf.RoundToInt(_player.GetSpeed() * 100);
+            UpdateText("Mod_BtnSpeedMinus", $"Speed: {percent}% (-10)");
+            UpdateText("Mod_BtnSpeedPlus", $"Speed: {percent}% (+10)");
         }
     }
 }
