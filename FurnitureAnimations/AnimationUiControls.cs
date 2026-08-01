@@ -130,19 +130,17 @@ namespace FurnitureAnimationsMod
             RectTransform r = btnGo.GetComponent<RectTransform>();
             r.anchoredPosition = localPos;
 
-            // ИСПРАВЛЕНИЕ: Полностью уничтожаем ванильный EventTrigger, чтобы кнопка перестала раздевать персонажа
-            EventTrigger trigger = btnGo.GetComponent<EventTrigger>();
-            if (trigger != null)
-            {
-                GameObject.DestroyImmediate(trigger);
-            }
-
+            // 3. УЛЬТИМАТИВНОЕ УНИЧТОЖЕНИЕ ИНСПЕКТОРСКИХ СВЯЗЕЙ (Persistent Calls)
             Button b = btnGo.GetComponent<Button>();
             if (b != null)
             {
-                b.onClick.RemoveAllListeners();
-                b.onClick.AddListener(() => onClick?.Invoke());
+                // Полностью сносим старый компонент Button вместе со всей его "памятью" о лифчиках
+                GameObject.DestroyImmediate(b);
             }
+
+            // Добавляем абсолютно чистый, новый компонент Button без инспекторских связей
+            b = btnGo.AddComponent<Button>();
+            b.onClick.AddListener(() => onClick?.Invoke());
 
             Text t = btnGo.GetComponentInChildren<Text>();
             if (t != null)
