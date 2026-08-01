@@ -17,7 +17,7 @@ namespace FurnitureAnimationsMod
                 UIPose uiPose = GameObject.FindObjectOfType<UIPose>();
                 if (uiPose == null) return;
 
-                // 1. Ищем существующую панель, чтобы не плодить копии
+                // 1. Проверяем, существует ли уже наша панель
                 Transform existingPanel = uiPose.transform.Find("Mod_FurnitureAnimationControls_BG");
                 if (existingPanel != null)
                 {
@@ -27,54 +27,51 @@ namespace FurnitureAnimationsMod
                     return;
                 }
 
-                // 2. Создаем клон из ванильного panelTakeOffClothes
                 GameObject vanillaTakeoffPanel = uiPose.panelTakeOffClothes;
                 if (vanillaTakeoffPanel == null) return;
 
+                // 2. Клонируем панель
                 _uiPanelInstance = GameObject.Instantiate(vanillaTakeoffPanel, uiPose.transform, false);
                 _uiPanelInstance.name = "Mod_FurnitureAnimationControls_BG";
                 _uiPanelInstance.SetActive(true);
 
-                // Копируем параметры RectTransform для фона
+                // 3. ЖЕСТКОЕ ИСПРАВЛЕНИЕ МАСШТАБА И ПОЗИЦИИ ФОНА
                 RectTransform modRect = _uiPanelInstance.GetComponent<RectTransform>();
                 RectTransform vanRect = vanillaTakeoffPanel.GetComponent<RectTransform>();
 
+                // Копируем базовую структуру якорей оригинала
                 modRect.anchorMin = vanRect.anchorMin;
                 modRect.anchorMax = vanRect.anchorMax;
                 modRect.pivot = vanRect.pivot;
                 modRect.sizeDelta = vanRect.sizeDelta;
 
-                // Временный дефолтный сдвиг (позже настроим точнее)
-                Vector2 pos = vanRect.anchoredPosition;
-                pos.x = vanRect.anchoredPosition.x; // Полностью убираем сторонний сдвиг по X, фиксируем ванильную позицию
-                pos.y -= 210f;                      // Смещаем панель строго вниз (210-220 пикселей 
-                modRect.anchoredPosition = pos;
+                // Выравниваем локальный масштаб в точности как у оригинала (0.9, а не 1.0)
+                _uiPanelInstance.transform.localScale = new Vector3(0.9f, 0.9f, 0.9f);
 
-                // 3. СТРУКТУРНОЕ ИСПРАВЛЕНИЕ: Находим оригинальный промежуточный контейнер кнопок
+                // Позиционируем на основе оригинальных локальных координат, смещаясь строго вниз по Y
+                Vector3 vanLocalPos = vanRect.localPosition;
+                modRect.localPosition = new Vector3(vanLocalPos.x, vanLocalPos.y - 180f, vanLocalPos.z);
+
+                // 4. НАХОДИМ И ВЫЧИЩАЕМ АБСОЛЮТНО ВСЕ КНОПКИ (включая дубликаты в корне)
+                // Сначала находим контейнер для наших будущих кнопок
                 Transform buttonsContainer = _uiPanelInstance.transform.Find("Takeoff Buttons");
-                if (buttonsContainer == null)
+                if (buttonsContainer == null && _uiPanelInstance.transform.childCount > 0)
                 {
-                    Plugin.Log.LogError("[UI] Критическая ошибка: Внутри клона не найден дочерний контейнер 'Takeoff Buttons'!");
-                    // Если Find не сработал напрямую, ищем по первому дочернему объекту
-                    if (_uiPanelInstance.transform.childCount > 0)
-                        buttonsContainer = _uiPanelInstance.transform.GetChild(0);
+                    buttonsContainer = _uiPanelInstance.transform.GetChild(0);
                 }
 
-                if (buttonsContainer == null) return; // Защита от краша
-
+                if (buttonsContainer == null) return;
                 buttonsContainer.name = "Mod_AnimationButtonsContainer";
 
-                // Сбрасываем локальные координаты контейнера, чтобы он сидел ровно внутри фона
+                // Сбрасываем его локальные координаты, чтобы он сидел ровно
                 RectTransform containerRect = buttonsContainer.GetComponent<RectTransform>();
-                if (containerRect != null)
-                {
-                    containerRect.anchoredPosition = Vector2.zero;
-                }
+                if (containerRect != null) containerRect.anchoredPosition = Vector2.zero;
 
-                // 4. ЗАЧИСТКА: Удаляем ванильные кнопки строго ИЗ КОНТЕЙНЕРА, не трогая сам фон панели
-                foreach (Transform child in buttonsContainer)
+                // Рекурсивно уничтожаем все старые ванильные кнопки раздевания во ВСЕЙ панели-клоне
+                Button[] oldButtons = _uiPanelInstance.GetComponentsInChildren<Button>(true);
+                foreach (Button oldBtn in oldButtons)
                 {
-                    GameObject.Destroy(child.gameObject);
+                    GameObject.DestroyImmediate(oldBtn.gameObject);
                 }
 
                 // 5. Ищем оригинальный префаб кнопки для копирования стиля
@@ -84,9 +81,9 @@ namespace FurnitureAnimationsMod
                 if (btnPrefab != null)
                 {
                     Vector3 btnPos = Vector3.zero;
-                    float spacing = -45f; // Если в контейнере нет AutoLayout, этот шаг расставит их вертикально
+                    float spacing = -45f;
 
-                    // Складываем кнопки строго в buttonsContainer
+                    // Складываем кастомные кнопки строго в очищенный buttonsContainer
                     CreateUiButton(buttonsContainer, btnPrefab, "Mod_BtnSpeedMinus", "Speed -10%", btnPos, () => _player.ChangeSpeed(-0.1f));
                     btnPos.y += spacing;
 
@@ -110,7 +107,7 @@ namespace FurnitureAnimationsMod
             }
             catch (System.Exception ex)
             {
-                Plugin.Log.LogError($"[UI] Ошибка построения правильной иерархии: {ex.Message}");
+                Plugin.Log.LogError($"[UI] Ошибка калибровки RectTransform: {ex.Message}");
             }
         }
 
