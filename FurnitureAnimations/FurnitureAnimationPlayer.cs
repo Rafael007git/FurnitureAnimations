@@ -19,6 +19,7 @@ namespace FurnitureAnimationsMod
         private CharacterCustomization _character;
         private PoseAnimationData _animData;
 
+        private float _currentFrameTime = 0f; // Плавный прогресс внутри текущей дельты
         private float _deltaTime = 0f;
         private int _currentDelta = 0;
         private int _currentFrame = 0;
@@ -173,84 +174,68 @@ namespace FurnitureAnimationsMod
         {
             if (_character == null || _animData == null) return;
 
-            // Накапливаем чистое стандартное время
-            _deltaTime += Time.deltaTime;
+            PoseAnimationDelta currentDeltaData = _animData.deltas[_currentDelta];
 
-            // Расчитываем динамический интервал кадров: делим дефолтный rate на модификатор скорости.
-            // Например, при скорости 200% (2.0f) интервал между кадрами станет в 2 раза меньше, 
-            // и анимация побежит в два раза быстрее!
-            float dynamicRate = _animData.rate / _speedModifier;
+            // Вычисляем полную длительность текущего шага (дельты) в секундах
+            // rate — это время на один кадр, умножаем на количество кадров в этой дельте
+            float deltaDuration = _animData.rate * currentDeltaData.frames;
 
-            if (_deltaTime < dynamicRate) return;
+            // Накапливаем плавное время с учетом модификатора скорости
+            _currentFrameTime += Time.deltaTime * _speedModifier;
 
-            _deltaTime = 0f;
-            int nextFrame;
-            int nextDelta;
-
-            if (_reversing)
+            // Если вышли за пределы текущей дельты, переключаемся на следующую (или реверс)
+            if (_currentFrameTime >= deltaDuration)
             {
-                if (_currentFrame <= 0)
+                _currentFrameTime = 0f; // Сброс под новый шаг
+
+                // Ваша оригинальная авторская логика переключения дельт
+                if (_reversing)
                 {
-                    _currentFrame = 0;
                     if (_currentDelta <= 0)
                     {
-                        _currentDelta = 0;
                         if (!_animData.loop) { Destroy(this); return; }
                         _reversing = false;
-                        nextFrame = 1;
-                        nextDelta = _currentDelta;
                     }
                     else
                     {
-                        nextDelta = _currentDelta - 1;
-                        nextFrame = _animData.deltas[nextDelta].frames - 1;
+                        _currentDelta--;
                     }
                 }
                 else
-                {
-                    nextFrame = _currentFrame - 1;
-                    nextDelta = _currentDelta;
-                }
-            }
-            else
-            {
-                if (_currentFrame >= _animData.deltas[_currentDelta].frames - 1)
                 {
                     if (_currentDelta >= _animData.deltas.Count - 1)
                     {
                         if (_animData.reverse)
                         {
                             _reversing = true;
-                            nextFrame = Mathf.Max(0, _animData.deltas[_currentDelta].frames - 2);
-                            nextDelta = _currentDelta;
                         }
                         else
                         {
                             if (!_animData.loop) { Destroy(this); return; }
-                            nextDelta = 0;
-                            nextFrame = 0;
+                            _currentDelta = 0;
                         }
                     }
                     else
                     {
-                        nextDelta = _currentDelta + 1;
-                        nextFrame = 0;
+                        _currentDelta++;
                     }
                 }
-                else
-                {
-                    nextFrame = _currentFrame + 1;
-                    nextDelta = _currentDelta;
-                }
+
+                // Обновляем ссылку на данные новой дельты после переключения
+                currentDeltaData = _animData.deltas[_currentDelta];
+                deltaDuration = _animData.rate * currentDeltaData.frames;
             }
 
             try
             {
-                PoseAnimationDelta currentDeltaData = _animData.deltas[_currentDelta];
+                // Рассчитываем ЧИСТЫЙ плавный коэффициент интерполяции от 0.0 до 1.0 
+                // на основе реального времени, а не дискретных номеров кадров!
+                float rawFraction = Mathf.Clamp01(_currentFrameTime / deltaDuration);
 
-                float rawFraction = (float)(_currentFrame + 1) / (float)currentDeltaData.frames;
+                // ТЕПЕРЬ СГЛАЖИВАНИЕ БУДЕТ РАБОТАТЬ ИДЕАЛЬНО ПЛАВНО
                 float lerpFraction = ApplyEasing(rawFraction);
 
+                // Динамический расчет движения корпуса персонажа
                 Vector3 startFramePos = _baseWorldPos;
                 Quaternion startFrameRot = _baseWorldRot;
 
@@ -266,7 +251,7 @@ namespace FurnitureAnimationsMod
                 _character.transform.position = Vector3.Lerp(startFramePos, endFramePos, lerpFraction);
                 _character.transform.rotation = Quaternion.Lerp(startFrameRot, endFrameRot, lerpFraction);
 
-                // Плавный Lerp для всех остальных костей скелета
+                // Плавный Lerp для всех костей (рассчитывает бесконечно много промежуточных углов)
                 foreach (var keyValuePair in currentDeltaData.boneDatas)
                 {
                     string boneName = keyValuePair.Key;
@@ -290,12 +275,10 @@ namespace FurnitureAnimationsMod
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogError($"[LocalPlayer] Ошибка шага интерполяции: {ex.Message}");
+                Plugin.Log.LogError($"[TimelinePlayer] Ошибка шага интерполяции: {ex.Message}");
             }
-
-            _currentFrame = nextFrame;
-            _currentDelta = nextDelta;
         }
+
 
         private void CacheSkeletonRecursive(Transform parent)
         {
