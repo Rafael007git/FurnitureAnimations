@@ -125,7 +125,7 @@ namespace FurnitureAnimationsMod
             int nextFrame;
             int nextDelta;
 
-            // Логика циклов и реверсов автора
+            // СТРОГАЯ ИСПРАВЛЕННАЯ ЛОГИКА ЦИКЛОВ И РЕВЕРСОВ
             if (_reversing)
             {
                 if (_currentFrame <= 0)
@@ -183,6 +183,10 @@ namespace FurnitureAnimationsMod
                 }
             }
 
+            // Запоминаем вычисленные значения кадров в глобальные переменные класса
+            _currentFrame = nextFrame;
+            _currentDelta = nextDelta;
+
             try
             {
                 PoseAnimationDelta currentDeltaData = _animData.deltas[_currentDelta];
@@ -207,7 +211,7 @@ namespace FurnitureAnimationsMod
                 _character.transform.position = Vector3.Lerp(startFramePos, endFramePos, lerpFraction);
                 _character.transform.rotation = Quaternion.Lerp(startFrameRot, endFrameRot, lerpFraction);
 
-                // ИСПРАВЛЕНИЕ: Возвращаем оригинальный нативный Lerp автора из PDF (Страница 6)
+                // Плавный Lerp для всех остальных костей скелета
                 foreach (var keyValuePair in currentDeltaData.boneDatas)
                 {
                     string boneName = keyValuePair.Key;
@@ -234,9 +238,10 @@ namespace FurnitureAnimationsMod
                 Plugin.Log.LogError($"[LocalPlayer] Ошибка шага интерполяции: {ex.Message}");
             }
 
-            _currentFrame = nextFrame;
-            _currentDelta = nextDelta;
+            // УДАЛЕНО: Строки _currentFrame = nextFrame; в самом конце метода стирали прогресс кадра, 
+            // так как перезаписывали переменные некорректными локальными значениями.
         }
+
 
         private void CacheSkeletonRecursive(Transform p) { if (p == null) return; _boneCache[FixBoneName(p.name)] = p; for (int i = 0; i < p.childCount; i++) CacheSkeletonRecursive(p.GetChild(i)); }
         private string FixBoneName(string n) => n.EndsWith("eyesRoot") ? "eyesRoot" : n.EndsWith("head parent") ? "head parent" : n.EndsWith("head target") ? "head target" : n;
