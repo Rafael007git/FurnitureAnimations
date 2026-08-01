@@ -1,5 +1,4 @@
-﻿using System;
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.UI;
 
 namespace FurnitureAnimationsMod
@@ -16,20 +15,25 @@ namespace FurnitureAnimationsMod
             try
             {
                 UIPose uiPose = GameObject.FindObjectOfType<UIPose>();
-                if (uiPose == null)
+                if (uiPose == null) return;
+
+                // 1. ИЩЕМ СУЩЕСТВУЮЩУЮ ПАНЕЛЬ ВМЕСТО ЕЁ УНИЧТОЖЕНИЯ
+                Transform existingPanel = uiPose.transform.Find("Mod_FurnitureAnimationControls_BG");
+
+                if (existingPanel != null)
                 {
-                    Plugin.Log.LogError("[UI] Не найден UIPose на сцене для инъекции кнопок.");
-                    return;
+                    _uiPanelInstance = existingPanel.gameObject;
+                    _uiPanelInstance.SetActive(true); // Просто активируем её
+
+                    // Обновляем текст кнопки интерполяции под текущий режим плеера
+                    UpdateText("Mod_BtnEaseToggle", $"Interpolation: {_player.GetEaseMode()}");
+                    return; // Выходим, не плодя новые копии
                 }
 
+                // 2. ЕСЛИ ПАНЕЛИ НЕТ — СОЗДАЕМ ОДИН РАЗ
                 GameObject vanillaTakeoffPanel = uiPose.panelTakeOffClothes;
-                if (vanillaTakeoffPanel == null)
-                {
-                    Plugin.Log.LogError("[UI] Поле 'panelTakeOffClothes' отсутствует в UIPose.");
-                    return;
-                }
+                if (vanillaTakeoffPanel == null) return;
 
-                // Клонируем ванильный контейнер, наследуя оригинальный фон и затемнение
                 _uiPanelInstance = GameObject.Instantiate(vanillaTakeoffPanel, uiPose.transform, false);
                 _uiPanelInstance.name = "Mod_FurnitureAnimationControls_BG";
                 _uiPanelInstance.SetActive(true);
@@ -42,12 +46,12 @@ namespace FurnitureAnimationsMod
                 modRect.pivot = vanRect.pivot;
                 modRect.sizeDelta = vanRect.sizeDelta;
 
-                // Сдвигаем нашу кастомную панель ниже оригинальной плашки раздевания
+                // Офсеты позиции (под ванильную panelTakeOffClothes)
                 Vector2 pos = vanRect.anchoredPosition;
-                pos.y -= 220f;
+                pos.x += 250f;
+                pos.y -= 150f;
                 modRect.anchoredPosition = pos;
 
-                // Находим внутренний контейнер для кнопок
                 Transform container = _uiPanelInstance.transform.Find("Takeoff Buttons") ?? _uiPanelInstance.transform;
                 if (container != _uiPanelInstance.transform)
                 {
@@ -56,14 +60,12 @@ namespace FurnitureAnimationsMod
                     if (cRect != null) cRect.anchoredPosition = Vector2.zero;
                 }
 
-                // Вычищаем ванильные кнопки раздевания, оставляя фон
                 foreach (Transform child in container)
                 {
                     if (child.GetComponent<Image>() != null && child.GetComponent<Button>() == null) continue;
                     GameObject.Destroy(child.gameObject);
                 }
 
-                // Ищем оригинальную кнопку как префаб стиля (шрифты, рамки, Hover-эффекты)
                 Transform btnPrefab = vanillaTakeoffPanel.transform.Find("Takeoff Buttons/Btn takeoff highheels")
                                      ?? vanillaTakeoffPanel.GetComponentInChildren<Button>()?.transform;
 
@@ -97,9 +99,9 @@ namespace FurnitureAnimationsMod
                     });
                 }
             }
-            catch (Exception ex)
+            catch (System.Exception ex)
             {
-                Plugin.Log.LogError($"[UI] Критический краш при создании панели: {ex.Message}");
+                Plugin.Log.LogError($"[UI] Критический краш при инициализации панели: {ex.Message}");
             }
         }
 
@@ -135,9 +137,13 @@ namespace FurnitureAnimationsMod
             if (t != null) t.text = newText;
         }
 
-        private void OnDestroy()
+        // МЕНЯЕМ И НАЗВАНИЕ МЕТОДА: Теперь мы её просто тушим при выходе
+        public void HidePanel()
         {
-            if (_uiPanelInstance != null) GameObject.Destroy(_uiPanelInstance);
+            if (_uiPanelInstance != null)
+            {
+                _uiPanelInstance.SetActive(false);
+            }
         }
     }
 }

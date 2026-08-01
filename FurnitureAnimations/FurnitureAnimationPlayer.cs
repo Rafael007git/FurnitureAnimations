@@ -186,8 +186,12 @@ namespace FurnitureAnimationsMod
             try
             {
                 PoseAnimationDelta currentDeltaData = _animData.deltas[_currentDelta];
-                float lerpFraction = ApplyEasing((float)(_currentFrame + 1) / currentDeltaData.frames);
 
+                // Расчет коэффициента интерполяции с применением сглаживания
+                float rawFraction = (float)(_currentFrame + 1) / (float)currentDeltaData.frames;
+                float lerpFraction = ApplyEasing(rawFraction);
+
+                // Динамический расчет движения корпуса персонажа
                 Vector3 startFramePos = _baseWorldPos;
                 Quaternion startFrameRot = _baseWorldRot;
 
@@ -197,19 +201,38 @@ namespace FurnitureAnimationsMod
                     startFramePos += _modelRotationModifier * ArrayToVector3(_animData.deltas[_currentDelta - 1].endPosDelta);
                 }
 
-                _character.transform.position = Vector3.Lerp(startFramePos, _baseWorldPos + _modelRotationModifier * ArrayToVector3(currentDeltaData.endPosDelta), lerpFraction);
-                _character.transform.rotation = Quaternion.Lerp(startFrameRot, _baseWorldRot * Quaternion.Euler(ArrayToVector3(currentDeltaData.endRotDelta)), lerpFraction);
+                Quaternion endFrameRot = _baseWorldRot * Quaternion.Euler(ArrayToVector3(currentDeltaData.endRotDelta));
+                Vector3 endFramePos = _baseWorldPos + _modelRotationModifier * ArrayToVector3(currentDeltaData.endPosDelta);
 
-                foreach (var kp in currentDeltaData.boneDatas)
+                _character.transform.position = Vector3.Lerp(startFramePos, endFramePos, lerpFraction);
+                _character.transform.rotation = Quaternion.Lerp(startFrameRot, endFrameRot, lerpFraction);
+
+                // ИСПРАВЛЕНИЕ: Возвращаем оригинальный нативный Lerp автора из PDF (Страница 6)
+                foreach (var keyValuePair in currentDeltaData.boneDatas)
                 {
-                    if (_boneCache.TryGetValue(kp.Key, out Transform bone) && bone != null)
+                    string boneName = keyValuePair.Key;
+                    BoneDelta boneDelta = keyValuePair.Value;
+
+                    if (_boneCache.TryGetValue(boneName, out Transform boneTransform) && boneTransform != null)
                     {
-                        bone.localPosition = Vector3.Lerp(ArrayToVector3(kp.Value.startPos), ArrayToVector3(kp.Value.endPos), lerpFraction);
-                        bone.localRotation = Quaternion.Lerp(Quaternion.Euler(ArrayToVector3(kp.Value.startRot)), Quaternion.Euler(ArrayToVector3(kp.Value.endRot)), lerpFraction);
+                        boneTransform.localPosition = Vector3.Lerp(
+                            ArrayToVector3(boneDelta.startPos),
+                            ArrayToVector3(boneDelta.endPos),
+                            lerpFraction
+                        );
+
+                        boneTransform.localRotation = Quaternion.Lerp(
+                            Quaternion.Euler(ArrayToVector3(boneDelta.startRot)),
+                            Quaternion.Euler(ArrayToVector3(boneDelta.endRot)),
+                            lerpFraction
+                        );
                     }
                 }
             }
-            catch (Exception ex) { Plugin.Log.LogError($"[Player] Ошибка интерполяции: {ex.Message}"); }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"[LocalPlayer] Ошибка шага интерполяции: {ex.Message}");
+            }
 
             _currentFrame = nextFrame;
             _currentDelta = nextDelta;
@@ -238,7 +261,19 @@ namespace FurnitureAnimationsMod
         private void OnDestroy()
         {
             if (Instance == this) Instance = null;
-            if (_character != null && _character.anim != null) { _character.anim.enabled = true; _character.anim.speed = 1f; }
+
+            // ИСПРАВЛЕНИЕ: Вместо Destroy просто скрываем панель мода
+            AnimationUiControls uiControls = gameObject.GetComponent<AnimationUiControls>();
+            if (uiControls != null)
+            {
+                uiControls.HidePanel();
+            }
+
+            if (_character != null && _character.anim != null)
+            {
+                _character.anim.enabled = true;
+                _character.anim.speed = 1f;
+            }
             Plugin.Log.LogWarning("[Player] Управление возвращено Юнити.");
         }
     }
