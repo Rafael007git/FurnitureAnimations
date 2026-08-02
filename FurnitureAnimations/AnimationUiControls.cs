@@ -14,14 +14,14 @@ namespace FurnitureAnimationsMod
         private GameObject _uiPanelInstance;
 
         // Кэш для иконок, чтобы не читать из сборки каждый кадр
-        private Sprite _iconSpeedMinus;
-        private Sprite _iconSpeedPlus;
-        private Sprite _iconNextAudio;
-        private Sprite _iconSoundOn;
-        private Sprite _iconSoundOff;
-        private Sprite _iconLinear;
-        private Sprite _iconEaseWhole;
-        private Sprite _iconEaseEach;
+        private Texture2D _iconSpeedMinus;
+        private Texture2D _iconSpeedPlus;
+        private Texture2D _iconNextAudio;
+        private Texture2D _iconSoundOn;
+        private Texture2D _iconSoundOff;
+        private Texture2D _iconLinear;
+        private Texture2D _iconEaseWhole;
+        private Texture2D _iconEaseEach;
         public void Initialize(FurnitureAnimationPlayer player)
         {
             _player = player;
@@ -142,7 +142,7 @@ namespace FurnitureAnimationsMod
                     btnPos.y += spacing;
 
                     // 5. Кнопка MuteToggle
-                    Sprite currentSoundIcon = (AnimationAudioManager.Instance != null && AnimationAudioManager.Instance.IsMuted()) ? _iconSoundOff : _iconSoundOn;
+                    Texture2D currentSoundIcon = (AnimationAudioManager.Instance != null && AnimationAudioManager.Instance.IsMuted()) ? _iconSoundOff : _iconSoundOn;
                     CreateUiButton(buttonsContainer, btnPrefab, "Mod_BtnMuteToggle",
                         "Sound: ON", btnPos, currentSoundIcon, () => {
                             if (AnimationAudioManager.Instance != null)
@@ -163,23 +163,22 @@ namespace FurnitureAnimationsMod
             }
         }
 
-        #region Работа с ресурсами DLL
+        #region Исправленная работа с текстурами (RawImage)
 
         private void LoadEmbeddedResources()
         {
-            _iconSpeedMinus = LoadSpriteFromDll("FurnitureAnimations.Resources.icon_slowerPlayback.png");
-            _iconSpeedPlus = LoadSpriteFromDll("FurnitureAnimations.Resources.icon_fasterPlayback.png");
-            _iconNextAudio = LoadSpriteFromDll("FurnitureAnimations.Resources.icon_nextAudio.png");
-            _iconSoundOn = LoadSpriteFromDll("FurnitureAnimations.Resources.icon_soundOn.png");
-            _iconSoundOff = LoadSpriteFromDll("FurnitureAnimations.Resources.icon_soundOff.png");
+            _iconSpeedMinus = LoadTextureFromDll("FurnitureAnimations.Resources.icon_slowerPlayback.png");
+            _iconSpeedPlus = LoadTextureFromDll("FurnitureAnimations.Resources.icon_fasterPlayback.png");
+            _iconNextAudio = LoadTextureFromDll("FurnitureAnimations.Resources.icon_nextAudio.png");
+            _iconSoundOn = LoadTextureFromDll("FurnitureAnimations.Resources.icon_soundOn.png");
+            _iconSoundOff = LoadTextureFromDll("FurnitureAnimations.Resources.icon_soundOff.png");
 
-            // Распределяем три иконки под режимы вашего Enum EaseMode
-            _iconLinear = LoadSpriteFromDll("FurnitureAnimations.Resources.icon_flowEven.png");
-            _iconEaseWhole = LoadSpriteFromDll("FurnitureAnimations.Resources.icon_easeInOutWhole.png");
-            _iconEaseEach = LoadSpriteFromDll("FurnitureAnimations.Resources.icon_easeInOutEach.png");
+            _iconLinear = LoadTextureFromDll("FurnitureAnimations.Resources.icon_flowEven.png");
+            _iconEaseWhole = LoadTextureFromDll("FurnitureAnimations.Resources.icon_easeInOutWhole.png");
+            _iconEaseEach = LoadTextureFromDll("FurnitureAnimations.Resources.icon_easeInOutEach.png");
         }
 
-        private Sprite LoadSpriteFromDll(string resourcePath)
+        private Texture2D LoadTextureFromDll(string resourcePath)
         {
             try
             {
@@ -198,8 +197,7 @@ namespace FurnitureAnimationsMod
                     Texture2D texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
                     if (texture.LoadImage(buffer))
                     {
-                        // Создаем UI Спрайт из считанной текстуры
-                        return Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f));
+                        return texture; // Возвращаем чистую текстуру для RawImage
                     }
                 }
             }
@@ -212,7 +210,8 @@ namespace FurnitureAnimationsMod
 
         #endregion
 
-        private void CreateUiButton(Transform parent, Transform prefab, string objName, string label, Vector3 localPos, Sprite iconSprite, System.Action onClick)
+        // Изменен тип аргумента с Sprite на Texture2D
+        private void CreateUiButton(Transform parent, Transform prefab, string objName, string label, Vector3 localPos, Texture2D iconTexture, System.Action onClick)
         {
             GameObject btnGo = GameObject.Instantiate(prefab.gameObject, parent);
             btnGo.name = objName;
@@ -221,20 +220,25 @@ namespace FurnitureAnimationsMod
             if (r != null) r.anchoredPosition = localPos;
 
             Button b = btnGo.GetComponent<Button>();
-            if (b != null)
-            {
-                GameObject.DestroyImmediate(b);
-            }
+            if (b != null) GameObject.DestroyImmediate(b);
 
             b = btnGo.AddComponent<Button>();
             b.onClick.AddListener(() => onClick?.Invoke());
 
-            // --- НАЗНАЧЕНИЕ ИКОНКИ ---
-            Image btnImage = btnGo.GetComponent<Image>();
-            if (btnImage != null && iconSprite != null)
+            // --- ЖЕСТКОЕ ПЕРЕОПРЕДЕЛЕНИЕ RAWIMAGE ---
+            RawImage rawImg = btnGo.GetComponent<RawImage>();
+            if (rawImg != null && iconTexture != null)
             {
-                btnImage.sprite = iconSprite;
-                btnImage.type = Image.Type.Simple; // Предотвращает некорректное растягивание
+                rawImg.texture = iconTexture; // Меняем текстуру лифчика на нашу иконку!
+            }
+            else if (rawImg == null && iconTexture != null)
+            {
+                // На случай если там обычный Image, подстрахуемся
+                Image img = btnGo.GetComponent<Image>();
+                if (img != null)
+                {
+                    img.sprite = Sprite.Create(iconTexture, new Rect(0, 0, iconTexture.width, iconTexture.height), new Vector2(0.5f, 0.5f));
+                }
             }
 
             Text t = btnGo.GetComponentInChildren<Text>();
@@ -246,7 +250,6 @@ namespace FurnitureAnimationsMod
             }
             btnGo.SetActive(true);
         }
-
         private void UpdateText(string objName, string newText)
         {
             if (_uiPanelInstance == null) return;
@@ -272,7 +275,7 @@ namespace FurnitureAnimationsMod
             UpdateText("Mod_BtnSpeedPlus", $"Speed: {percent}% (+10)");
         }
 
-        private Sprite GetCurrentEaseSprite()
+        private Texture2D GetCurrentEaseSprite()
         {
             if (_player == null) return _iconLinear;
             switch (_player.GetEaseMode())
@@ -304,12 +307,23 @@ namespace FurnitureAnimationsMod
             UpdateSoundButton();
         }
 
-        private void UpdateImageSprite(string objName, Sprite newSprite)
+        private void UpdateImageSprite(string objName, Texture2D newTexture)
         {
-            if (_uiPanelInstance == null || newSprite == null) return;
+            if (_uiPanelInstance == null || newTexture == null) return;
             Transform btn = _uiPanelInstance.transform.Find($"Mod_AnimationButtonsContainer/{objName}");
+
+            RawImage rawImg = btn?.GetComponent<RawImage>();
+            if (rawImg != null)
+            {
+                rawImg.texture = newTexture;
+                return;
+            }
+
             Image img = btn?.GetComponent<Image>();
-            if (img != null) img.sprite = newSprite;
+            if (img != null)
+            {
+                img.sprite = Sprite.Create(newTexture, new Rect(0, 0, newTexture.width, newTexture.height), new Vector2(0.5f, 0.5f));
+            }
         }
 
     }
