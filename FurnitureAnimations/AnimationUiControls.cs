@@ -108,33 +108,49 @@ namespace FurnitureAnimationsMod
                     Vector3 btnPos = Vector3.zero;
                     float spacing = -45f; // На случай, если LayoutGroup потребует ручного смещения, но вообще VerticalLayoutGroup расставит сам
 
-                    // 1. Кнопка Скорость -
-                    CreateUiButton(buttonsContainer, btnPrefab, "Mod_BtnSpeedMinus", $"Speed: {Mathf.RoundToInt(_player.GetSpeed() * 100)}% (-10)", btnPos, () => {
-                        _player.ChangeSpeed(-0.1f);
-                        UpdateSpeedButtonsText();
-                    });
+
+                    // 1. Кнопка Скорость +
+                    CreateUiButton(buttonsContainer, btnPrefab, "Mod_BtnSpeedPlus",
+                        $"Speed: {Mathf.RoundToInt(_player.GetSpeed() * 100)}% (+10)", btnPos, _iconSpeedPlus, () => {
+                            _player.ChangeSpeed(0.1f);
+                            UpdateSpeedButtonsText();
+                        });
                     btnPos.y += spacing;
 
-                    // 2. Кнопка Скорость +
-                    CreateUiButton(buttonsContainer, btnPrefab, "Mod_BtnSpeedPlus", $"Speed: {Mathf.RoundToInt(_player.GetSpeed() * 100)}% (+10)", btnPos, () => {
-                        _player.ChangeSpeed(0.1f);
-                        UpdateSpeedButtonsText();
-                    });
+                    // 2. Кнопка Скорость -
+                    CreateUiButton(buttonsContainer, btnPrefab, "Mod_BtnSpeedMinus",
+                        $"Speed: {Mathf.RoundToInt(_player.GetSpeed() * 100)}% (-10)", btnPos, _iconSpeedMinus, () => {
+                            _player.ChangeSpeed(-0.1f);
+                            UpdateSpeedButtonsText();
+                        });
                     btnPos.y += spacing;
 
-                    CreateUiButton(buttonsContainer, btnPrefab, "Mod_BtnEaseToggle", $"Interpolation: {_player.GetEaseMode()}", btnPos, () => {
-                        _player.ToggleEaseMode();
-                        UpdateText("Mod_BtnEaseToggle", $"Interpolation: {_player.GetEaseMode()}");
-                    });
+                    // 3. Кнопка Сглаживания (Интерполяции)
+                    CreateUiButton(buttonsContainer, btnPrefab, "Mod_BtnEaseToggle",
+                        $"Interpolation: {_player.GetEaseMode()}", btnPos, GetCurrentEaseSprite(), () => {
+                            _player.ToggleEaseMode();
+                            UpdateEaseButton(); // Используем централизованный метод обновления текста и иконки
+                        });
                     btnPos.y += spacing;
 
-                    CreateUiButton(buttonsContainer, btnPrefab, "Mod_BtnMuteToggle", "Sound: ON", btnPos, () => {
-                        if (AnimationAudioManager.Instance != null)
-                        {
-                            AnimationAudioManager.Instance.ToggleMute();
-                            UpdateText("Mod_BtnMuteToggle", AnimationAudioManager.Instance.IsMuted() ? "Sound: MUTED" : "Sound: ON");
-                        }
-                    });
+                    // 4. НОВАЯ КНОПКА: СЛЕДУЮЩИЙ ТРЕК
+                    CreateUiButton(buttonsContainer, btnPrefab, "Mod_BtnNextAudio",
+                        "Next Audio", btnPos, _iconNextAudio, () => {
+                            Plugin.Log.LogInfo("[UI] Нажата кнопка переключения аудио трека.");
+                            // TODO: Сюда добавим вызов метода из AnimationAudioManager, когда перейдем к его логике
+                        });
+                    btnPos.y += spacing;
+
+                    // 5. Кнопка MuteToggle
+                    Sprite currentSoundIcon = (AnimationAudioManager.Instance != null && AnimationAudioManager.Instance.IsMuted()) ? _iconSoundOff : _iconSoundOn;
+                    CreateUiButton(buttonsContainer, btnPrefab, "Mod_BtnMuteToggle",
+                        "Sound: ON", btnPos, currentSoundIcon, () => {
+                            if (AnimationAudioManager.Instance != null)
+                            {
+                                AnimationAudioManager.Instance.ToggleMute();
+                                UpdateSoundButton(); // Используем централизованный метод обновления текста и иконки
+                            }
+                        });
                 }
                 else
                 {
@@ -196,25 +212,30 @@ namespace FurnitureAnimationsMod
 
         #endregion
 
-        private void CreateUiButton(Transform parent, Transform prefab, string objName, string label, Vector3 localPos, System.Action onClick)
+        private void CreateUiButton(Transform parent, Transform prefab, string objName, string label, Vector3 localPos, Sprite iconSprite, System.Action onClick)
         {
             GameObject btnGo = GameObject.Instantiate(prefab.gameObject, parent);
             btnGo.name = objName;
 
             RectTransform r = btnGo.GetComponent<RectTransform>();
-            r.anchoredPosition = localPos;
+            if (r != null) r.anchoredPosition = localPos;
 
-            // 3. УЛЬТИМАТИВНОЕ УНИЧТОЖЕНИЕ ИНСПЕКТОРСКИХ СВЯЗЕЙ (Persistent Calls)
             Button b = btnGo.GetComponent<Button>();
             if (b != null)
             {
-                // Полностью сносим старый компонент Button вместе со всей его "памятью" о лифчиках
                 GameObject.DestroyImmediate(b);
             }
 
-            // Добавляем абсолютно чистый, новый компонент Button без инспекторских связей
             b = btnGo.AddComponent<Button>();
             b.onClick.AddListener(() => onClick?.Invoke());
+
+            // --- НАЗНАЧЕНИЕ ИКОНКИ ---
+            Image btnImage = btnGo.GetComponent<Image>();
+            if (btnImage != null && iconSprite != null)
+            {
+                btnImage.sprite = iconSprite;
+                btnImage.type = Image.Type.Simple; // Предотвращает некорректное растягивание
+            }
 
             Text t = btnGo.GetComponentInChildren<Text>();
             if (t != null)
@@ -226,11 +247,11 @@ namespace FurnitureAnimationsMod
             btnGo.SetActive(true);
         }
 
-
         private void UpdateText(string objName, string newText)
         {
-            GameObject go = GameObject.Find(objName);
-            Text t = go?.GetComponentInChildren<Text>();
+            if (_uiPanelInstance == null) return;
+            Transform btn = _uiPanelInstance.transform.Find($"Mod_AnimationButtonsContainer/{objName}");
+            Text t = btn?.GetComponentInChildren<Text>();
             if (t != null) t.text = newText;
         }
 
@@ -250,5 +271,46 @@ namespace FurnitureAnimationsMod
             UpdateText("Mod_BtnSpeedMinus", $"Speed: {percent}% (-10)");
             UpdateText("Mod_BtnSpeedPlus", $"Speed: {percent}% (+10)");
         }
+
+        private Sprite GetCurrentEaseSprite()
+        {
+            if (_player == null) return _iconLinear;
+            switch (_player.GetEaseMode())
+            {
+                case EaseMode.Global: return _iconEaseWhole;
+                case EaseMode.PerFrame: return _iconEaseEach;
+                case EaseMode.Linear:
+                default: return _iconLinear;
+            }
+        }
+
+        private void UpdateEaseButton()
+        {
+            UpdateText("Mod_BtnEaseToggle", $"Interpolation: {_player.GetEaseMode()}");
+            UpdateImageSprite("Mod_BtnEaseToggle", GetCurrentEaseSprite());
+        }
+
+        private void UpdateSoundButton()
+        {
+            bool isMuted = AnimationAudioManager.Instance != null && AnimationAudioManager.Instance.IsMuted();
+            UpdateText("Mod_BtnMuteToggle", isMuted ? "Sound: MUTED" : "Sound: ON");
+            UpdateImageSprite("Mod_BtnMuteToggle", isMuted ? _iconSoundOff : _iconSoundOn);
+        }
+
+        private void UpdateInterfaceStates()
+        {
+            UpdateSpeedButtonsText();
+            UpdateEaseButton();
+            UpdateSoundButton();
+        }
+
+        private void UpdateImageSprite(string objName, Sprite newSprite)
+        {
+            if (_uiPanelInstance == null || newSprite == null) return;
+            Transform btn = _uiPanelInstance.transform.Find($"Mod_AnimationButtonsContainer/{objName}");
+            Image img = btn?.GetComponent<Image>();
+            if (img != null) img.sprite = newSprite;
+        }
+
     }
 }
