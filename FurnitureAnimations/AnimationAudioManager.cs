@@ -10,9 +10,11 @@ namespace FurnitureAnimationsMod
     {
         public static AnimationAudioManager Instance { get; private set; }
 
+        // --- КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: Статическая переменная сохраняет состояние глобально ---
+        private static bool _isGlobalMuted = false;
+
         private AudioSource _audioSource;
         private bool _loopAudio = false;
-        private bool _isMuted = false;
 
         // Поля для поддержки списков воспроизведения и переключения
         private List<string> _currentPlaylist = new List<string>();
@@ -44,10 +46,16 @@ namespace FurnitureAnimationsMod
             _currentPlaylist.Clear();
             _currentTrackIndex = -1;
 
+            // --- ЕСЛИ СТОИТ РЕЖИМ ТИШИНЫ, ДАЖЕ НЕ СКАНИРУЕМ И НЕ ВКЛЮЧАЕМ ---
+            if (_isGlobalMuted)
+            {
+                Plugin.Log.LogInfo("[AudioEngine] Старт анимации заблокирован глобальным Mute.");
+                return;
+            }
+
             string audioFolder = Path.Combine(BepInEx.Paths.PluginPath, "FurnitureAnimations", "Audio");
             if (!Directory.Exists(audioFolder)) Directory.CreateDirectory(audioFolder);
 
-            // Ищем все файлы, имя которых начинается с названия анимации (например, DanceLatinaHips*)
             if (Directory.Exists(audioFolder))
             {
                 string[] files = Directory.GetFiles(audioFolder, animationName + "*.*");
@@ -121,7 +129,7 @@ namespace FurnitureAnimationsMod
                         _audioSource.priority = 0;
                         _audioSource.spatialBlend = 0f;
                         _audioSource.volume = 1.0f;
-                        _audioSource.mute = _isMuted;
+                        _audioSource.mute = _isGlobalMuted;
                         _audioSource.Play();
                         Plugin.Log.LogWarning($"[AudioEngine] Звуковой файл '{clip.name}' запущен!");
                     }
@@ -141,12 +149,41 @@ namespace FurnitureAnimationsMod
 
         public void ToggleMute()
         {
-            _isMuted = !_isMuted;
-            if (_audioSource != null) _audioSource.mute = _isMuted;
-            Plugin.Log.LogInfo($"[AudioEngine] Режим тишины: {(_isMuted ? "ВКЛ" : "ВЫКЛ")}");
+            _isGlobalMuted = !_isGlobalMuted; // Переключаем глобальный флаг
+
+            if (_audioSource != null)
+            {
+                if (_isGlobalMuted)
+                {
+                    _audioSource.Stop(); // Принудительно глушим текущий трек, если он играл
+                    if (_currentLoadCoroutine != null) StopCoroutine(_currentLoadCoroutine);
+                }
+                else
+                {
+                    // Если Mute сняли, запускаем логику заново для текущего плейлиста
+                    if (_currentTrackIndex >= 0 && _currentTrackIndex < _currentPlaylist.Count)
+                    {
+                        string currentTrack = _currentPlaylist[_currentTrackIndex];
+                        _currentLoadCoroutine = StartCoroutine(LoadAndPlayAudio(currentTrack, GetAudioType(currentTrack)));
+                    }
+                }
+            }
+            Plugin.Log.LogInfo($"[AudioEngine] Глобальный режим тишины: {(_isGlobalMuted ? "ВКЛ" : "ВЫКЛ")}");
         }
 
-        public bool IsMuted() => _isMuted;
+
+        public bool IsMuted() => _isGlobalMuted;
+
+        public void StopAudio()
+        {
+            if (_currentLoadCoroutine != null) StopCoroutine(_currentLoadCoroutine);
+            if (_audioSource != null && _audioSource.isPlaying)
+            {
+                _audioSource.Stop();
+            }
+            _currentTrackIndex = -1; // Сбрасываем индекс плейлиста
+            _currentPlaylist.Clear();
+        }
 
         private void OnDestroy()
         {

@@ -323,6 +323,10 @@ namespace FurnitureAnimationsMod
                     }
 
                     Plugin.Log.LogInfo($"[SDK_Icon] Клик по ванильной позе '{uiPoseName}'. Наш плеер уничтожен, управление возвращено игре.");
+                    if (AnimationAudioManager.Instance != null)
+                    {
+                        AnimationAudioManager.Instance.StopAudio();
+                    }
                     return; // Просто выходим, позволяя игре выполнить её стандартный метод DoPose
                 }
 
@@ -371,6 +375,11 @@ namespace FurnitureAnimationsMod
                     if (Global.code != null)
                     {
                         Global.code.StartCoroutine(ExecuteBonesInjectionDelayed(characterComp, currentPoseData.JsonFileName));
+                    }
+
+                    if (AnimationAudioManager.Instance != null)
+                    {
+                        AnimationAudioManager.Instance.StopAudio();
                     }
                 }
             }
