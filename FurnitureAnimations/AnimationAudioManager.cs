@@ -15,6 +15,7 @@ namespace FurnitureAnimationsMod
 
         private AudioSource _audioSource;
         private bool _loopAudio = false;
+        private string _lastInitializedAnimation = "";
 
         // Поля для поддержки списков воспроизведения и переключения
         private List<string> _currentPlaylist = new List<string>();
@@ -32,63 +33,72 @@ namespace FurnitureAnimationsMod
             _audioSource = gameObject.GetComponent<AudioSource>() ?? gameObject.AddComponent<AudioSource>();
         }
 
-        /// <summary>
-        /// Вызывается при старте анимации мебели. Сканирует папку на наличие треков с суффиксами и запускает случайный.
-        /// </summary>
+
         public void Initialize(string animationName, bool loopAudio)
         {
             _loopAudio = loopAudio;
+            _lastInitializedAnimation = animationName; // Запоминаем имя для возможного UnMute позже
 
-            // Прерываем предыдущую загрузку, если она шла, и останавливаем старый трек
             if (_currentLoadCoroutine != null) StopCoroutine(_currentLoadCoroutine);
             if (_audioSource != null && _audioSource.isPlaying) _audioSource.Stop();
 
             _currentPlaylist.Clear();
             _currentTrackIndex = -1;
 
-            // --- ЕСЛИ СТОИТ РЕЖИМ ТИШИНЫ, ДАЖЕ НЕ СКАНИРУЕМ И НЕ ВКЛЮЧАЕМ ---
+            // --- ЕСЛИ СТОИТ РЕЖИМ ТИШИНЫ, НЕ ЗАПУСКАЕМ ТРЕК ---
             if (_isGlobalMuted)
             {
-                Plugin.Log.LogInfo("[AudioEngine] Старт анимации заблокирован глобальным Mute.");
+                Plugin.Log.LogInfo("[AudioEngine] Старт анимации без звука (активен глобальный Mute).");
                 return;
             }
 
+            ScanAndPlay(animationName);
+        }
+
+        /// <summary>
+        /// Внутренний метод сканирования папки и запуска (вынесен для переиспользования при UnMute)
+        /// </summary>
+        private void ScanAndPlay(string animationName)
+        {
             string audioFolder = Path.Combine(BepInEx.Paths.PluginPath, "FurnitureAnimations", "Audio");
             if (!Directory.Exists(audioFolder)) Directory.CreateDirectory(audioFolder);
 
-            if (Directory.Exists(audioFolder))
+            string[] files = Directory.GetFiles(audioFolder, animationName + "*.*");
+            foreach (string file in files)
             {
-                string[] files = Directory.GetFiles(audioFolder, animationName + "*.*");
-                foreach (string file in files)
+                string ext = Path.GetExtension(file).ToLower();
+                if (ext == ".wav" || ext == ".mp3" || ext == ".ogg")
                 {
-                    string ext = Path.GetExtension(file).ToLower();
-                    if (ext == ".wav" || ext == ".mp3" || ext == ".ogg")
-                    {
-                        _currentPlaylist.Add(file);
-                    }
+                    _currentPlaylist.Add(file);
                 }
             }
 
             if (_currentPlaylist.Count > 0)
             {
-                // Выбираем случайный трек из найденных для старта
                 _currentTrackIndex = UnityEngine.Random.Range(0, _currentPlaylist.Count);
                 string selectedTrack = _currentPlaylist[_currentTrackIndex];
 
                 _currentLoadCoroutine = StartCoroutine(LoadAndPlayAudio(selectedTrack, GetAudioType(selectedTrack)));
-                Plugin.Log.LogInfo($"[AudioEngine] Найдено треков: {_currentPlaylist.Count}. Случайно выбран: {Path.GetFileName(selectedTrack)}");
-            }
-            else
-            {
-                Plugin.Log.LogWarning($"[AudioEngine] Не найдено аудиофайлов для анимации: {animationName}");
+                Plugin.Log.LogInfo($"[AudioEngine] Запущено воспроизведение: {Path.GetFileName(selectedTrack)}");
             }
         }
 
-        /// <summary>
-        /// Публичный метод для кнопки "Next Audio". Переключает на следующий трек в плейлисте по кругу.
-        /// </summary>
         public void PlayNextTrack()
         {
+            // ПРАВКА СЛУЧАЯ 2: Если стоял Mute, принудительно выключаем его
+            if (_isGlobalMuted)
+            {
+                _isGlobalMuted = false;
+                Plugin.Log.LogInfo("[AudioEngine] Нажата кнопка Next Track: глобальный Mute автоматически снят.");
+
+                // Переинициализируем плейлист для текущей анимации, если он был пуст из-за Mute
+                if (_currentPlaylist.Count == 0 && !string.IsNullOrEmpty(_lastInitializedAnimation))
+                {
+                    ScanAndPlay(_lastInitializedAnimation);
+                    return;
+                }
+            }
+
             if (_currentPlaylist == null || _currentPlaylist.Count <= 1)
             {
                 Plugin.Log.LogInfo("[AudioEngine] Переключение невозможно: в текущем плейлисте недостаточно треков.");
@@ -98,12 +108,11 @@ namespace FurnitureAnimationsMod
             if (_currentLoadCoroutine != null) StopCoroutine(_currentLoadCoroutine);
             if (_audioSource != null) _audioSource.Stop();
 
-            // Сдвигаем индекс по кругу
             _currentTrackIndex = (_currentTrackIndex + 1) % _currentPlaylist.Count;
             string nextTrackPath = _currentPlaylist[_currentTrackIndex];
 
             _currentLoadCoroutine = StartCoroutine(LoadAndPlayAudio(nextTrackPath, GetAudioType(nextTrackPath)));
-            Plugin.Log.LogInfo($"[AudioEngine] Кнопка Next: переключено на {Path.GetFileName(nextTrackPath)} ({_currentTrackIndex + 1}/{_currentPlaylist.Count})");
+            Plugin.Log.LogInfo($"[AudioEngine] Переключено на {Path.GetFileName(nextTrackPath)} ({_currentTrackIndex + 1}/{_currentPlaylist.Count})");
         }
 
         private System.Collections.IEnumerator LoadAndPlayAudio(string filePath, AudioType type)
@@ -149,19 +158,24 @@ namespace FurnitureAnimationsMod
 
         public void ToggleMute()
         {
-            _isGlobalMuted = !_isGlobalMuted; // Переключаем глобальный флаг
+            _isGlobalMuted = !_isGlobalMuted;
 
             if (_audioSource != null)
             {
                 if (_isGlobalMuted)
                 {
-                    _audioSource.Stop(); // Принудительно глушим текущий трек, если он играл
+                    _audioSource.Stop();
                     if (_currentLoadCoroutine != null) StopCoroutine(_currentLoadCoroutine);
                 }
                 else
                 {
-                    // Если Mute сняли, запускаем логику заново для текущего плейлиста
-                    if (_currentTrackIndex >= 0 && _currentTrackIndex < _currentPlaylist.Count)
+                    // ПРАВКА СЛУЧАЯ 1: Если Mute сняли, а плейлист пуст — сканируем и запускаем
+                    if (_currentPlaylist.Count == 0 && !string.IsNullOrEmpty(_lastInitializedAnimation))
+                    {
+                        ScanAndPlay(_lastInitializedAnimation);
+                    }
+                    // Если плейлист уже был готов, просто перезапускаем текущий трек
+                    else if (_currentTrackIndex >= 0 && _currentTrackIndex < _currentPlaylist.Count)
                     {
                         string currentTrack = _currentPlaylist[_currentTrackIndex];
                         _currentLoadCoroutine = StartCoroutine(LoadAndPlayAudio(currentTrack, GetAudioType(currentTrack)));
