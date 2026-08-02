@@ -134,11 +134,16 @@ namespace FurnitureAnimationsMod
                     btnPos.y += spacing;
 
                     // 4. НОВАЯ КНОПКА: СЛЕДУЮЩИЙ ТРЕК
-                    CreateUiButton(buttonsContainer, btnPrefab, "Mod_BtnNextAudio",
-                        "Next Audio", btnPos, _iconNextAudio, () => {
-                            Plugin.Log.LogInfo("[UI] Нажата кнопка переключения аудио трека.");
-                            // TODO: Сюда добавим вызов метода из AnimationAudioManager, когда перейдем к его логике
-                        });
+                    CreateUiButton(buttonsContainer, btnPrefab, "Mod_BtnNextAudio", "Next Audio", btnPos, _iconNextAudio, () => {
+                        if (AnimationAudioManager.Instance != null)
+                        {
+                            AnimationAudioManager.Instance.PlayNextTrack();
+                        }
+                        else
+                        {
+                            Plugin.Log.LogWarning("[UI] Невозможно переключить трек: AnimationAudioManager не инициализирован.");
+                        }
+                    });
                     btnPos.y += spacing;
 
                     // 5. Кнопка MuteToggle
