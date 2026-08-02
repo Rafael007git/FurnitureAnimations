@@ -1,4 +1,7 @@
-﻿using System.ComponentModel;
+﻿using System;
+using System.ComponentModel;
+using System.IO;
+using System.Reflection;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -10,9 +13,21 @@ namespace FurnitureAnimationsMod
         private FurnitureAnimationPlayer _player;
         private GameObject _uiPanelInstance;
 
+        // Кэш для иконок, чтобы не читать из сборки каждый кадр
+        private Sprite _iconSpeedMinus;
+        private Sprite _iconSpeedPlus;
+        private Sprite _iconNextAudio;
+        private Sprite _iconSoundOn;
+        private Sprite _iconSoundOff;
+        private Sprite _iconLinear;
+        private Sprite _iconEaseWhole;
+        private Sprite _iconEaseEach;
         public void Initialize(FurnitureAnimationPlayer player)
         {
             _player = player;
+
+            // 0. Загружаем иконки из ресурсов DLL
+            LoadEmbeddedResources();
 
             try
             {
@@ -53,9 +68,11 @@ namespace FurnitureAnimationsMod
                 modRect.anchorMin = vanRect.anchorMin;
                 modRect.anchorMax = vanRect.anchorMax;
                 modRect.pivot = vanRect.pivot;
-                modRect.sizeDelta = vanRect.sizeDelta;
+                
+                // --- АРХИТЕКТУРНОЕ УВЕЛИЧЕНИЕ В 1.5 РАЗА ---
+                Vector2 originalSize = vanRect.sizeDelta;
+                modRect.sizeDelta = new Vector2(originalSize.x, originalSize.y * 1.5f);
 
-                // Копируем точный локальный масштаб оригинального фона
                 _uiPanelInstance.transform.localScale = vanRect.localScale;
 
                 // Смещаем плашку-фон строго вниз по локальной оси Y относительно оригинала
@@ -129,6 +146,55 @@ namespace FurnitureAnimationsMod
                 Plugin.Log.LogError($"[UI] Ошибка декомпозиции иерархии плашек: {ex.Message}");
             }
         }
+
+        #region Работа с ресурсами DLL
+
+        private void LoadEmbeddedResources()
+        {
+            _iconSpeedMinus = LoadSpriteFromDll("FurnitureAnimations.Resources.icon_slowerPlayback.png");
+            _iconSpeedPlus = LoadSpriteFromDll("FurnitureAnimations.Resources.icon_fasterPlayback.png");
+            _iconNextAudio = LoadSpriteFromDll("FurnitureAnimations.Resources.icon_nextAudio.png");
+            _iconSoundOn = LoadSpriteFromDll("FurnitureAnimations.Resources.icon_soundOn.png");
+            _iconSoundOff = LoadSpriteFromDll("FurnitureAnimations.Resources.icon_soundOff.png");
+
+            // Распределяем три иконки под режимы вашего Enum EaseMode
+            _iconLinear = LoadSpriteFromDll("FurnitureAnimations.Resources.icon_flowEven.png");
+            _iconEaseWhole = LoadSpriteFromDll("FurnitureAnimations.Resources.icon_easeInOutWhole.png");
+            _iconEaseEach = LoadSpriteFromDll("FurnitureAnimations.Resources.icon_easeInOutEach.png");
+        }
+
+        private Sprite LoadSpriteFromDll(string resourcePath)
+        {
+            try
+            {
+                Assembly assembly = Assembly.GetExecutingAssembly();
+                using (Stream stream = assembly.GetManifestResourceStream(resourcePath))
+                {
+                    if (stream == null)
+                    {
+                        Plugin.Log.LogError($"[UI_Resources] Не найден встроенный ресурс: {resourcePath}");
+                        return null;
+                    }
+
+                    byte[] buffer = new byte[stream.Length];
+                    stream.Read(buffer, 0, buffer.Length);
+
+                    Texture2D texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                    if (texture.LoadImage(buffer))
+                    {
+                        // Создаем UI Спрайт из считанной текстуры
+                        return Sprite.Create(texture, new Rect(0, 0, texture.width, texture.height), new Vector2(0.5f, 0.5f));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"[UI_Resources] Ошибка загрузки иконки {resourcePath}: {ex.Message}");
+            }
+            return null;
+        }
+
+        #endregion
 
         private void CreateUiButton(Transform parent, Transform prefab, string objName, string label, Vector3 localPos, System.Action onClick)
         {
