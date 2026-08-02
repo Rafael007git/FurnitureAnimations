@@ -138,6 +138,7 @@ namespace FurnitureAnimationsMod
                         if (AnimationAudioManager.Instance != null)
                         {
                             AnimationAudioManager.Instance.PlayNextTrack();
+                            UpdateSoundButton(); // <-- ПРАВКА: Синхронизируем иконку звука, если Mute сбросился!
                         }
                         else
                         {

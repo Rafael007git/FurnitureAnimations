@@ -322,11 +322,14 @@ namespace FurnitureAnimationsMod
                         characterComp.anim.speed = 1f;
                     }
 
-                    Plugin.Log.LogInfo($"[SDK_Icon] Клик по ванильной позе '{uiPoseName}'. Наш плеер уничтожен, управление возвращено игре.");
-                    if (AnimationAudioManager.Instance != null)
+                    // Выключаем проигрывание аудио, если оно работало
                     {
                         AnimationAudioManager.Instance.StopAudio();
                     }
+
+                    Plugin.Log.LogInfo($"[SDK_Icon] Клик по ванильной позе '{uiPoseName}'. Наш плеер уничтожен, управление возвращено игре.");
+                    if (AnimationAudioManager.Instance != null)
+
                     return; // Просто выходим, позволяя игре выполнить её стандартный метод DoPose
                 }
 
