@@ -105,5 +105,16 @@
     <Compile Include="PoseExporter.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\icon_animation.png" />
+    <EmbeddedResource Include="Resources\icon_easeInOutEach.png" />
+    <EmbeddedResource Include="Resources\icon_easeInOutWhole.png" />
+    <EmbeddedResource Include="Resources\icon_fasterPlayback.png" />
+    <EmbeddedResource Include="Resources\icon_flowEven.png" />
+    <EmbeddedResource Include="Resources\icon_nextAudio.png" />
+    <EmbeddedResource Include="Resources\icon_slowerPlayback.png" />
+    <EmbeddedResource Include="Resources\icon_soundOff.png" />
+    <EmbeddedResource Include="Resources\icon_soundOn.png" />
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
