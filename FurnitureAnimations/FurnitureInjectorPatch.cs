@@ -323,10 +323,8 @@ namespace FurnitureAnimationsMod
                     }
 
                     // Выключаем проигрывание аудио, если оно работало
-                    {
-                        AnimationAudioManager.Instance.StopAudio();
-                    }
-
+                    AnimationAudioManager.Instance.StopAudio();
+                    
                     Plugin.Log.LogInfo($"[SDK_Icon] Клик по ванильной позе '{uiPoseName}'. Наш плеер уничтожен, управление возвращено игре.");
                     if (AnimationAudioManager.Instance != null)
 
