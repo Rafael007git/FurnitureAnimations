@@ -323,11 +323,12 @@ namespace FurnitureAnimationsMod
                     }
 
                     // Выключаем проигрывание аудио, если оно работало
-                    AnimationAudioManager.Instance.StopAudio();
-                    
-                    Plugin.Log.LogInfo($"[SDK_Icon] Клик по ванильной позе '{uiPoseName}'. Наш плеер уничтожен, управление возвращено игре.");
                     if (AnimationAudioManager.Instance != null)
+                    {
+                        AnimationAudioManager.Instance.StopAudio();
+                    }
 
+                    Plugin.Log.LogInfo($"[SDK_Icon] Клик по ванильной позе '{uiPoseName}'. Наш плеер уничтожен, управление возвращено игре.");
                     return; // Просто выходим, позволяя игре выполнить её стандартный метод DoPose
                 }
 
@@ -355,6 +356,10 @@ namespace FurnitureAnimationsMod
                     // ЕСЛИ КЛИКНУЛИ ПО ЛЮБОЙ ДРУГОЙ ИКОНКЕ -> Сносим старый плеер и даем коду идти дальше
                     Plugin.Log.LogWarning($"[SDK_Icon] Переключение! Удаляем старую анимацию '{currentlyPlayingAnim}' перед запуском нового режима.");
                     UnityEngine.Object.Destroy(activePlayer as UnityEngine.Component);
+                    if (AnimationAudioManager.Instance != null)
+                    {
+                        AnimationAudioManager.Instance.StopAudio();
+                    }
                 }
 
                 // =========================================================================
@@ -378,10 +383,6 @@ namespace FurnitureAnimationsMod
                         Global.code.StartCoroutine(ExecuteBonesInjectionDelayed(characterComp, currentPoseData.JsonFileName));
                     }
 
-                    if (AnimationAudioManager.Instance != null)
-                    {
-                        AnimationAudioManager.Instance.StopAudio();
-                    }
                 }
             }
         }
