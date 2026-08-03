@@ -26,7 +26,7 @@ namespace FurnitureAnimationsMod
         {
             _player = player;
 
-            // 0. Загружаем иконки из ресурсов DLL
+            // 0. Загружаем иконки из ресурсов DLL (если они еще не в кэше)
             LoadEmbeddedResources();
 
             try
@@ -34,21 +34,59 @@ namespace FurnitureAnimationsMod
                 UIPose uiPose = GameObject.FindObjectOfType<UIPose>();
                 if (uiPose == null) return;
 
-                // 1. Проверяем, существует ли уже наша панель
+                // 1. ПЕРЕХВАТ СУЩЕСТВУЮЩЕЙ ПАНЕЛИ ПРИ СМЕНЕ АНИМАЦИИ
                 Transform existingPanel = uiPose.transform.Find("Mod_FurnitureAnimationControls_BG");
                 if (existingPanel != null)
                 {
                     _uiPanelInstance = existingPanel.gameObject;
                     _uiPanelInstance.SetActive(true);
-                    UpdateText("Mod_BtnEaseToggle", $"Interpolation: {_player.GetEaseMode()}");
+
+                    // Находим контейнер с кнопками внутри уже созданной ранее панели
+                    Transform buttonsContainer = _uiPanelInstance.transform.Find("Mod_AnimationButtonsContainer");
+                    if (buttonsContainer != null)
+                    {
+                        // Перепривязываем события для каждой кнопки к новому ЖИВОМУ плееру
+                        RebindButtonAction(buttonsContainer, "Mod_BtnSpeedPlus", () => {
+                            _player.ChangeSpeed(0.1f);
+                            UpdateSpeedButtonsText();
+                        });
+
+                        RebindButtonAction(buttonsContainer, "Mod_BtnSpeedMinus", () => {
+                            _player.ChangeSpeed(-0.1f);
+                            UpdateSpeedButtonsText();
+                        });
+
+                        RebindButtonAction(buttonsContainer, "Mod_BtnEaseToggle", () => {
+                            _player.ToggleEaseMode();
+                            UpdateEaseButton();
+                        });
+
+                        RebindButtonAction(buttonsContainer, "Mod_BtnMuteToggle", () => {
+                            if (AnimationAudioManager.Instance != null)
+                            {
+                                AnimationAudioManager.Instance.ToggleMute();
+                                UpdateSoundButton();
+                            }
+                        });
+
+                        RebindButtonAction(buttonsContainer, "Mod_BtnNextAudio", () => {
+                            if (AnimationAudioManager.Instance != null)
+                            {
+                                AnimationAudioManager.Instance.PlayNextTrack();
+                                UpdateSoundButton();
+                            }
+                        });
+                    }
+
+                    UpdateInterfaceStates();
+                    Plugin.Log.LogInfo("[UI] Существующая панель успешно перехвачена новым экземпляром плеера.");
                     return;
                 }
 
-                // panelTakeOffClothes — это на самом деле дочерний 'Takeoff Buttons' с VerticalLayoutGroup
+                // 2. ЕСЛИ ПАНЕЛИ НЕТ — СОЗДАЕМ ЕЕ С НУЛЯ
                 GameObject vanillaButtonsContainerGo = uiPose.panelTakeOffClothes;
                 if (vanillaButtonsContainerGo == null) return;
 
-                // ХИРУРГИЧЕСКИЙ ХАК: Находим настоящий фоновый объект с Image (Takeoff Buttons BG)
                 Transform vanillaBgTransform = vanillaButtonsContainerGo.transform.parent;
                 if (vanillaBgTransform == null)
                 {
@@ -56,61 +94,58 @@ namespace FurnitureAnimationsMod
                     return;
                 }
 
-                // 2. КЛОНИРУЕМ НАСТОЯЩИЙ ФОН ЦЕЛИКОМ (теперь у нас будет оригинальный Image!)
+                // Клонируем оригинальный фон целиком
                 _uiPanelInstance = GameObject.Instantiate(vanillaBgTransform.gameObject, uiPose.transform, false);
                 _uiPanelInstance.name = "Mod_FurnitureAnimationControls_BG";
                 _uiPanelInstance.SetActive(true);
 
-                // Настраиваем RectTransform фоновой плашки
                 RectTransform modRect = _uiPanelInstance.GetComponent<RectTransform>();
                 RectTransform vanRect = vanillaBgTransform.GetComponent<RectTransform>();
 
                 modRect.anchorMin = vanRect.anchorMin;
                 modRect.anchorMax = vanRect.anchorMax;
                 modRect.pivot = vanRect.pivot;
-                
-                // --- АРХИТЕКТУРНОЕ УВЕЛИЧЕНИЕ В 1.5 РАЗА ---
+
+                // Архитектурное увеличение высоты плашки фона в 1.5 раза
                 Vector2 originalSize = vanRect.sizeDelta;
                 modRect.sizeDelta = new Vector2(originalSize.x, originalSize.y * 1.5f);
 
                 _uiPanelInstance.transform.localScale = vanRect.localScale;
 
-                // Смещаем плашку-фон строго вниз по локальной оси Y относительно оригинала
+                // Смещаем плашку ниже с учетом увеличенной высоты
                 Vector3 vanLocalPos = vanRect.localPosition;
-                modRect.localPosition = new Vector3(vanLocalPos.x, vanLocalPos.y - 180f, vanLocalPos.z);
+                modRect.localPosition = new Vector3(vanLocalPos.x, vanLocalPos.y - 210f, vanLocalPos.z);
 
-                // 3. НАХОДИМ ВНУТРЕННИЙ КОНТЕЙНЕР (у него внутри нашего клона будет такое же имя, как у panelTakeOffClothes)
-                Transform buttonsContainer = _uiPanelInstance.transform.Find(vanillaButtonsContainerGo.name);
-                if (buttonsContainer == null && _uiPanelInstance.transform.childCount > 0)
+                // ИСПРАВЛЕНО: Даем переменной уникальное имя buttonsContainerNew, чтобы не было ошибки CS0136
+                Transform buttonsContainerNew = _uiPanelInstance.transform.Find(vanillaButtonsContainerGo.name);
+                if (buttonsContainerNew == null && _uiPanelInstance.transform.childCount > 0)
                 {
-                    buttonsContainer = _uiPanelInstance.transform.GetChild(0); // Запасной вариант, берем первый дочерний
+                    buttonsContainerNew = _uiPanelInstance.transform.GetChild(0);
                 }
 
-                if (buttonsContainer == null)
+                if (buttonsContainerNew == null)
                 {
                     Plugin.Log.LogError("[UI] Критическая ошибка: Внутри нового фона не найден контейнер для кнопок!");
                     return;
                 }
-                buttonsContainer.name = "Mod_AnimationButtonsContainer";
+                buttonsContainerNew.name = "Mod_AnimationButtonsContainer";
 
-                // 4. ТОТАЛЬНАЯ ЗАЧИСТКА: Удаляем абсолютно все ванильные кнопки раздевания во всей панели-клоне
+                // Полная очистка ванильных кнопок раздевания на панели-клоне
                 Button[] oldButtons = _uiPanelInstance.GetComponentsInChildren<Button>(true);
                 foreach (Button oldBtn in oldButtons)
                 {
                     GameObject.DestroyImmediate(oldBtn.gameObject);
                 }
 
-                // 5. Ищем оригинальный префаб кнопки для копирования стиля (ищем в оригинальном контейнеres)
                 Transform btnPrefab = vanillaButtonsContainerGo.transform.GetComponentInChildren<Button>()?.transform;
 
                 if (btnPrefab != null)
                 {
                     Vector3 btnPos = Vector3.zero;
-                    float spacing = -45f; // На случай, если LayoutGroup потребует ручного смещения, но вообще VerticalLayoutGroup расставит сам
-
+                    float spacing = -45f; // Интервалы между кнопок оставляем прежними
 
                     // 1. Кнопка Скорость +
-                    CreateUiButton(buttonsContainer, btnPrefab, "Mod_BtnSpeedPlus",
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnSpeedPlus",
                         $"Speed: {Mathf.RoundToInt(_player.GetSpeed() * 100)}% (+10)", btnPos, _iconSpeedPlus, () => {
                             _player.ChangeSpeed(0.1f);
                             UpdateSpeedButtonsText();
@@ -118,7 +153,7 @@ namespace FurnitureAnimationsMod
                     btnPos.y += spacing;
 
                     // 2. Кнопка Скорость -
-                    CreateUiButton(buttonsContainer, btnPrefab, "Mod_BtnSpeedMinus",
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnSpeedMinus",
                         $"Speed: {Mathf.RoundToInt(_player.GetSpeed() * 100)}% (-10)", btnPos, _iconSpeedMinus, () => {
                             _player.ChangeSpeed(-0.1f);
                             UpdateSpeedButtonsText();
@@ -126,35 +161,32 @@ namespace FurnitureAnimationsMod
                     btnPos.y += spacing;
 
                     // 3. Кнопка Сглаживания (Интерполяции)
-                    CreateUiButton(buttonsContainer, btnPrefab, "Mod_BtnEaseToggle",
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnEaseToggle",
                         $"Interpolation: {_player.GetEaseMode()}", btnPos, GetCurrentEaseSprite(), () => {
                             _player.ToggleEaseMode();
-                            UpdateEaseButton(); // Используем централизованный метод обновления текста и иконки
+                            UpdateEaseButton();
                         });
                     btnPos.y += spacing;
 
                     // 4. НОВАЯ КНОПКА: СЛЕДУЮЩИЙ ТРЕК
-                    CreateUiButton(buttonsContainer, btnPrefab, "Mod_BtnNextAudio", "Next Audio", btnPos, _iconNextAudio, () => {
-                        if (AnimationAudioManager.Instance != null)
-                        {
-                            AnimationAudioManager.Instance.PlayNextTrack();
-                            UpdateSoundButton(); // <-- ПРАВКА: Синхронизируем иконку звука, если Mute сбросился!
-                        }
-                        else
-                        {
-                            Plugin.Log.LogWarning("[UI] Невозможно переключить трек: AnimationAudioManager не инициализирован.");
-                        }
-                    });
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnNextAudio",
+                        "Next Audio", btnPos, _iconNextAudio, () => {
+                            if (AnimationAudioManager.Instance != null)
+                            {
+                                AnimationAudioManager.Instance.PlayNextTrack();
+                                UpdateSoundButton();
+                            }
+                        });
                     btnPos.y += spacing;
 
-                    // 5. Кнопка MuteToggle
+                    // 5. Кнопка звука Mute/Unmute
                     Texture2D currentSoundIcon = (AnimationAudioManager.Instance != null && AnimationAudioManager.Instance.IsMuted()) ? _iconSoundOff : _iconSoundOn;
-                    CreateUiButton(buttonsContainer, btnPrefab, "Mod_BtnMuteToggle",
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnMuteToggle",
                         "Sound: ON", btnPos, currentSoundIcon, () => {
                             if (AnimationAudioManager.Instance != null)
                             {
                                 AnimationAudioManager.Instance.ToggleMute();
-                                UpdateSoundButton(); // Используем централизованный метод обновления текста и иконки
+                                UpdateSoundButton();
                             }
                         });
                 }
@@ -162,6 +194,8 @@ namespace FurnitureAnimationsMod
                 {
                     Plugin.Log.LogError("[UI] Сбой: Не удалось обнаружить префаб ванильной кнопки для копирования стилей.");
                 }
+
+                UpdateInterfaceStates();
             }
             catch (System.Exception ex)
             {
@@ -329,6 +363,17 @@ namespace FurnitureAnimationsMod
             if (img != null)
             {
                 img.sprite = Sprite.Create(newTexture, new Rect(0, 0, newTexture.width, newTexture.height), new Vector2(0.5f, 0.5f));
+            }
+        }
+
+        private void RebindButtonAction(Transform container, string buttonName, System.Action onClick)
+        {
+            Transform btnTransform = container.Find(buttonName);
+            Button b = btnTransform?.GetComponent<Button>();
+            if (b != null)
+            {
+                b.onClick.RemoveAllListeners(); // Сносим старую ссылку на уничтоженный плеер
+                b.onClick.AddListener(() => onClick?.Invoke()); // Записываем ссылку на новый плеер
             }
         }
 

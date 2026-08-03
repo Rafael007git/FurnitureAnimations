@@ -309,7 +309,6 @@ namespace FurnitureAnimationsMod
             }
         }
 
-
         private void AbsoluteSkeletalReset(Dictionary<string, BoneDelta> firstFrameBoneDatas)
         {
             if (_character == null) return;
