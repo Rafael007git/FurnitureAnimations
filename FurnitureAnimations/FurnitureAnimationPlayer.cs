@@ -72,6 +72,9 @@ namespace FurnitureAnimationsMod
             gameObject.AddComponent<AnimationAudioManager>().Initialize(animationName, _animData.loop);
             gameObject.AddComponent<AnimationUiControls>().Initialize(this);
 
+            // --- ДОБАВЬТЕ ЭТУ СТРОКУ ДЛЯ ПОДКЛЮЧЕНИЯ РАДАРА ---
+            gameObject.AddComponent<AnimationRadar>();
+
             if (furniture != null && poseConfig != null)
             {
                 _baseWorldPos = furniture.transform.TransformPoint(new Vector3(poseConfig.LocPosition.x, poseConfig.LocPosition.y, poseConfig.LocPosition.z));

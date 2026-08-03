@@ -91,6 +91,7 @@
   <ItemGroup>
     <Compile Include="AnimatedPosePatch.cs" />
     <Compile Include="AnimationAudioManager.cs" />
+    <Compile Include="AnimationRadar.cs" />
     <Compile Include="AnimationUiControls.cs" />
     <Compile Include="CharacterStateHelper.cs" />
     <Compile Include="ConfigManager.cs" />
