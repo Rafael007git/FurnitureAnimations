@@ -30,6 +30,15 @@ namespace FurnitureAnimationsMod
         private Quaternion _baseWorldRot;
         private Quaternion _modelRotationModifier;
 
+        private struct AbsoluteWorldFrame
+        {
+            public Vector3 Position;
+            public Quaternion Rotation;
+        }
+
+        // Массив для хранения предрассчитанных координат всех кадров автора
+        private AbsoluteWorldFrame[] _calculatedWorldFrames;
+
         private readonly Dictionary<string, Transform> _boneCache = new Dictionary<string, Transform>();
 
         private float _speedModifier = 1.0f;
@@ -107,6 +116,38 @@ namespace FurnitureAnimationsMod
             _gameFrameCounter = 0;
             _totalTargetFrames = 0; // Спровоцирует перерасчет плотности на первом тике
             _reversing = false;
+
+            // =========================================================================
+            // ПРЕДВАРИТЕЛЬНЫЙ РАСЧЕТ АБСОЛЮТНЫХ МИРОВЫХ КООРДИНАТ ДЛЯ ВСЕХ КАДРОВ
+            // =========================================================================
+            int totalFramesCount = _animData.deltas.Count;
+            _calculatedWorldFrames = new AbsoluteWorldFrame[totalFramesCount];
+
+            // 0-й (стартовый) кадр всегда равен базовым координатам мода на мебели
+            _calculatedWorldFrames[0] = new AbsoluteWorldFrame
+            {
+                Position = _baseWorldPos,
+                Rotation = _baseWorldRot
+            };
+
+            // Последовательно нанизываем смещения для всех последующих кадров автора
+            Vector3 currentAccumulatedPos = _baseWorldPos;
+            Quaternion currentAccumulatedRot = _baseWorldRot;
+
+            for (int i = 1; i < totalFramesCount; i++)
+            {
+                var currentDelta = _animData.deltas[i];
+                currentAccumulatedRot *= Quaternion.Euler(ArrayToVector3(currentDelta.endRotDelta));
+                currentAccumulatedPos += _modelRotationModifier * ArrayToVector3(currentDelta.endPosDelta);
+
+                _calculatedWorldFrames[i] = new AbsoluteWorldFrame
+                {
+                    Position = currentAccumulatedPos,
+                    Rotation = currentAccumulatedRot
+                };
+            }
+            // =========================================================================
+
         }
 
         public void ChangeSpeed(float delta)
@@ -202,38 +243,36 @@ namespace FurnitureAnimationsMod
                     break;
             }
 
-            // 4. МАТЕМАТИЧЕСКИЙ РЕНДЕР И ИНЪЕКЦИЯ КОСТЕЙ В СКЕЛЕТ
+            // =========================================================================
+            // 4. МАТЕМАТИЧЕСКИЙ РЕНДЕР И ИНЪЕКЦИЯ КОСТЕЙ В СКЕЛЕТ (ОПТИМИЗИРОВАННЫЙ)
+            // =========================================================================
             try
             {
-                int fromFrameIndex = _currentTransitionIndex - 1;
-                int toFrameIndex = _currentTransitionIndex;
+                int fromFrameIndex = _currentTransitionIndex - 1; // Откуда идем
+                int toFrameIndex = _currentTransitionIndex;     // Куда идем
 
-                PoseAnimationDelta fromDelta = _animData.deltas[fromFrameIndex];
-                PoseAnimationDelta toDelta = _animData.deltas[toFrameIndex];
-
-                Vector3 startFramePos = _baseWorldPos;
-                Quaternion startFrameRot = _baseWorldRot;
-
-                if (_currentTransitionIndex > 1)
+                // Защитная проверка, чтобы не выйти за пределы предрассчитанного массива
+                if (_calculatedWorldFrames != null && toFrameIndex < _calculatedWorldFrames.Length)
                 {
-                    var prevDelta = _animData.deltas[fromFrameIndex - 1];
-                    startFrameRot *= Quaternion.Euler(ArrayToVector3(prevDelta.endRotDelta));
-                    startFramePos += _modelRotationModifier * ArrayToVector3(prevDelta.endPosDelta);
+                    Vector3 startFramePos = _calculatedWorldFrames[fromFrameIndex].Position;
+                    Quaternion startFrameRot = _calculatedWorldFrames[fromFrameIndex].Rotation;
+
+                    Vector3 endFramePos = _calculatedWorldFrames[toFrameIndex].Position;
+                    Quaternion endFrameRot = _calculatedWorldFrames[toFrameIndex].Rotation;
+
+                    // Плавный Lerp тела персонажа между готовыми мировыми точками за O(1)
+                    _character.transform.position = Vector3.Lerp(startFramePos, endFramePos, localFraction);
+                    _character.transform.rotation = Quaternion.Lerp(startFrameRot, endFrameRot, localFraction);
                 }
 
-                Quaternion endFrameRot = _baseWorldRot * Quaternion.Euler(ArrayToVector3(toDelta.endRotDelta));
-                Vector3 endFramePos = _baseWorldPos + _modelRotationModifier * ArrayToVector3(toDelta.endPosDelta);
-
-                _character.transform.position = Vector3.Lerp(startFramePos, endFramePos, lerpFraction);
-                _character.transform.rotation = Quaternion.Lerp(startFrameRot, endFrameRot, lerpFraction);
-
-                // Раскатываем позы по костям из кэша O(1)
+                // Интерполяция внутренних костей скелета куклы (остается без изменений)
+                PoseAnimationDelta toDelta = _animData.deltas[toFrameIndex];
                 foreach (var kp in toDelta.boneDatas)
                 {
                     if (_boneCache.TryGetValue(kp.Key, out Transform boneTransform) && boneTransform != null)
                     {
-                        boneTransform.localPosition = Vector3.Lerp(ArrayToVector3(kp.Value.startPos), ArrayToVector3(kp.Value.endPos), lerpFraction);
-                        boneTransform.localRotation = Quaternion.Lerp(Quaternion.Euler(ArrayToVector3(kp.Value.startRot)), Quaternion.Euler(ArrayToVector3(kp.Value.endRot)), lerpFraction);
+                        boneTransform.localPosition = Vector3.Lerp(ArrayToVector3(kp.Value.startPos), ArrayToVector3(kp.Value.endPos), localFraction);
+                        boneTransform.localRotation = Quaternion.Lerp(Quaternion.Euler(ArrayToVector3(kp.Value.startRot)), Quaternion.Euler(ArrayToVector3(kp.Value.endRot)), localFraction);
                     }
                 }
             }
