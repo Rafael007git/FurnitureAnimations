@@ -195,8 +195,6 @@ namespace FurnitureAnimationsMod
             {
                 _audioSource.Stop();
             }
-            _currentTrackIndex = -1; // Сбрасываем индекс плейлиста
-            _currentPlaylist.Clear();
         }
 
         private void OnDestroy()
