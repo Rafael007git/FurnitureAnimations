@@ -118,7 +118,7 @@ namespace FurnitureAnimationsMod
             _reversing = false;
 
             // =========================================================================
-            // ПРЕДВАРИТЕЛЬНЫЙ РАСЧЕТ АБСОЛЮТНЫХ МИРОВЫХ КООРДИНАТ ДЛЯ ВСЕХ КАДРОВ
+            // ПРЕДВАРИТЕЛЬНЫЙ РАСЧЕТ АБСОЛЮТНЫХ МИРОВЫХ КООРДИНАТ ДЛЯ ВСЕХ КАДРОВ - нужен ли он?
             // =========================================================================
             int totalFramesCount = _animData.deltas.Count;
             _calculatedWorldFrames = new AbsoluteWorldFrame[totalFramesCount];
@@ -147,7 +147,10 @@ namespace FurnitureAnimationsMod
                 };
             }
             // =========================================================================
-
+            _currentTransitionIndex = 0;
+            _gameFrameCounter = 0;
+            _totalTargetFrames = 0;
+            _reversing = false;
         }
 
         public void ChangeSpeed(float delta)
@@ -170,151 +173,142 @@ namespace FurnitureAnimationsMod
 
         private void LateUpdate()
         {
-            if (_character == null || _animData == null) return;
+            if (_character == null || _animData == null || _animData.deltas == null) return;
 
-            // Общее количество переходов в анимации (3 ключевых кадра = 2 перехода)
-            int totalTransitions = _animData.deltas.Count - 1;
+            // 1. Общее количество переходов (фаз), заложенных автором в JSON
+            int totalTransitions = _animData.deltas.Count;
             if (totalTransitions < 1) return;
 
-            // 1. ИНИЦИАЛИЗАЦИЯ И РАСЧЕТ ПЛОТНОСТИ КАДРОВ НА ГРАНИЦЕ ПЕРЕХОДА
-            if (_totalTargetFrames == 0)
+            // Защита от выхода за границы массива (индексация строго от 0 до totalTransitions - 1)
+            if (_currentTransitionIndex >= totalTransitions) _currentTransitionIndex = totalTransitions - 1;
+            if (_currentTransitionIndex < 0) _currentTransitionIndex = 0;
+
+            // Берем данные текущего активного перехода
+            PoseAnimationDelta currentTransitionData = _animData.deltas[_currentTransitionIndex];
+
+            float durationInSeconds = currentTransitionData.frames * (_animData.rate > 0 ? _animData.rate : 0.0333f);
+            if (_totalTargetFrames <= 0)
             {
-                int currentFrameArrayIndex = _currentTransitionIndex - 1;
-                PoseAnimationDelta currentDeltaData = _animData.deltas[currentFrameArrayIndex];
+                float currentFps = (Time.deltaTime > 0f) ? (1f / Time.deltaTime) : 60f;
+                if (currentFps < 10f) currentFps = 10f;
 
-                float baseRate = _animData.rate > 0 ? _animData.rate : 0.0333f;
-
-                // Рассчитываем целевую длительность текущего перехода в секундах с учетом скорости
-                float durationInSeconds = (currentDeltaData.frames * baseRate) / _speedModifier;
-
-                // Переводим секунды в стабильное количество целых кадров Unity
-                _totalTargetFrames = Mathf.RoundToInt(durationInSeconds / Time.deltaTime);
-                if (_totalTargetFrames < 1) _totalTargetFrames = 1;
-
-                _gameFrameCounter = 0;
+                // Рассчитываем целевые игровые кадры с учётом модификатора скорости
+                _totalTargetFrames = Mathf.RoundToInt((durationInSeconds * currentFps) / _speedModifier);
+                if (_totalTargetFrames <= 0) _totalTargetFrames = 1;
             }
 
-            // 2. ВЫЧИСЛЕНИЕ ЧИСТОЙ ФРАКЦИИ С УЧЕТОМ НАПРАВЛЕНИЯ РЕВЕРСА
+            // 2. Инкремент шага игровых кадров
+            _gameFrameCounter++;
             float localFraction = Mathf.Clamp01((float)_gameFrameCounter / _totalTargetFrames);
-            if (_reversing)
-            {
-                localFraction = 1f - localFraction; // Пятимся назад
-            }
 
-            float lerpFraction = localFraction; // По умолчанию для Linear
+            // Если включен реверс, фракция идет в обратную сторону (от 1 к 0)
+            float actualFraction = _reversing ? (1f - localFraction) : localFraction;
 
-            // 3. ПРИМЕНЕНИЕ ВЫБРАННОГО РЕЖИМА СГЛАЖИВАНИЯ (EASEMODE)
-            switch (_currentEaseMode)
-            {
-                case EaseMode.PerFrame:
-                    lerpFraction = Mathf.SmoothStep(0f, 1f, localFraction);
-                    break;
-
-                case EaseMode.Global:
-                    float totalAnimationFrames = 0f;
-                    for (int i = 0; i < totalTransitions; i++)
-                    {
-                        totalAnimationFrames += _animData.deltas[i].frames; // Итог: 70 кадров автора
-                    }
-
-                    float passedAuthorFrames = 0f;
-                    for (int i = 0; i < _currentTransitionIndex - 1; i++)
-                    {
-                        passedAuthorFrames += _animData.deltas[i].frames;
-                    }
-
-                    int arrayIdx = _currentTransitionIndex - 1;
-                    float currentGlobalAuthorFrame = passedAuthorFrames + (localFraction * _animData.deltas[arrayIdx].frames);
-                    float globalFraction = Mathf.Clamp01(currentGlobalAuthorFrame / totalAnimationFrames);
-
-                    float smoothedGlobal = Mathf.SmoothStep(0f, 1f, globalFraction);
-
-                    float currentDeltaStartGlobal = passedAuthorFrames / totalAnimationFrames;
-                    float currentDeltaEndGlobal = (passedAuthorFrames + _animData.deltas[arrayIdx].frames) / totalAnimationFrames;
-                    float globalDeltaDuration = currentDeltaEndGlobal - currentDeltaStartGlobal;
-
-                    lerpFraction = globalDeltaDuration > 0
-                        ? Mathf.Clamp01((smoothedGlobal - currentDeltaStartGlobal) / globalDeltaDuration)
-                        : 1f;
-                    break;
-
-                case EaseMode.Linear:
-                default:
-                    break;
-            }
-
-            // =========================================================================
-            // 4. МАТЕМАТИЧЕСКИЙ РЕНДЕР И ИНЪЕКЦИЯ КОСТЕЙ В СКЕЛЕТ (ОПТИМИЗИРОВАННЫЙ)
-            // =========================================================================
+            // 3. МАТЕМАТИЧЕСКИЙ РЕНДЕР И ИНЪЕКЦИЯ КОСТЕЙ
             try
             {
-                int fromFrameIndex = _currentTransitionIndex - 1; // Откуда идем
-                int toFrameIndex = _currentTransitionIndex;     // Куда идем
+                // Для самого тела (рута) персонажа интерполируем базовое смещение плашки
+                Vector3 startFramePos = _baseWorldPos;
+                Quaternion startFrameRot = _baseWorldRot;
 
-                // Защитная проверка, чтобы не выйти за пределы предрассчитанного массива
-                if (_calculatedWorldFrames != null && toFrameIndex < _calculatedWorldFrames.Length)
+                // Если это не первый переход, накапливаем трансформации предыдущих фаз
+                if (_currentTransitionIndex > 0)
                 {
-                    Vector3 startFramePos = _calculatedWorldFrames[fromFrameIndex].Position;
-                    Quaternion startFrameRot = _calculatedWorldFrames[fromFrameIndex].Rotation;
-
-                    Vector3 endFramePos = _calculatedWorldFrames[toFrameIndex].Position;
-                    Quaternion endFrameRot = _calculatedWorldFrames[toFrameIndex].Rotation;
-
-                    // Плавный Lerp тела персонажа между готовыми мировыми точками за O(1)
-                    _character.transform.position = Vector3.Lerp(startFramePos, endFramePos, localFraction);
-                    _character.transform.rotation = Quaternion.Lerp(startFrameRot, endFrameRot, localFraction);
+                    for (int i = 0; i < _currentTransitionIndex; i++)
+                    {
+                        var prevDelta = _animData.deltas[i];
+                        startFrameRot *= Quaternion.Euler(ArrayToVector3(prevDelta.endRotDelta));
+                        startFramePos += _modelRotationModifier * ArrayToVector3(prevDelta.endPosDelta);
+                    }
                 }
 
-                // Интерполяция внутренних костей скелета куклы (остается без изменений)
-                PoseAnimationDelta toDelta = _animData.deltas[toFrameIndex];
-                foreach (var kp in toDelta.boneDatas)
+                Quaternion endFrameRot = startFrameRot * Quaternion.Euler(ArrayToVector3(currentTransitionData.endRotDelta));
+                Vector3 endFramePos = startFramePos + _modelRotationModifier * ArrayToVector3(currentTransitionData.endPosDelta);
+
+                _character.transform.position = Vector3.Lerp(startFramePos, endFramePos, actualFraction);
+                _character.transform.rotation = Quaternion.Lerp(startFrameRot, endFrameRot, actualFraction);
+
+                // ИНТЕРПОЛЯЦИЯ КОСТЕЙ: строго внутри ОДНОЙ дельты от start к end!
+                if (currentTransitionData.boneDatas != null)
                 {
-                    if (_boneCache.TryGetValue(kp.Key, out Transform boneTransform) && boneTransform != null)
+                    foreach (var kp in currentTransitionData.boneDatas)
                     {
-                        boneTransform.localPosition = Vector3.Lerp(ArrayToVector3(kp.Value.startPos), ArrayToVector3(kp.Value.endPos), localFraction);
-                        boneTransform.localRotation = Quaternion.Lerp(Quaternion.Euler(ArrayToVector3(kp.Value.startRot)), Quaternion.Euler(ArrayToVector3(kp.Value.endRot)), localFraction);
+                        if (_boneCache.TryGetValue(kp.Key, out Transform boneTransform) && boneTransform != null)
+                        {
+                            // Извлекаем start и end прямо из текущей дельты
+                            Vector3 boneStartPos = ArrayToVector3(kp.Value.startPos);
+                            Vector3 boneEndPos = ArrayToVector3(kp.Value.endPos);
+                            Quaternion boneStartRot = Quaternion.Euler(ArrayToVector3(kp.Value.startRot));
+                            Quaternion boneRotEnd = Quaternion.Euler(ArrayToVector3(kp.Value.endRot));
+
+                            boneTransform.localPosition = Vector3.Lerp(boneStartPos, boneEndPos, actualFraction);
+                            boneTransform.localRotation = Quaternion.Lerp(boneStartRot, boneRotEnd, actualFraction);
+                        }
                     }
                 }
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogError($"[SubframePlayer] Критическая ошибка интерполяции: {ex.Message}");
+                Plugin.Log.LogError($"[SubframePlayer] Ошибка рендера костей: {ex.Message}");
             }
 
-            // 5. ИНКРЕМЕНТ И ЦИКЛ ПЕРЕКЛЮЧЕНИЯ ЧЕЛОВЕЧЕСКИХ ПЕРЕХОДОВ (1 И 2)
-            _gameFrameCounter++;
-
-            if (_gameFrameCounter > _totalTargetFrames)
+            // 4. АВТОМАТ СМЕНЫ ПЕРЕХОДОВ И РЕВЕРСА
+            if (_gameFrameCounter >= _totalTargetFrames)
             {
-                _totalTargetFrames = 0; // Сигнал сброса для следующей дельты
+                _gameFrameCounter = 0;
+                _totalTargetFrames = 0; // Сбрасываем для пересчета на следующем шаге
 
                 if (!_reversing)
                 {
-                    if (_currentTransitionIndex < totalTransitions)
+                    // Идем вперед по цепочке дельт
+                    if (_currentTransitionIndex < totalTransitions - 1)
                     {
                         _currentTransitionIndex++;
                     }
                     else
                     {
-                        if (_animData.reverse) { _reversing = true; }
-                        else if (_animData.loop) { _currentTransitionIndex = 1; }
-                        else { Destroy(this); return; }
+                        // Достигли конца самой последней дельты в JSON
+                        if (_animData.reverse)
+                        {
+                            _reversing = true;
+                            // Остаемся на этом же индексе, чтобы начать проигрывать эту же дельту в обратную сторону!
+                        }
+                        else if (_animData.loop)
+                        {
+                            _currentTransitionIndex = 0;
+                        }
+                        else
+                        {
+                            Destroy(this);
+                            return;
+                        }
                     }
                 }
                 else
                 {
-                    if (_currentTransitionIndex > 1)
+                    // Идем назад (реверс)
+                    if (_currentTransitionIndex > 0)
                     {
                         _currentTransitionIndex--;
                     }
                     else
                     {
-                        if (_animData.loop) { _reversing = false; }
-                        else { Destroy(this); return; }
+                        // Вернулись в самое начало первой дельты (индекс 0)
+                        if (_animData.loop)
+                        {
+                            _reversing = false;
+                            // Флаг снят, со следующего кадра снова плавно идем вперед от start к end
+                        }
+                        else
+                        {
+                            Destroy(this);
+                            return;
+                        }
                     }
                 }
             }
         }
+
 
         private void AbsoluteSkeletalReset(Dictionary<string, BoneDelta> firstFrameBoneDatas)
         {
