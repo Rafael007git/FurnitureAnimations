@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
+using static ObjectRaycastPhysics;
 
 namespace FurnitureAnimationsMod
 {
@@ -19,10 +20,10 @@ namespace FurnitureAnimationsMod
         private CharacterCustomization _character;
         private PoseAnimationData _animData;
 
-        private float _currentFrameTime = 0f; // Плавный прогресс внутри текущей дельты
-        private float _deltaTime = 0f;
-        private int _currentDelta = 0;
-        private int _currentFrame = 0;
+        // Новая целочисленная кадровая сетка на базе стабильного FPS
+        private int _currentTransitionIndex = 1; // Человеческие индексы: 1 и 2
+        private int _gameFrameCounter = 0;
+        private int _totalTargetFrames = 0;
         private bool _reversing = false;
 
         private Vector3 _baseWorldPos;
@@ -91,16 +92,17 @@ namespace FurnitureAnimationsMod
             CacheSkeletonRecursive(_character.transform);
 
             Dictionary<string, BoneDelta> firstFrameDatas = null;
-            if (_animData != null && _animData.deltas != null && _animData.deltas.Count > 0)
+            if (_animData.deltas.Count > 0)
             {
                 firstFrameDatas = _animData.deltas[0].boneDatas;
             }
 
             AbsoluteSkeletalReset(firstFrameDatas);
 
-            _deltaTime = 0f;
-            _currentDelta = 0;
-            _currentFrame = 0;
+            // Мягкая инициализация целочисленных состояний
+            _currentTransitionIndex = 1;
+            _gameFrameCounter = 0;
+            _totalTargetFrames = 0; // Спровоцирует перерасчет плотности на первом тике
             _reversing = false;
         }
 
@@ -120,17 +122,155 @@ namespace FurnitureAnimationsMod
 
         public EaseMode GetEaseMode() => _currentEaseMode;
 
-        private float ApplyEasing(float fraction)
+        public string GetPlayingAnimationName() => _animData != null ? _animData.name : string.Empty;
+
+        private void LateUpdate()
         {
+            if (_character == null || _animData == null) return;
+
+            // Общее количество переходов в анимации (3 ключевых кадра = 2 перехода)
+            int totalTransitions = _animData.deltas.Count - 1;
+            if (totalTransitions < 1) return;
+
+            // 1. ИНИЦИАЛИЗАЦИЯ И РАСЧЕТ ПЛОТНОСТИ КАДРОВ НА ГРАНИЦЕ ПЕРЕХОДА
+            if (_totalTargetFrames == 0)
+            {
+                int currentFrameArrayIndex = _currentTransitionIndex - 1;
+                PoseAnimationDelta currentDeltaData = _animData.deltas[currentFrameArrayIndex];
+
+                float baseRate = _animData.rate > 0 ? _animData.rate : 0.0333f;
+
+                // Рассчитываем целевую длительность текущего перехода в секундах с учетом скорости
+                float durationInSeconds = (currentDeltaData.frames * baseRate) / _speedModifier;
+
+                // Переводим секунды в стабильное количество целых кадров Unity
+                _totalTargetFrames = Mathf.RoundToInt(durationInSeconds / Time.deltaTime);
+                if (_totalTargetFrames < 1) _totalTargetFrames = 1;
+
+                _gameFrameCounter = 0;
+            }
+
+            // 2. ВЫЧИСЛЕНИЕ ЧИСТОЙ ФРАКЦИИ С УЧЕТОМ НАПРАВЛЕНИЯ РЕВЕРСА
+            float localFraction = Mathf.Clamp01((float)_gameFrameCounter / _totalTargetFrames);
+            if (_reversing)
+            {
+                localFraction = 1f - localFraction; // Пятимся назад
+            }
+
+            float lerpFraction = localFraction; // По умолчанию для Linear
+
+            // 3. ПРИМЕНЕНИЕ ВЫБРАННОГО РЕЖИМА СГЛАЖИВАНИЯ (EASEMODE)
             switch (_currentEaseMode)
             {
-                case EaseMode.Global:
-                    return fraction * fraction * (3f - 2f * fraction);
                 case EaseMode.PerFrame:
-                    return Mathf.SmoothStep(0f, 1f, fraction);
+                    lerpFraction = Mathf.SmoothStep(0f, 1f, localFraction);
+                    break;
+
+                case EaseMode.Global:
+                    float totalAnimationFrames = 0f;
+                    for (int i = 0; i < totalTransitions; i++)
+                    {
+                        totalAnimationFrames += _animData.deltas[i].frames; // Итог: 70 кадров автора
+                    }
+
+                    float passedAuthorFrames = 0f;
+                    for (int i = 0; i < _currentTransitionIndex - 1; i++)
+                    {
+                        passedAuthorFrames += _animData.deltas[i].frames;
+                    }
+
+                    int arrayIdx = _currentTransitionIndex - 1;
+                    float currentGlobalAuthorFrame = passedAuthorFrames + (localFraction * _animData.deltas[arrayIdx].frames);
+                    float globalFraction = Mathf.Clamp01(currentGlobalAuthorFrame / totalAnimationFrames);
+
+                    float smoothedGlobal = Mathf.SmoothStep(0f, 1f, globalFraction);
+
+                    float currentDeltaStartGlobal = passedAuthorFrames / totalAnimationFrames;
+                    float currentDeltaEndGlobal = (passedAuthorFrames + _animData.deltas[arrayIdx].frames) / totalAnimationFrames;
+                    float globalDeltaDuration = currentDeltaEndGlobal - currentDeltaStartGlobal;
+
+                    lerpFraction = globalDeltaDuration > 0
+                        ? Mathf.Clamp01((smoothedGlobal - currentDeltaStartGlobal) / globalDeltaDuration)
+                        : 1f;
+                    break;
+
                 case EaseMode.Linear:
                 default:
-                    return fraction;
+                    break;
+            }
+
+            // 4. МАТЕМАТИЧЕСКИЙ РЕНДЕР И ИНЪЕКЦИЯ КОСТЕЙ В СКЕЛЕТ
+            try
+            {
+                int fromFrameIndex = _currentTransitionIndex - 1;
+                int toFrameIndex = _currentTransitionIndex;
+
+                PoseAnimationDelta fromDelta = _animData.deltas[fromFrameIndex];
+                PoseAnimationDelta toDelta = _animData.deltas[toFrameIndex];
+
+                Vector3 startFramePos = _baseWorldPos;
+                Quaternion startFrameRot = _baseWorldRot;
+
+                if (_currentTransitionIndex > 1)
+                {
+                    var prevDelta = _animData.deltas[fromFrameIndex - 1];
+                    startFrameRot *= Quaternion.Euler(ArrayToVector3(prevDelta.endRotDelta));
+                    startFramePos += _modelRotationModifier * ArrayToVector3(prevDelta.endPosDelta);
+                }
+
+                Quaternion endFrameRot = _baseWorldRot * Quaternion.Euler(ArrayToVector3(toDelta.endRotDelta));
+                Vector3 endFramePos = _baseWorldPos + _modelRotationModifier * ArrayToVector3(toDelta.endPosDelta);
+
+                _character.transform.position = Vector3.Lerp(startFramePos, endFramePos, lerpFraction);
+                _character.transform.rotation = Quaternion.Lerp(startFrameRot, endFrameRot, lerpFraction);
+
+                // Раскатываем позы по костям из кэша O(1)
+                foreach (var kp in toDelta.boneDatas)
+                {
+                    if (_boneCache.TryGetValue(kp.Key, out Transform boneTransform) && boneTransform != null)
+                    {
+                        boneTransform.localPosition = Vector3.Lerp(ArrayToVector3(kp.Value.startPos), ArrayToVector3(kp.Value.endPos), lerpFraction);
+                        boneTransform.localRotation = Quaternion.Lerp(Quaternion.Euler(ArrayToVector3(kp.Value.startRot)), Quaternion.Euler(ArrayToVector3(kp.Value.endRot)), lerpFraction);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"[SubframePlayer] Критическая ошибка интерполяции: {ex.Message}");
+            }
+
+            // 5. ИНКРЕМЕНТ И ЦИКЛ ПЕРЕКЛЮЧЕНИЯ ЧЕЛОВЕЧЕСКИХ ПЕРЕХОДОВ (1 И 2)
+            _gameFrameCounter++;
+
+            if (_gameFrameCounter > _totalTargetFrames)
+            {
+                _totalTargetFrames = 0; // Сигнал сброса для следующей дельты
+
+                if (!_reversing)
+                {
+                    if (_currentTransitionIndex < totalTransitions)
+                    {
+                        _currentTransitionIndex++;
+                    }
+                    else
+                    {
+                        if (_animData.reverse) { _reversing = true; }
+                        else if (_animData.loop) { _currentTransitionIndex = 1; }
+                        else { Destroy(this); return; }
+                    }
+                }
+                else
+                {
+                    if (_currentTransitionIndex > 1)
+                    {
+                        _currentTransitionIndex--;
+                    }
+                    else
+                    {
+                        if (_animData.loop) { _reversing = false; }
+                        else { Destroy(this); return; }
+                    }
+                }
             }
         }
 
@@ -165,145 +305,6 @@ namespace FurnitureAnimationsMod
             Plugin.Log.LogInfo($"[FurnitureAnimations] Скелет {_character.name} очищен. Якорь 'hip' выставлен.");
         }
 
-        public string GetPlayingAnimationName()
-        {
-            return _animData != null ? _animData.name : string.Empty;
-        }
-
-        private void LateUpdate()
-        {
-            if (_character == null || _animData == null) return;
-
-            // 1. ПЛАВНЫЙ ИНКРЕМЕНТ КАДРОВ: Накапливаем float-время с учетом коэффициента скорости
-            _deltaTime += Time.deltaTime * _speedModifier;
-
-            // Если время шага еще не пришло, мы все равно рендерим промежуточные углы (субкадры)
-            // для абсолютной плавности, но не переключаем счетчик кадров автора.
-            float frameProgress = Mathf.Clamp01(_deltaTime / _animData.rate);
-
-            if (_deltaTime >= _animData.rate)
-            {
-                _deltaTime = 0f;
-                int nextFrame;
-                int nextDelta;
-
-                // Полная, нетронутая логика циклов и реверсов автора
-                if (_reversing)
-                {
-                    if (_currentFrame <= 0)
-                    {
-                        _currentFrame = 0;
-                        if (_currentDelta <= 0)
-                        {
-                            _currentDelta = 0;
-                            if (!_animData.loop) { Destroy(this); return; }
-                            _reversing = false;
-                            nextFrame = 1;
-                            nextDelta = _currentDelta;
-                        }
-                        else
-                        {
-                            nextDelta = _currentDelta - 1;
-                            nextFrame = _animData.deltas[nextDelta].frames - 1;
-                        }
-                    }
-                    else
-                    {
-                        nextFrame = _currentFrame - 1;
-                        nextDelta = _currentDelta;
-                    }
-                }
-                else
-                {
-                    if (_currentFrame >= _animData.deltas[_currentDelta].frames - 1)
-                    {
-                        if (_currentDelta >= _animData.deltas.Count - 1)
-                        {
-                            if (_animData.reverse)
-                            {
-                                _reversing = true;
-                                nextFrame = Mathf.Max(0, _animData.deltas[_currentDelta].frames - 2);
-                                nextDelta = _currentDelta;
-                            }
-                            else
-                            {
-                                if (!_animData.loop) { Destroy(this); return; }
-                                nextDelta = 0;
-                                nextFrame = 0;
-                            }
-                        }
-                        else
-                        {
-                            nextDelta = _currentDelta + 1;
-                            nextFrame = 0;
-                        }
-                    }
-                    else
-                    {
-                        nextFrame = _currentFrame + 1;
-                        nextDelta = _currentDelta;
-                    }
-                }
-
-                _currentFrame = nextFrame;
-                _currentDelta = nextDelta;
-            }
-
-            // 2. РАСЧЕТ ПРОМЕЖУТОЧНЫХ УГЛОВ (СУБКАДРОВ)
-            try
-            {
-                PoseAnimationDelta currentDeltaData = _animData.deltas[_currentDelta];
-
-                // Вычисляем базовый дискретный шаг автора и плавно подмешиваем к нему рантайм-время frameProgress
-                float continuousFrame = _currentFrame + frameProgress;
-                float rawFraction = Mathf.Clamp01(continuousFrame / (float)currentDeltaData.frames);
-
-                // ТЕПЕРЬ СГЛАЖИВАНИЕ ДЕЙСТВИТЕЛЬНО РАБОТАЕТ БЕЗ ДЕРГАНИЙ
-                float lerpFraction = ApplyEasing(rawFraction);
-
-                Vector3 startFramePos = _baseWorldPos;
-                Quaternion startFrameRot = _baseWorldRot;
-
-                if (_currentDelta > 0)
-                {
-                    startFrameRot *= Quaternion.Euler(ArrayToVector3(_animData.deltas[_currentDelta - 1].endRotDelta));
-                    startFramePos += _modelRotationModifier * ArrayToVector3(_animData.deltas[_currentDelta - 1].endPosDelta);
-                }
-
-                Quaternion endFrameRot = _baseWorldRot * Quaternion.Euler(ArrayToVector3(currentDeltaData.endRotDelta));
-                Vector3 endFramePos = _baseWorldPos + _modelRotationModifier * ArrayToVector3(currentDeltaData.endPosDelta);
-
-                _character.transform.position = Vector3.Lerp(startFramePos, endFramePos, lerpFraction);
-                _character.transform.rotation = Quaternion.Lerp(startFrameRot, endFrameRot, lerpFraction);
-
-                foreach (var keyValuePair in currentDeltaData.boneDatas)
-                {
-                    string boneName = keyValuePair.Key;
-                    BoneDelta boneDelta = keyValuePair.Value;
-
-                    if (_boneCache.TryGetValue(boneName, out Transform boneTransform) && boneTransform != null)
-                    {
-                        boneTransform.localPosition = Vector3.Lerp(
-                            ArrayToVector3(boneDelta.startPos),
-                            ArrayToVector3(boneDelta.endPos),
-                            lerpFraction
-                        );
-
-                        boneTransform.localRotation = Quaternion.Lerp(
-                            Quaternion.Euler(ArrayToVector3(boneDelta.startRot)),
-                            Quaternion.Euler(ArrayToVector3(boneDelta.endRot)),
-                            lerpFraction
-                        );
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Plugin.Log.LogError($"[SubframePlayer] Ошибка интерполяции: {ex.Message}");
-            }
-        }
-
-
         private void CacheSkeletonRecursive(Transform parent)
         {
             if (parent == null) return;
@@ -311,7 +312,9 @@ namespace FurnitureAnimationsMod
             if (!_boneCache.ContainsKey(cleanName)) _boneCache[cleanName] = parent;
 
             for (int i = 0; i < parent.childCount; i++)
+            {
                 CacheSkeletonRecursive(parent.GetChild(i));
+            }
         }
 
         private string FixBoneName(string name)

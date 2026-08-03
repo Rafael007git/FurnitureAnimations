@@ -65,6 +65,15 @@ FurnitureAnimations/Plugin.cs
 FurnitureAnimations/PoseAnimationData.cs
 FurnitureAnimations/PoseExporter.cs
 FurnitureAnimations/Properties/AssemblyInfo.cs
+FurnitureAnimations/Resources/icon_animation.png
+FurnitureAnimations/Resources/icon_easeInOutEach.png
+FurnitureAnimations/Resources/icon_easeInOutWhole.png
+FurnitureAnimations/Resources/icon_fasterPlayback.png
+FurnitureAnimations/Resources/icon_flowEven.png
+FurnitureAnimations/Resources/icon_nextAudio.png
+FurnitureAnimations/Resources/icon_slowerPlayback.png
+FurnitureAnimations/Resources/icon_soundOff.png
+FurnitureAnimations/Resources/icon_soundOn.png
 repomix.config.json
 
 ================================================================
@@ -521,6 +530,132 @@ File: FurnitureAnimations.slnx
 </Solution>
 
 ================
+File: FurnitureAnimations/ConfigManager.cs
+================
+using System;
+using System.IO;
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace FurnitureAnimationsMod
+{
+    public static class ConfigManager
+    {
+        public static string PluginDirectory { get; private set; }
+        public static string PrefabsConfigPath { get; private set; }
+        public static string CustomAnimsPath { get; private set; }
+        public static string IconsPath { get; private set; }
+
+        public static Dictionary<string, FurnitureConfig> LoadedConfigs = new Dictionary<string, FurnitureConfig>(StringComparer.OrdinalIgnoreCase);
+
+        public static void Initialize()
+        {
+            try
+            {
+                // 1. Получаем путь к папке BepInEx\plugins\, где лежит наш .dll
+                string dllPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
+                string pluginsFolder = Path.GetDirectoryName(dllPath);
+
+                // 2. Базовая именная папка мода
+                PluginDirectory = Path.Combine(pluginsFolder, "FurnitureAnimations");
+
+                // 3. АРХИТЕКТУРНЫЙ ФИКС ПУТЕЙ СЕЙВА:
+                PrefabsConfigPath = Path.Combine(PluginDirectory, "FurnitureConfigs");
+                CustomAnimsPath = Path.Combine(PluginDirectory, "CustomAnimations");
+                IconsPath = Path.Combine(CustomAnimsPath, "Icons"); // <-- Папка уехала в CustomAnimations\Icons
+
+                // 4. Создаем директории на диске, если их нет
+                if (!Directory.Exists(PrefabsConfigPath)) Directory.CreateDirectory(PrefabsConfigPath);
+                if (!Directory.Exists(CustomAnimsPath)) Directory.CreateDirectory(CustomAnimsPath);
+                if (!Directory.Exists(IconsPath)) Directory.CreateDirectory(IconsPath);
+
+                // Запускаем диагностику: смотрим, какие моды внедрились в мебель!
+                CheckDoPoseInterceptors();
+
+                Plugin.Log.LogWarning($"[ConfigManager] Истинные пути SDK мода установлены: {PluginDirectory}");
+
+                LoadAllConfigs();
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"[ConfigManager] Критическая ошибка инициализации путей: {ex.Message}");
+            }
+        }
+
+        private static void LoadAllConfigs()
+        {
+            LoadedConfigs.Clear();
+            // Считываем ВСЕ файлы .json в папке конфигураций мебели интерактивов
+            string[] files = Directory.GetFiles(PrefabsConfigPath, "*.json");
+
+            foreach (string file in files)
+            {
+                try
+                {
+                    string jsonContent = File.ReadAllText(file);
+                    FurnitureConfig config = Newtonsoft.Json.JsonConvert.DeserializeObject<FurnitureConfig>(jsonContent);
+
+                    if (config != null && !string.IsNullOrEmpty(config.FurniturePrefabName))
+                    {
+                        LoadedConfigs[config.FurniturePrefabName] = config;
+                        Plugin.Log.LogInfo($"[ConfigManager] Загружен конфиг мебели: {config.FurniturePrefabName} ({config.InteractionPoses?.Count ?? 0} поз)");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Log.LogError($"[ConfigManager] Ошибка чтения файла {Path.GetFileName(file)}: {ex.Message}");
+                }
+            }
+            Plugin.Log.LogWarning($"[ConfigManager] Всего проиндексировано префабов мебели в памяти: {LoadedConfigs.Count}");
+        }
+
+        public static void CheckDoPoseInterceptors()
+        {
+            try
+            {
+                var originalMethod = typeof(Furniture).GetMethod("DoPose", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                if (originalMethod == null) return;
+
+                var patchInfo = HarmonyLib.Harmony.GetPatchInfo(originalMethod);
+                if (patchInfo == null)
+                {
+                    Plugin.Log.LogWarning("[SDK_Registry] Метод Furniture.DoPose абсолютно чист от чужих патчей.");
+                    return;
+                }
+
+                Plugin.Log.LogError($"[SDK_Registry] === КАРТА ВОЙНЫ МОДОВ ДЛЯ Furniture.DoPose ===");
+
+                // ИСПРАВЛЕНО: Используем правильные свойства PatchMethod и owner из актуального HarmonyЛиб
+                if (patchInfo.Prefixes != null)
+                {
+                    foreach (var p in patchInfo.Prefixes)
+                    {
+                        string ownerName = p.owner ?? "UnknownMod";
+                        string methodName = p.PatchMethod != null ? p.PatchMethod.Name : "UnknownMethod";
+                        Plugin.Log.LogError($" -> КРИТИЧЕСКИЙ ПЕРЕХВАТ (Prefix): Мод: {ownerName} | Метод: {methodName}");
+                    }
+                }
+                if (patchInfo.Postfixes != null)
+                {
+                    foreach (var p in patchInfo.Postfixes)
+                    {
+                        string ownerName = p.owner ?? "UnknownMod";
+                        string methodName = p.PatchMethod != null ? p.PatchMethod.Name : "UnknownMethod";
+                        Plugin.Log.LogWarning($" -> Постфикс мода: {ownerName} | Метод: {methodName}");
+                    }
+                }
+                Plugin.Log.LogError("=================================================");
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"Ошибка сканера: {ex.Message}");
+            }
+        }
+
+    }
+}
+
+================
 File: FurnitureAnimations/Models.cs
 ================
 using System;
@@ -671,132 +806,6 @@ File: repomix.config.json
 }
 
 ================
-File: FurnitureAnimations/ConfigManager.cs
-================
-using System;
-using System.IO;
-using System.Collections.Generic;
-using UnityEngine;
-
-namespace FurnitureAnimationsMod
-{
-    public static class ConfigManager
-    {
-        public static string PluginDirectory { get; private set; }
-        public static string PrefabsConfigPath { get; private set; }
-        public static string CustomAnimsPath { get; private set; }
-        public static string IconsPath { get; private set; }
-
-        public static Dictionary<string, FurnitureConfig> LoadedConfigs = new Dictionary<string, FurnitureConfig>(StringComparer.OrdinalIgnoreCase);
-
-        public static void Initialize()
-        {
-            try
-            {
-                // 1. Получаем путь к папке BepInEx\plugins\, где лежит наш .dll
-                string dllPath = System.Reflection.Assembly.GetExecutingAssembly().Location;
-                string pluginsFolder = Path.GetDirectoryName(dllPath);
-
-                // 2. Базовая именная папка мода
-                PluginDirectory = Path.Combine(pluginsFolder, "FurnitureAnimations");
-
-                // 3. АРХИТЕКТУРНЫЙ ФИКС ПУТЕЙ СЕЙВА:
-                PrefabsConfigPath = Path.Combine(PluginDirectory, "FurnitureConfigs");
-                CustomAnimsPath = Path.Combine(PluginDirectory, "CustomAnimations");
-                IconsPath = Path.Combine(CustomAnimsPath, "Icons"); // <-- Папка уехала в CustomAnimations\Icons
-
-                // 4. Создаем директории на диске, если их нет
-                if (!Directory.Exists(PrefabsConfigPath)) Directory.CreateDirectory(PrefabsConfigPath);
-                if (!Directory.Exists(CustomAnimsPath)) Directory.CreateDirectory(CustomAnimsPath);
-                if (!Directory.Exists(IconsPath)) Directory.CreateDirectory(IconsPath);
-
-                // Запускаем диагностику: смотрим, какие моды внедрились в мебель!
-                CheckDoPoseInterceptors();
-
-                Plugin.Log.LogWarning($"[ConfigManager] Истинные пути SDK мода установлены: {PluginDirectory}");
-
-                LoadAllConfigs();
-            }
-            catch (Exception ex)
-            {
-                Plugin.Log.LogError($"[ConfigManager] Критическая ошибка инициализации путей: {ex.Message}");
-            }
-        }
-
-        private static void LoadAllConfigs()
-        {
-            LoadedConfigs.Clear();
-            // Считываем ВСЕ файлы .json в папке конфигураций мебели интерактивов
-            string[] files = Directory.GetFiles(PrefabsConfigPath, "*.json");
-
-            foreach (string file in files)
-            {
-                try
-                {
-                    string jsonContent = File.ReadAllText(file);
-                    FurnitureConfig config = Newtonsoft.Json.JsonConvert.DeserializeObject<FurnitureConfig>(jsonContent);
-
-                    if (config != null && !string.IsNullOrEmpty(config.FurniturePrefabName))
-                    {
-                        LoadedConfigs[config.FurniturePrefabName] = config;
-                        Plugin.Log.LogInfo($"[ConfigManager] Загружен конфиг мебели: {config.FurniturePrefabName} ({config.InteractionPoses?.Count ?? 0} поз)");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Plugin.Log.LogError($"[ConfigManager] Ошибка чтения файла {Path.GetFileName(file)}: {ex.Message}");
-                }
-            }
-            Plugin.Log.LogWarning($"[ConfigManager] Всего проиндексировано префабов мебели в памяти: {LoadedConfigs.Count}");
-        }
-
-        public static void CheckDoPoseInterceptors()
-        {
-            try
-            {
-                var originalMethod = typeof(Furniture).GetMethod("DoPose", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-                if (originalMethod == null) return;
-
-                var patchInfo = HarmonyLib.Harmony.GetPatchInfo(originalMethod);
-                if (patchInfo == null)
-                {
-                    Plugin.Log.LogWarning("[SDK_Registry] Метод Furniture.DoPose абсолютно чист от чужих патчей.");
-                    return;
-                }
-
-                Plugin.Log.LogError($"[SDK_Registry] === КАРТА ВОЙНЫ МОДОВ ДЛЯ Furniture.DoPose ===");
-
-                // ИСПРАВЛЕНО: Используем правильные свойства PatchMethod и owner из актуального HarmonyЛиб
-                if (patchInfo.Prefixes != null)
-                {
-                    foreach (var p in patchInfo.Prefixes)
-                    {
-                        string ownerName = p.owner ?? "UnknownMod";
-                        string methodName = p.PatchMethod != null ? p.PatchMethod.Name : "UnknownMethod";
-                        Plugin.Log.LogError($" -> КРИТИЧЕСКИЙ ПЕРЕХВАТ (Prefix): Мод: {ownerName} | Метод: {methodName}");
-                    }
-                }
-                if (patchInfo.Postfixes != null)
-                {
-                    foreach (var p in patchInfo.Postfixes)
-                    {
-                        string ownerName = p.owner ?? "UnknownMod";
-                        string methodName = p.PatchMethod != null ? p.PatchMethod.Name : "UnknownMethod";
-                        Plugin.Log.LogWarning($" -> Постфикс мода: {ownerName} | Метод: {methodName}");
-                    }
-                }
-                Plugin.Log.LogError("=================================================");
-            }
-            catch (Exception ex)
-            {
-                Plugin.Log.LogError($"Ошибка сканера: {ex.Message}");
-            }
-        }
-
-    }
-}
-
-================
 File: FurnitureAnimations/DioramaConstants.cs
 ================
 using System.Collections.Generic;
@@ -929,112 +938,6 @@ namespace FurnitureAnimationsMod
             this.endPos = endPos;
             this.startRot = startRot;
             this.endRot = endRot;
-        }
-    }
-}
-
-================
-File: FurnitureAnimations/AnimationAudioManager.cs
-================
-using System;
-using System.IO;
-using UnityEngine;
-using UnityEngine.Networking;
-
-namespace FurnitureAnimationsMod
-{
-    public class AnimationAudioManager : MonoBehaviour
-    {
-        public static AnimationAudioManager Instance { get; private set; }
-
-        private AudioSource _audioSource;
-        private bool _loopAudio = false;
-        private bool _isMuted = false;
-
-        public void Initialize(string animationName, bool loopAudio)
-        {
-            Instance = this;
-            _loopAudio = loopAudio;
-
-            string audioFolder = Path.Combine(BepInEx.Paths.PluginPath, "FurnitureAnimations", "Audio");
-            if (!Directory.Exists(audioFolder))
-                Directory.CreateDirectory(audioFolder);
-
-            string matchedAudioPath = null;
-            AudioType detectedType = AudioType.UNKNOWN;
-            string[] extensions = new string[] { ".wav", ".mp3", ".ogg" };
-            AudioType[] types = new AudioType[] { AudioType.WAV, AudioType.MPEG, AudioType.OGGVORBIS };
-
-            for (int i = 0; i < extensions.Length; i++)
-            {
-                string checkPath = Path.Combine(audioFolder, animationName + extensions[i]);
-                if (File.Exists(checkPath))
-                {
-                    matchedAudioPath = checkPath;
-                    detectedType = types[i];
-                    break;
-                }
-            }
-
-            if (!string.IsNullOrEmpty(matchedAudioPath))
-            {
-                StartCoroutine(LoadAndPlayAudio(matchedAudioPath, detectedType));
-            }
-        }
-
-        private System.Collections.IEnumerator LoadAndPlayAudio(string filePath, AudioType type)
-        {
-            string fileUri = "file://" + filePath.Replace("\\", "/");
-
-            using (UnityWebRequest multimediaRequest = UnityWebRequestMultimedia.GetAudioClip(fileUri, type))
-            {
-                yield return multimediaRequest.SendWebRequest();
-
-                if (multimediaRequest.result == UnityWebRequest.Result.ConnectionError || multimediaRequest.result == UnityWebRequest.Result.ProtocolError)
-                {
-                    Plugin.Log.LogError($"[AudioEngine] Ошибка UnityWebRequest: {multimediaRequest.error}");
-                }
-                else
-                {
-                    AudioClip clip = DownloadHandlerAudioClip.GetContent(multimediaRequest);
-                    if (clip != null)
-                    {
-                        _audioSource = gameObject.GetComponent<AudioSource>() ?? gameObject.AddComponent<AudioSource>();
-                        _audioSource.clip = clip;
-                        _audioSource.loop = _loopAudio;
-
-                        _audioSource.bypassEffects = true;
-                        _audioSource.bypassListenerEffects = true;
-                        _audioSource.priority = 0;
-                        _audioSource.spatialBlend = 0f;
-                        _audioSource.volume = 1.0f;
-                        _audioSource.mute = _isMuted;
-
-                        _audioSource.Play();
-                        Plugin.Log.LogWarning($"[AudioEngine] Звуковой файл '{clip.name}' запущен!");
-                    }
-                }
-            }
-        }
-
-        public void ToggleMute()
-        {
-            _isMuted = !_isMuted;
-            if (_audioSource != null) _audioSource.mute = _isMuted;
-            Plugin.Log.LogInfo($"[AudioEngine] Режим тишины: {(_isMuted ? "ВКЛ" : "ВЫКЛ")}");
-        }
-
-        public bool IsMuted() => _isMuted;
-
-        private void OnDestroy()
-        {
-            if (Instance == this) Instance = null;
-
-            if (_audioSource != null && _audioSource.isPlaying)
-            {
-                _audioSource.Stop();
-                Plugin.Log.LogInfo("[AudioEngine] Музыка интерактива успешно остановлена.");
-            }
         }
     }
 }
@@ -1250,6 +1153,220 @@ namespace FurnitureAnimations
             catch (System.Exception ex)
             {
                 Plugin.Log.LogError($"[HARMONY_OVERTAKE] Ошибка перехвата в SetToAnimation: {ex}");
+            }
+        }
+    }
+}
+
+================
+File: FurnitureAnimations/AnimationAudioManager.cs
+================
+using System;
+using System.IO;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.Networking;
+
+namespace FurnitureAnimationsMod
+{
+    public class AnimationAudioManager : MonoBehaviour
+    {
+        public static AnimationAudioManager Instance { get; private set; }
+
+        // --- КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: Статическая переменная сохраняет состояние глобально ---
+        private static bool _isGlobalMuted = false;
+
+        private AudioSource _audioSource;
+        private bool _loopAudio = false;
+        private string _lastInitializedAnimation = "";
+
+        // Поля для поддержки списков воспроизведения и переключения
+        private List<string> _currentPlaylist = new List<string>();
+        private int _currentTrackIndex = -1;
+        private Coroutine _currentLoadCoroutine;
+
+        private void Awake()
+        {
+            // Синглтон инициализируем строго один раз при создании компонента
+            if (Instance == null)
+            {
+                Instance = this;
+            }
+
+            _audioSource = gameObject.GetComponent<AudioSource>() ?? gameObject.AddComponent<AudioSource>();
+        }
+
+
+        public void Initialize(string animationName, bool loopAudio)
+        {
+            _loopAudio = loopAudio;
+            _lastInitializedAnimation = animationName; // Запоминаем имя для возможного UnMute позже
+
+            if (_currentLoadCoroutine != null) StopCoroutine(_currentLoadCoroutine);
+            if (_audioSource != null && _audioSource.isPlaying) _audioSource.Stop();
+
+            _currentPlaylist.Clear();
+            _currentTrackIndex = -1;
+
+            // --- ЕСЛИ СТОИТ РЕЖИМ ТИШИНЫ, НЕ ЗАПУСКАЕМ ТРЕК ---
+            if (_isGlobalMuted)
+            {
+                Plugin.Log.LogInfo("[AudioEngine] Старт анимации без звука (активен глобальный Mute).");
+                return;
+            }
+
+            ScanAndPlay(animationName);
+        }
+
+        /// <summary>
+        /// Внутренний метод сканирования папки и запуска (вынесен для переиспользования при UnMute)
+        /// </summary>
+        private void ScanAndPlay(string animationName)
+        {
+            string audioFolder = Path.Combine(BepInEx.Paths.PluginPath, "FurnitureAnimations", "Audio");
+            if (!Directory.Exists(audioFolder)) Directory.CreateDirectory(audioFolder);
+
+            string[] files = Directory.GetFiles(audioFolder, animationName + "*.*");
+            foreach (string file in files)
+            {
+                string ext = Path.GetExtension(file).ToLower();
+                if (ext == ".wav" || ext == ".mp3" || ext == ".ogg")
+                {
+                    _currentPlaylist.Add(file);
+                }
+            }
+
+            if (_currentPlaylist.Count > 0)
+            {
+                _currentTrackIndex = UnityEngine.Random.Range(0, _currentPlaylist.Count);
+                string selectedTrack = _currentPlaylist[_currentTrackIndex];
+
+                _currentLoadCoroutine = StartCoroutine(LoadAndPlayAudio(selectedTrack, GetAudioType(selectedTrack)));
+                Plugin.Log.LogInfo($"[AudioEngine] Запущено воспроизведение: {Path.GetFileName(selectedTrack)}");
+            }
+        }
+
+        public void PlayNextTrack()
+        {
+            // ПРАВКА СЛУЧАЯ 2: Если стоял Mute, принудительно выключаем его
+            if (_isGlobalMuted)
+            {
+                _isGlobalMuted = false;
+                Plugin.Log.LogInfo("[AudioEngine] Нажата кнопка Next Track: глобальный Mute автоматически снят.");
+
+                // Переинициализируем плейлист для текущей анимации, если он был пуст из-за Mute
+                if (_currentPlaylist.Count == 0 && !string.IsNullOrEmpty(_lastInitializedAnimation))
+                {
+                    ScanAndPlay(_lastInitializedAnimation);
+                    return;
+                }
+            }
+
+            if (_currentPlaylist == null || _currentPlaylist.Count <= 1)
+            {
+                Plugin.Log.LogInfo("[AudioEngine] Переключение невозможно: в текущем плейлисте недостаточно треков.");
+                return;
+            }
+
+            if (_currentLoadCoroutine != null) StopCoroutine(_currentLoadCoroutine);
+            if (_audioSource != null) _audioSource.Stop();
+
+            _currentTrackIndex = (_currentTrackIndex + 1) % _currentPlaylist.Count;
+            string nextTrackPath = _currentPlaylist[_currentTrackIndex];
+
+            _currentLoadCoroutine = StartCoroutine(LoadAndPlayAudio(nextTrackPath, GetAudioType(nextTrackPath)));
+            Plugin.Log.LogInfo($"[AudioEngine] Переключено на {Path.GetFileName(nextTrackPath)} ({_currentTrackIndex + 1}/{_currentPlaylist.Count})");
+        }
+
+        private System.Collections.IEnumerator LoadAndPlayAudio(string filePath, AudioType type)
+        {
+            string fileUri = "file://" + filePath.Replace("\\", "/");
+            using (UnityWebRequest multimediaRequest = UnityWebRequestMultimedia.GetAudioClip(fileUri, type))
+            {
+                yield return multimediaRequest.SendWebRequest();
+
+                if (multimediaRequest.result == UnityWebRequest.Result.ConnectionError || multimediaRequest.result == UnityWebRequest.Result.ProtocolError)
+                {
+                    Plugin.Log.LogError($"[AudioEngine] Ошибка UnityWebRequest: {multimediaRequest.error}");
+                }
+                else
+                {
+                    AudioClip clip = DownloadHandlerAudioClip.GetContent(multimediaRequest);
+                    if (clip != null && _audioSource != null)
+                    {
+                        _audioSource.clip = clip;
+                        _audioSource.loop = _loopAudio;
+                        _audioSource.bypassEffects = true;
+                        _audioSource.bypassListenerEffects = true;
+                        _audioSource.priority = 0;
+                        _audioSource.spatialBlend = 0f;
+                        _audioSource.volume = 1.0f;
+                        _audioSource.mute = _isGlobalMuted;
+                        _audioSource.Play();
+                        Plugin.Log.LogWarning($"[AudioEngine] Звуковой файл '{clip.name}' запущен!");
+                    }
+                }
+            }
+            _currentLoadCoroutine = null;
+        }
+
+        private AudioType GetAudioType(string path)
+        {
+            string ext = Path.GetExtension(path).ToLower();
+            if (ext == ".wav") return AudioType.WAV;
+            if (ext == ".ogg") return AudioType.OGGVORBIS;
+            if (ext == ".mp3") return AudioType.MPEG;
+            return AudioType.UNKNOWN;
+        }
+
+        public void ToggleMute()
+        {
+            _isGlobalMuted = !_isGlobalMuted;
+
+            if (_audioSource != null)
+            {
+                if (_isGlobalMuted)
+                {
+                    _audioSource.Stop();
+                    if (_currentLoadCoroutine != null) StopCoroutine(_currentLoadCoroutine);
+                }
+                else
+                {
+                    // ПРАВКА СЛУЧАЯ 1: Если Mute сняли, а плейлист пуст — сканируем и запускаем
+                    if (_currentPlaylist.Count == 0 && !string.IsNullOrEmpty(_lastInitializedAnimation))
+                    {
+                        ScanAndPlay(_lastInitializedAnimation);
+                    }
+                    // Если плейлист уже был готов, просто перезапускаем текущий трек
+                    else if (_currentTrackIndex >= 0 && _currentTrackIndex < _currentPlaylist.Count)
+                    {
+                        string currentTrack = _currentPlaylist[_currentTrackIndex];
+                        _currentLoadCoroutine = StartCoroutine(LoadAndPlayAudio(currentTrack, GetAudioType(currentTrack)));
+                    }
+                }
+            }
+            Plugin.Log.LogInfo($"[AudioEngine] Глобальный режим тишины: {(_isGlobalMuted ? "ВКЛ" : "ВЫКЛ")}");
+        }
+
+
+        public bool IsMuted() => _isGlobalMuted;
+
+        public void StopAudio()
+        {
+            if (_currentLoadCoroutine != null) StopCoroutine(_currentLoadCoroutine);
+            if (_audioSource != null && _audioSource.isPlaying)
+            {
+                _audioSource.Stop();
+            }
+        }
+
+        private void OnDestroy()
+        {
+            if (Instance == this) Instance = null;
+            if (_audioSource != null && _audioSource.isPlaying)
+            {
+                _audioSource.Stop();
+                Plugin.Log.LogInfo("[AudioEngine] Музыка интерактива успешно остановлена.");
             }
         }
     }
@@ -1591,13 +1708,27 @@ File: FurnitureAnimations/FurnitureAnimations.csproj
     <Compile Include="PoseExporter.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\icon_animation.png" />
+    <EmbeddedResource Include="Resources\icon_easeInOutEach.png" />
+    <EmbeddedResource Include="Resources\icon_easeInOutWhole.png" />
+    <EmbeddedResource Include="Resources\icon_fasterPlayback.png" />
+    <EmbeddedResource Include="Resources\icon_flowEven.png" />
+    <EmbeddedResource Include="Resources\icon_nextAudio.png" />
+    <EmbeddedResource Include="Resources\icon_slowerPlayback.png" />
+    <EmbeddedResource Include="Resources\icon_soundOff.png" />
+    <EmbeddedResource Include="Resources\icon_soundOn.png" />
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
 
 ================
 File: FurnitureAnimations/AnimationUiControls.cs
 ================
+using System;
 using System.ComponentModel;
+using System.IO;
+using System.Reflection;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -1609,9 +1740,21 @@ namespace FurnitureAnimationsMod
         private FurnitureAnimationPlayer _player;
         private GameObject _uiPanelInstance;
 
+        // Кэш для иконок, чтобы не читать из сборки каждый кадр
+        private Texture2D _iconSpeedMinus;
+        private Texture2D _iconSpeedPlus;
+        private Texture2D _iconNextAudio;
+        private Texture2D _iconSoundOn;
+        private Texture2D _iconSoundOff;
+        private Texture2D _iconLinear;
+        private Texture2D _iconEaseWhole;
+        private Texture2D _iconEaseEach;
         public void Initialize(FurnitureAnimationPlayer player)
         {
             _player = player;
+
+            // 0. Загружаем иконки из ресурсов DLL
+            LoadEmbeddedResources();
 
             try
             {
@@ -1652,9 +1795,11 @@ namespace FurnitureAnimationsMod
                 modRect.anchorMin = vanRect.anchorMin;
                 modRect.anchorMax = vanRect.anchorMax;
                 modRect.pivot = vanRect.pivot;
-                modRect.sizeDelta = vanRect.sizeDelta;
+                
+                // --- АРХИТЕКТУРНОЕ УВЕЛИЧЕНИЕ В 1.5 РАЗА ---
+                Vector2 originalSize = vanRect.sizeDelta;
+                modRect.sizeDelta = new Vector2(originalSize.x, originalSize.y * 1.5f);
 
-                // Копируем точный локальный масштаб оригинального фона
                 _uiPanelInstance.transform.localScale = vanRect.localScale;
 
                 // Смещаем плашку-фон строго вниз по локальной оси Y относительно оригинала
@@ -1690,33 +1835,55 @@ namespace FurnitureAnimationsMod
                     Vector3 btnPos = Vector3.zero;
                     float spacing = -45f; // На случай, если LayoutGroup потребует ручного смещения, но вообще VerticalLayoutGroup расставит сам
 
-                    // 1. Кнопка Скорость -
-                    CreateUiButton(buttonsContainer, btnPrefab, "Mod_BtnSpeedMinus", $"Speed: {Mathf.RoundToInt(_player.GetSpeed() * 100)}% (-10)", btnPos, () => {
-                        _player.ChangeSpeed(-0.1f);
-                        UpdateSpeedButtonsText();
-                    });
+
+                    // 1. Кнопка Скорость +
+                    CreateUiButton(buttonsContainer, btnPrefab, "Mod_BtnSpeedPlus",
+                        $"Speed: {Mathf.RoundToInt(_player.GetSpeed() * 100)}% (+10)", btnPos, _iconSpeedPlus, () => {
+                            _player.ChangeSpeed(0.1f);
+                            UpdateSpeedButtonsText();
+                        });
                     btnPos.y += spacing;
 
-                    // 2. Кнопка Скорость +
-                    CreateUiButton(buttonsContainer, btnPrefab, "Mod_BtnSpeedPlus", $"Speed: {Mathf.RoundToInt(_player.GetSpeed() * 100)}% (+10)", btnPos, () => {
-                        _player.ChangeSpeed(0.1f);
-                        UpdateSpeedButtonsText();
-                    });
+                    // 2. Кнопка Скорость -
+                    CreateUiButton(buttonsContainer, btnPrefab, "Mod_BtnSpeedMinus",
+                        $"Speed: {Mathf.RoundToInt(_player.GetSpeed() * 100)}% (-10)", btnPos, _iconSpeedMinus, () => {
+                            _player.ChangeSpeed(-0.1f);
+                            UpdateSpeedButtonsText();
+                        });
                     btnPos.y += spacing;
 
-                    CreateUiButton(buttonsContainer, btnPrefab, "Mod_BtnEaseToggle", $"Interpolation: {_player.GetEaseMode()}", btnPos, () => {
-                        _player.ToggleEaseMode();
-                        UpdateText("Mod_BtnEaseToggle", $"Interpolation: {_player.GetEaseMode()}");
-                    });
+                    // 3. Кнопка Сглаживания (Интерполяции)
+                    CreateUiButton(buttonsContainer, btnPrefab, "Mod_BtnEaseToggle",
+                        $"Interpolation: {_player.GetEaseMode()}", btnPos, GetCurrentEaseSprite(), () => {
+                            _player.ToggleEaseMode();
+                            UpdateEaseButton(); // Используем централизованный метод обновления текста и иконки
+                        });
                     btnPos.y += spacing;
 
-                    CreateUiButton(buttonsContainer, btnPrefab, "Mod_BtnMuteToggle", "Sound: ON", btnPos, () => {
+                    // 4. НОВАЯ КНОПКА: СЛЕДУЮЩИЙ ТРЕК
+                    CreateUiButton(buttonsContainer, btnPrefab, "Mod_BtnNextAudio", "Next Audio", btnPos, _iconNextAudio, () => {
                         if (AnimationAudioManager.Instance != null)
                         {
-                            AnimationAudioManager.Instance.ToggleMute();
-                            UpdateText("Mod_BtnMuteToggle", AnimationAudioManager.Instance.IsMuted() ? "Sound: MUTED" : "Sound: ON");
+                            AnimationAudioManager.Instance.PlayNextTrack();
+                            UpdateSoundButton(); // <-- ПРАВКА: Синхронизируем иконку звука, если Mute сбросился!
+                        }
+                        else
+                        {
+                            Plugin.Log.LogWarning("[UI] Невозможно переключить трек: AnimationAudioManager не инициализирован.");
                         }
                     });
+                    btnPos.y += spacing;
+
+                    // 5. Кнопка MuteToggle
+                    Texture2D currentSoundIcon = (AnimationAudioManager.Instance != null && AnimationAudioManager.Instance.IsMuted()) ? _iconSoundOff : _iconSoundOn;
+                    CreateUiButton(buttonsContainer, btnPrefab, "Mod_BtnMuteToggle",
+                        "Sound: ON", btnPos, currentSoundIcon, () => {
+                            if (AnimationAudioManager.Instance != null)
+                            {
+                                AnimationAudioManager.Instance.ToggleMute();
+                                UpdateSoundButton(); // Используем централизованный метод обновления текста и иконки
+                            }
+                        });
                 }
                 else
                 {
@@ -1729,25 +1896,83 @@ namespace FurnitureAnimationsMod
             }
         }
 
-        private void CreateUiButton(Transform parent, Transform prefab, string objName, string label, Vector3 localPos, System.Action onClick)
+        #region Исправленная работа с текстурами (RawImage)
+
+        private void LoadEmbeddedResources()
+        {
+            _iconSpeedMinus = LoadTextureFromDll("FurnitureAnimations.Resources.icon_slowerPlayback.png");
+            _iconSpeedPlus = LoadTextureFromDll("FurnitureAnimations.Resources.icon_fasterPlayback.png");
+            _iconNextAudio = LoadTextureFromDll("FurnitureAnimations.Resources.icon_nextAudio.png");
+            _iconSoundOn = LoadTextureFromDll("FurnitureAnimations.Resources.icon_soundOn.png");
+            _iconSoundOff = LoadTextureFromDll("FurnitureAnimations.Resources.icon_soundOff.png");
+
+            _iconLinear = LoadTextureFromDll("FurnitureAnimations.Resources.icon_flowEven.png");
+            _iconEaseWhole = LoadTextureFromDll("FurnitureAnimations.Resources.icon_easeInOutWhole.png");
+            _iconEaseEach = LoadTextureFromDll("FurnitureAnimations.Resources.icon_easeInOutEach.png");
+        }
+
+        private Texture2D LoadTextureFromDll(string resourcePath)
+        {
+            try
+            {
+                Assembly assembly = Assembly.GetExecutingAssembly();
+                using (Stream stream = assembly.GetManifestResourceStream(resourcePath))
+                {
+                    if (stream == null)
+                    {
+                        Plugin.Log.LogError($"[UI_Resources] Не найден встроенный ресурс: {resourcePath}");
+                        return null;
+                    }
+
+                    byte[] buffer = new byte[stream.Length];
+                    stream.Read(buffer, 0, buffer.Length);
+
+                    Texture2D texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                    if (texture.LoadImage(buffer))
+                    {
+                        return texture; // Возвращаем чистую текстуру для RawImage
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"[UI_Resources] Ошибка загрузки иконки {resourcePath}: {ex.Message}");
+            }
+            return null;
+        }
+
+        #endregion
+
+        // Изменен тип аргумента с Sprite на Texture2D
+        private void CreateUiButton(Transform parent, Transform prefab, string objName, string label, Vector3 localPos, Texture2D iconTexture, System.Action onClick)
         {
             GameObject btnGo = GameObject.Instantiate(prefab.gameObject, parent);
             btnGo.name = objName;
 
             RectTransform r = btnGo.GetComponent<RectTransform>();
-            r.anchoredPosition = localPos;
+            if (r != null) r.anchoredPosition = localPos;
 
-            // 3. УЛЬТИМАТИВНОЕ УНИЧТОЖЕНИЕ ИНСПЕКТОРСКИХ СВЯЗЕЙ (Persistent Calls)
             Button b = btnGo.GetComponent<Button>();
-            if (b != null)
-            {
-                // Полностью сносим старый компонент Button вместе со всей его "памятью" о лифчиках
-                GameObject.DestroyImmediate(b);
-            }
+            if (b != null) GameObject.DestroyImmediate(b);
 
-            // Добавляем абсолютно чистый, новый компонент Button без инспекторских связей
             b = btnGo.AddComponent<Button>();
             b.onClick.AddListener(() => onClick?.Invoke());
+
+            // --- ЖЕСТКОЕ ПЕРЕОПРЕДЕЛЕНИЕ RAWIMAGE ---
+            RawImage rawImg = btnGo.GetComponent<RawImage>();
+            if (rawImg != null && iconTexture != null)
+            {
+                rawImg.texture = iconTexture; // Меняем текстуру лифчика на нашу иконку!
+            }
+            else if (rawImg == null && iconTexture != null)
+            {
+                // На случай если там обычный Image, подстрахуемся
+                Image img = btnGo.GetComponent<Image>();
+                if (img != null)
+                {
+                    img.sprite = Sprite.Create(iconTexture, new Rect(0, 0, iconTexture.width, iconTexture.height), new Vector2(0.5f, 0.5f));
+                }
+            }
 
             Text t = btnGo.GetComponentInChildren<Text>();
             if (t != null)
@@ -1758,12 +1983,11 @@ namespace FurnitureAnimationsMod
             }
             btnGo.SetActive(true);
         }
-
-
         private void UpdateText(string objName, string newText)
         {
-            GameObject go = GameObject.Find(objName);
-            Text t = go?.GetComponentInChildren<Text>();
+            if (_uiPanelInstance == null) return;
+            Transform btn = _uiPanelInstance.transform.Find($"Mod_AnimationButtonsContainer/{objName}");
+            Text t = btn?.GetComponentInChildren<Text>();
             if (t != null) t.text = newText;
         }
 
@@ -1783,6 +2007,58 @@ namespace FurnitureAnimationsMod
             UpdateText("Mod_BtnSpeedMinus", $"Speed: {percent}% (-10)");
             UpdateText("Mod_BtnSpeedPlus", $"Speed: {percent}% (+10)");
         }
+
+        private Texture2D GetCurrentEaseSprite()
+        {
+            if (_player == null) return _iconLinear;
+            switch (_player.GetEaseMode())
+            {
+                case EaseMode.Global: return _iconEaseWhole;
+                case EaseMode.PerFrame: return _iconEaseEach;
+                case EaseMode.Linear:
+                default: return _iconLinear;
+            }
+        }
+
+        private void UpdateEaseButton()
+        {
+            UpdateText("Mod_BtnEaseToggle", $"Interpolation: {_player.GetEaseMode()}");
+            UpdateImageSprite("Mod_BtnEaseToggle", GetCurrentEaseSprite());
+        }
+
+        private void UpdateSoundButton()
+        {
+            bool isMuted = AnimationAudioManager.Instance != null && AnimationAudioManager.Instance.IsMuted();
+            UpdateText("Mod_BtnMuteToggle", isMuted ? "Sound: MUTED" : "Sound: ON");
+            UpdateImageSprite("Mod_BtnMuteToggle", isMuted ? _iconSoundOff : _iconSoundOn);
+        }
+
+        private void UpdateInterfaceStates()
+        {
+            UpdateSpeedButtonsText();
+            UpdateEaseButton();
+            UpdateSoundButton();
+        }
+
+        private void UpdateImageSprite(string objName, Texture2D newTexture)
+        {
+            if (_uiPanelInstance == null || newTexture == null) return;
+            Transform btn = _uiPanelInstance.transform.Find($"Mod_AnimationButtonsContainer/{objName}");
+
+            RawImage rawImg = btn?.GetComponent<RawImage>();
+            if (rawImg != null)
+            {
+                rawImg.texture = newTexture;
+                return;
+            }
+
+            Image img = btn?.GetComponent<Image>();
+            if (img != null)
+            {
+                img.sprite = Sprite.Create(newTexture, new Rect(0, 0, newTexture.width, newTexture.height), new Vector2(0.5f, 0.5f));
+            }
+        }
+
     }
 }
 
@@ -2134,6 +2410,625 @@ namespace FurnitureAnimationsMod
 }
 
 ================
+File: FurnitureAnimations/FurnitureInjectorPatch.cs
+================
+using HarmonyLib;
+using Newtonsoft.Json.Linq;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Xml.Linq;
+using UnityEngine;
+using UnityEngine.UI;
+using UnityStandardAssets.Cameras;
+using static System.Net.Mime.MediaTypeNames;
+
+namespace FurnitureAnimationsMod
+{
+    // === ПАТЧ 1: ИНЖЕКЦИЯ СТРУКТУРЫ ПОЗ ПРИ СТАРТЕ МЕБЕЛИ (RELEASE 0.2.0 С АВТО-РЕФРЕШЕМ) ===
+    [HarmonyPatch(typeof(Furniture), "Start")]
+    public class FurnitureInjectorPatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Furniture __instance)
+        {
+            if (__instance == null) return;
+            RebuildFurniturePoses(__instance);
+        }
+
+        public static void RebuildFurniturePoses(Furniture __instance)
+        {
+            if (__instance == null) return;
+
+            string furnitureName = __instance.name.Replace("(Clone)", "").Trim();
+
+            // Ищем, есть ли для этой мебели конфигурация в нашем моде
+            if (ConfigManager.LoadedConfigs.TryGetValue(furnitureName, out FurnitureConfig config))
+            {
+                Plugin.Log.LogWarning($"[Injector] Инжекция кастомных поз для мебели: {furnitureName} (Ванильные позы БУДУТ сохранены!)");
+
+                // --- КРИТИЧЕСКИЙ ФИКС №1: БОЛЬШЕ НЕ УНИЧТОЖАЕМ "posesGroup" И НЕ ОЧИЩАЕМ СПИСКИ КАМЕР/ПОЗ ИГРЫ! ---
+                // Если у мебели почему-то нет инициализированных списков — создаем их (защита от краша)
+                if (__instance.poses == null) __instance.poses = new CommonArray();
+                if (__instance.cameras == null) __instance.cameras = new CommonArray();
+
+                // Находим или создаем кастомную подпапку для НАШИХ поз внутри мебели, чтобы не захламлять оригинальный posesGroup
+                Transform modPosesGroup = __instance.transform.Find("Mod_CustomPosesGroup");
+                if (modPosesGroup == null)
+                {
+                    GameObject modGroupObj = new GameObject("Mod_CustomPosesGroup");
+                    modGroupObj.transform.SetParent(__instance.transform, false);
+                    modPosesGroup = modGroupObj.transform;
+                }
+
+                Pose[] allGamePoses = Resources.FindObjectsOfTypeAll<Pose>();
+                RuntimeAnimatorController[] allControllers = Resources.FindObjectsOfTypeAll<RuntimeAnimatorController>();
+
+                // Проходим циклом по позам из нашего JSON конфига
+                foreach (PoseData poseConfig in config.InteractionPoses)
+                {
+                    if (poseConfig == null) continue;
+
+                    // --- КРИТИЧЕСКИЙ ФИКС №2: ИСКЛЮЧАЕМ ДУБЛИРОВАНИЕ ПРИ СЛУЧАЙНОМ ПОВТОРНОМ ВЫЗОВЕ ---
+                    bool alreadyInjected = false;
+                    foreach (Transform existingPose in __instance.poses.items)
+                    {
+                        if (existingPose != null && existingPose.name == poseConfig.DisplayName)
+                        {
+                            alreadyInjected = true;
+                            break;
+                        }
+                    }
+                    if (alreadyInjected) continue; // Если поза уже добавлена к этой мебели — идем дальше
+
+                    bool isCustomPose = poseConfig.Type.Equals("CustomJSON", System.StringComparison.OrdinalIgnoreCase) || poseConfig.Type.Contains("Кастомная");
+                    bool isExternalModAnim = poseConfig.Type.Equals("PoseAnimationsMod", System.StringComparison.OrdinalIgnoreCase);
+
+                    RuntimeAnimatorController targetController = null;
+                    string searchName = (isCustomPose || isExternalModAnim) ? "UnarmedController" : poseConfig.ControllerName;
+
+                    foreach (var rc in allControllers)
+                    {
+                        if (rc != null && rc.name == searchName) { targetController = rc; break; }
+                    }
+
+                    if (targetController == null && !isCustomPose && !isExternalModAnim) continue;
+
+                    // Создаем новый GameObject для НАШЕЙ кастомной позы
+                    GameObject newPoseObj = new GameObject(poseConfig.DisplayName);
+                    newPoseObj.transform.SetParent(modPosesGroup, false); // Кладем в нашу изолированную папку мода
+
+                    Pose newPose = newPoseObj.AddComponent<Pose>();
+                    newPose.controller = targetController;
+                    newPose.notshown = false;
+                    newPose.locked = false;
+                    newPose.crystals = 0;
+
+                    // Инжекция картинки-иконки с диска
+                    if (isCustomPose || isExternalModAnim)
+                    {
+                        newPose.categoryName = "Custom";
+                        string iconName = isCustomPose ? poseConfig.JsonFileName.Replace(".json", ".png") : $"{poseConfig.ControllerName}.png";
+                        string iconFullPath = Path.Combine(ConfigManager.IconsPath, iconName);
+
+                        if (File.Exists(iconFullPath))
+                        {
+                            try
+                            {
+                                byte[] imgBytes = File.ReadAllBytes(iconFullPath);
+                                Texture2D customTex = new Texture2D(2, 2);
+                                customTex.LoadImage(imgBytes);
+                                newPose.icon = customTex;
+                            }
+                            catch (Exception ex)
+                            {
+                                Plugin.Log.LogError($"[Injector] Сбой загрузки иконки {iconName}: {ex.Message}");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        Pose exactVanillaPose = null;
+                        foreach (var p in allGamePoses)
+                        {
+                            if (p != null && p.controller != null && p.controller.name == poseConfig.ControllerName && p.icon != null)
+                            {
+                                exactVanillaPose = p; break;
+                            }
+                        }
+
+                        if (exactVanillaPose != null && exactVanillaPose.icon != null)
+                        {
+                            try
+                            {
+                                // --- ГЛУБОКОЕ КОПИРОВАНИЕ ТЕКСТУРЫ ДЛЯ ЗАЩИТЫ ОТ UNLOAD 🌟 ---
+                                Texture2D sourceTex = exactVanillaPose.icon;
+
+                                // Создаем чистую рантайм-текстуру точно такого же размера и формата
+                                Texture2D clonedTex = new Texture2D(sourceTex.width, sourceTex.height, sourceTex.format, sourceTex.mipmapCount > 1);
+
+                                // Программный дубликат на уровне графического чипа
+                                Graphics.CopyTexture(sourceTex, clonedTex);
+
+                                newPose.icon = clonedTex;
+                            }
+                            catch (Exception ex)
+                            {
+                                // Фаллбэк на случай, если текстура защищена от чтения/записи (Read/Write Disabled)
+                                newPose.icon = UnityEngine.Object.Instantiate(exactVanillaPose.icon);
+                                Plugin.Log.LogInfo($"[Injector] Использован Instantiate-клон для иконки {poseConfig.DisplayName}: {ex.Message}");
+                            }
+
+                            newPose.categoryName = exactVanillaPose.categoryName;
+                            newPose.mood = exactVanillaPose.mood;
+                        }
+                        else
+                        {
+                            newPose.categoryName = "Dances";
+                        }
+                    }
+
+                    // Настройка координат локатора позы
+                    GameObject locObj = new GameObject("loc");
+                    locObj.transform.SetParent(newPoseObj.transform, false);
+                    locObj.transform.localPosition = new Vector3(poseConfig.LocPosition.x, poseConfig.LocPosition.y, poseConfig.LocPosition.z);
+                    locObj.transform.localEulerAngles = new Vector3(poseConfig.LocRotation.x, poseConfig.LocRotation.y, poseConfig.LocRotation.z);
+                    newPose.loc = locObj.transform;
+
+                    newPoseObj.SetActive(false);
+
+                    // --- КРИТИЧЕСКИЙ ФИКС №3: СЛИЯНИЕ НА УРОВНЕ КОЛЛЕКЦИИ ---
+                    // Аккуратно пушим нашу позу в КОНЕЦ оригинального списка игры. Ванильные позы остаются на позициях 0, 1, 2...
+                    __instance.poses.AddItem(newPoseObj.transform);
+                }
+
+                // Перерегистрируем мебель в глобальном трекере интерактивов, чтобы игра обновила кэш меню взаимодействия
+                if (Global.code != null && Global.code.interactableFurnitures != null)
+                {
+                    Global.code.interactableFurnitures.items.Remove(__instance.transform);
+                    Global.code.interactableFurnitures.AddItemDifferentObject(__instance.transform);
+                }
+
+                Plugin.Log.LogWarning($"[Injector] Слияние завершено! Всего доступных поз для {furnitureName}: {__instance.poses.items.Count} (включая ванильные и кастомные).");
+            }
+        }
+
+    }
+
+    // === ПАТЧ 2: АВТО-ПОЗА И ФИКСАЦИЯ КАМЕРЫ ПРИ ВХОДЕ ИНТЕРАКТИВА ===
+    [HarmonyPatch(typeof(Furniture), "InitiateInteract")]
+    public class FurnitureAutoPosePatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Furniture __instance, CharacterCustomization customization)
+        {
+            if (__instance == null || customization == null) return;
+
+            string furnitureName = __instance.name.Replace("(Clone)", "").Trim();
+
+            if (ConfigManager.LoadedConfigs.ContainsKey(furnitureName))
+            {
+                Plugin.Log.LogWarning($"[AutoInteract] Настройка бесшовного входа для: {furnitureName}");
+
+                if (FreeLookCam.code != null && Global.code != null)
+                {
+                    GameObject freeCamObj = Global.code.freeCamera;
+                    if (freeCamObj != null)
+                    {
+                        freeCamObj.SetActive(true);
+                        freeCamObj.transform.position = FreeLookCam.code.transform.position;
+                        freeCamObj.transform.rotation = FreeLookCam.code.transform.rotation;
+                        Plugin.Log.LogInfo("[AutoInteract] Free Camera успешно зафиксирована в ракурсе игрока!");
+                    }
+                }
+
+                if (__instance.poses != null && __instance.poses.items.Count > 0)
+                {
+                    Transform firstPoseTransform = __instance.poses.items[0];
+                    if (firstPoseTransform != null)
+                    {
+                        Pose firstPose = firstPoseTransform.GetComponent<Pose>();
+                        if (firstPose != null)
+                        {
+                            Plugin.Log.LogWarning($"[AutoInteract] Авто-вызов позы: {firstPose.name}");
+                            __instance.DoPose(firstPose);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // === ПАТЧ 3: БЕЗОПАСНЫЙ ВЫХОД ИЗ ИНТЕРАКТИВА ===
+    [HarmonyPatch(typeof(Furniture), "DoQuitInteraction")]
+    public class FurnitureQuitSafetyPatch
+    {
+        [HarmonyPrefix]
+        public static bool Prefix(Furniture __instance)
+        {
+            if (__instance.user == null)
+            {
+                Plugin.Log.LogWarning("[SafetyPatch] Безопасный выход из пустого интерактива.");
+                var playerComp = UnityEngine.Object.FindObjectOfType<CharacterCustomization>();
+                if (playerComp != null)
+                {
+                    playerComp.gameObject.SetActive(true);
+                }
+                return false;
+            }
+            return true;
+        }
+    }
+
+    // === ПАТЧ 4: УЛЬТИМАТИВНЫЙ ПОСТФИКС-ПЕРЕХВАТ ДЛЯ ОКНА UIPOSE (RELEASE 0.2.0 STABLE) ===
+    [HarmonyPatch(typeof(PoseIcon), "Click")]
+    public class PoseIconClickDioramaPatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(PoseIcon __instance)
+        {
+            if (__instance == null || __instance.pose == null) return;
+
+            string uiPoseName = __instance.pose.name ?? "NULL";
+            string uiCtrlName = __instance.pose.controller != null ? __instance.pose.controller.name : "NULL";
+
+            Plugin.Log.LogWarning($"[SDK_Icon] Клик зафиксирован! Поза: '{uiPoseName}' | Контроллер: '{uiCtrlName}'");
+
+            Furniture parentFurniture = __instance.GetComponentInParent<Furniture>() ?? __instance.pose.GetComponentInParent<Furniture>();
+
+            if (parentFurniture == null)
+            {
+                Furniture[] allFurniture = UnityEngine.Object.FindObjectsOfType<Furniture>();
+                if (allFurniture != null && allFurniture.Length > 0)
+                {
+                    parentFurniture = allFurniture[0];
+                }
+            }
+
+            if (parentFurniture == null || parentFurniture.user == null) return;
+
+            CharacterCustomization activeChar = parentFurniture.user;
+
+            if (activeChar != null && activeChar.anim != null)
+            {
+                activeChar.anim.enabled = true;
+                activeChar.anim.speed = 1f;
+            }
+
+            ProcessPoseClick(activeChar, parentFurniture, uiPoseName, uiCtrlName);
+        }
+
+        private static void ProcessPoseClick(CharacterCustomization characterComp, Furniture furniture, string uiPoseName, string uiCtrlName)
+        {
+            if (characterComp == null || furniture == null) return;
+
+            string furnitureName = furniture.name.Replace("(Clone)", "").Trim();
+
+            if (ConfigManager.LoadedConfigs.TryGetValue(furnitureName, out FurnitureConfig config))
+            {
+                string cleanUiName = uiPoseName.ToLower().Replace(" ", "").Replace("-", "").Replace("—", "").Replace("–", "").Trim();
+
+                PoseData currentPoseData = config.InteractionPoses.Find(p =>
+                    p != null &&
+                    p.DisplayName.ToLower().Replace(" ", "").Replace("-", "").Replace("—", "").Replace("–", "").Trim() == cleanUiName
+                );
+
+                if (currentPoseData == null && (cleanUiName.Contains("custom") || uiCtrlName.ToLower().Contains("unarmed")))
+                {
+                    currentPoseData = config.InteractionPoses.Find(p => p != null && p.Type.Equals("CustomJSON", StringComparison.OrdinalIgnoreCase));
+                }
+
+                // --- КРИТИЧЕСКИЙ ФИКС СЛИЯНИЯ: ЕСЛИ ПОЗА НЕ НАЙДЕНА В КОНФИГЕ МОДА ---
+                if (currentPoseData == null)
+                {
+                    // Это значит, что игрок кликнул по оригинальной ВАНИЛЬНОЙ позе игры!
+                    // Сносим наш кастомный плеер анимаций (используем уникальное имя переменной, чтобы не было конфликта)
+                    var vanillaCleanupPlayer = characterComp.gameObject.GetComponent<FurnitureAnimationPlayer>();
+                    if (vanillaCleanupPlayer != null)
+                    {
+                        UnityEngine.Object.Destroy(vanillaCleanupPlayer);
+                    }
+
+                    // Включаем встроенный аниматор игры обратно, чтобы ванильная поза могла запуститься!
+                    if (characterComp.anim != null)
+                    {
+                        characterComp.anim.enabled = true;
+                        characterComp.anim.speed = 1f;
+                    }
+
+                    // Выключаем проигрывание аудио, если оно работало
+                    if (AnimationAudioManager.Instance != null)
+                    {
+                        AnimationAudioManager.Instance.StopAudio();
+                    }
+
+                    Plugin.Log.LogInfo($"[SDK_Icon] Клик по ванильной позе '{uiPoseName}'. Наш плеер уничтожен, управление возвращено игре.");
+                    return; // Просто выходим, позволяя игре выполнить её стандартный метод DoPose
+                }
+
+                // =========================================================================
+                // УМНЫЙ ПЕРЕХВАТ ДЛЯ СМЕНЫ И ОСТАНОВКИ АНИМАЦИЙ 🛑💃
+                // =========================================================================
+
+                // 1. Проверяем, запущен ли наш встроенный плеер на персонаже прямо сейчас
+                var activePlayer = characterComp.gameObject.GetComponent<FurnitureAnimationPlayer>();
+
+                if (activePlayer != null)
+                {
+                    // Узнаем имя анимации, которая крутится в данный момент
+                    string currentlyPlayingAnim = activePlayer.GetPlayingAnimationName();
+
+                    // ЕСЛИ КЛИКНУЛИ ПО ТОЙ ЖЕ ИКОНКЕ -> Просто останавливаем «горшочек»
+                    if (currentPoseData.Type.Equals("PoseAnimationsMod", StringComparison.OrdinalIgnoreCase) &&
+                        currentPoseData.ControllerName == currentlyPlayingAnim)
+                    {
+                        Plugin.Log.LogWarning($"[SDK_Icon] Клик по той же анимации '{currentlyPlayingAnim}'. Останавливаем плеер.");
+                        UnityEngine.Object.Destroy(activePlayer as UnityEngine.Component);
+                        return; // Мгновенный выход, ничего нового не запускаем
+                    }
+
+                    // ЕСЛИ КЛИКНУЛИ ПО ЛЮБОЙ ДРУГОЙ ИКОНКЕ -> Сносим старый плеер и даем коду идти дальше
+                    Plugin.Log.LogWarning($"[SDK_Icon] Переключение! Удаляем старую анимацию '{currentlyPlayingAnim}' перед запуском нового режима.");
+                    UnityEngine.Object.Destroy(activePlayer as UnityEngine.Component);
+                    if (AnimationAudioManager.Instance != null)
+                    {
+                        AnimationAudioManager.Instance.StopAudio();
+                    }
+                }
+
+                // =========================================================================
+
+                // Логика запуска внешней JSON-анимации мода
+                if (currentPoseData.Type.Equals("PoseAnimationsMod", StringComparison.OrdinalIgnoreCase))
+                {
+                    Plugin.Log.LogWarning($"[SDK_Icon] Активирован локальный встроенный плеер для анимации: {currentPoseData.ControllerName}");
+
+                    var newPlayer = characterComp.gameObject.AddComponent<FurnitureAnimationPlayer>();
+                    newPlayer.Play(characterComp, currentPoseData.ControllerName, furniture, currentPoseData);
+                    return;
+                }
+
+                // Логика Диорамы (Сценарий Б)
+                if (currentPoseData.Type.Equals("CustomJSON", StringComparison.OrdinalIgnoreCase))
+                {
+                    Plugin.Log.LogWarning($"[SDK_Icon] Целевой файл Диорамы найден: {currentPoseData.JsonFileName}. Запускаем отложенный поток...");
+                    if (Global.code != null)
+                    {
+                        Global.code.StartCoroutine(ExecuteBonesInjectionDelayed(characterComp, currentPoseData.JsonFileName));
+                    }
+
+                }
+            }
+        }
+
+        private static System.Collections.IEnumerator ExecuteBonesInjectionDelayed(CharacterCustomization characterComp, string jsonFileName)
+        {
+            for (int i = 0; i < 3; i++)
+            {
+                yield return null;
+            }
+
+            if (characterComp == null || characterComp.anim == null) yield break;
+
+            string customAnimFullPath = Path.Combine(ConfigManager.CustomAnimsPath, jsonFileName);
+            if (!File.Exists(customAnimFullPath))
+            {
+                Plugin.Log.LogError($"[SDK_Coroutine] Ошибка: Файл слепка костей отсутствует: {customAnimFullPath}");
+                yield break;
+            }
+
+            try
+            {
+                Transform character = characterComp.transform;
+                string jsonContent = File.ReadAllText(customAnimFullPath);
+                var rawBonesData = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, BakedElementData>>(jsonContent);
+
+                if (rawBonesData != null)
+                {
+                    Plugin.Log.LogWarning($"[SDK_Coroutine] Кадры ожидания прошли! Раскатываем {rawBonesData.Count} элементов Диорамы на скелет...");
+
+                    Transform FindChildRecursive(Transform parent, string name)
+                    {
+                        if (parent == null) return null;
+                        if (parent.name == name) return parent;
+                        for (int i = 0; i < parent.childCount; i++)
+                        {
+                            Transform found = FindChildRecursive(parent.GetChild(i), name);
+                            if (found != null) return found;
+                        }
+                        return null;
+                    }
+
+                    foreach (var kp in rawBonesData)
+                    {
+                        Transform boneTrans = FindChildRecursive(character, kp.Key);
+                        if (boneTrans == null || kp.Value == null) continue;
+
+                        if ((kp.Value.type ?? "").Equals("Light", StringComparison.OrdinalIgnoreCase))
+                        {
+                            Light light = boneTrans.GetComponent<Light>();
+                            if (light != null)
+                            {
+                                light.enabled = kp.Value.enabled;
+                                light.intensity = kp.Value.intensity;
+                                light.range = kp.Value.range;
+                                if (kp.Value.color != null) light.color = new Color(kp.Value.color.r, kp.Value.color.g, kp.Value.color.b);
+                            }
+                        }
+                        else
+                        {
+                            if (kp.Value.rot != null) boneTrans.localEulerAngles = new Vector3(kp.Value.rot.x, kp.Value.rot.y, kp.Value.rot.z);
+                            if (DioramaConstants.PositionalObjectsRegistry.Contains(kp.Key) && kp.Value.pos != null)
+                            {
+                                boneTrans.localPosition = new Vector3(kp.Value.pos.x, kp.Value.pos.y, kp.Value.pos.z);
+                            }
+                        }
+                    }
+                }
+
+                characterComp.anim.applyRootMotion = false;
+                characterComp.anim.speed = 0f;
+                characterComp.anim.enabled = false;
+
+                Plugin.Log.LogWarning($"[SDK_Coroutine] Скелет Диорамы из файла {jsonFileName} успешно зафиксирован поверх А-позы!");
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"[SDK_Coroutine] Краш в потоке раскатки костей: {ex.Message}");
+            }
+        }
+    }
+
+    // === ПАТЧ 5: РОКИРОВКА КНОПОК И ПОЛНАЯ ЗАЧИСТКА ОКНА СОХРАНЕНИЯ (RELEASE 0.2.0 STABLE) ===
+    [HarmonyPatch(typeof(UIFreePose), "Open")]
+    public class UIFreePoseButtonPatch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(UIFreePose __instance)
+        {
+            if (__instance == null) return;
+
+            Transform existingBtn = __instance.transform.Find("Button_SaveInteract");
+            if (existingBtn != null) return;
+
+            Plugin.Log.LogWarning("[UI_Patch] ... Меню открыто. Запуск рокировки ...");
+
+            Transform vanillaSaveBtn = __instance.transform.Find("Button Save");
+            Transform vanillaLoadBtn = __instance.transform.Find("Button Load");
+
+            Transform targetTemplateBtn = vanillaSaveBtn ?? vanillaLoadBtn ?? __instance.GetComponentInChildren<UnityEngine.UI.Button>()?.transform;
+            if (targetTemplateBtn == null) return;
+
+            GameObject newButtonObj = UnityEngine.Object.Instantiate(targetTemplateBtn.gameObject, __instance.transform);
+            newButtonObj.name = "Button_SaveInteract";
+            newButtonObj.transform.localScale = Vector3.one;
+
+            RectTransform rectSDK = newButtonObj.GetComponent<RectTransform>();
+            RectTransform rectVanillaSave = vanillaSaveBtn != null ? vanillaSaveBtn.GetComponent<RectTransform>() : null;
+            RectTransform rectVanillaLoad = vanillaLoadBtn != null ? vanillaLoadBtn.GetComponent<RectTransform>() : null;
+
+            if (rectSDK != null && rectVanillaSave != null && rectVanillaLoad != null)
+            {
+                Vector2 originalSavePos = rectVanillaSave.anchoredPosition;
+                Vector2 originalLoadPos = rectVanillaLoad.anchoredPosition;
+
+                rectSDK.anchorMin = rectVanillaSave.anchorMin; rectSDK.anchorMax = rectVanillaSave.anchorMax; rectSDK.pivot = rectVanillaSave.pivot;
+                rectSDK.anchoredPosition = originalSavePos;
+                rectSDK.sizeDelta = rectVanillaSave.sizeDelta;
+                // Б. Родную кнопку Save Pose смещаем вправо на оригинальное место кнопки Load!
+                rectVanillaSave.anchoredPosition = originalLoadPos;
+
+                // В. Родную кнопку Load Pose поднимаем вторым этажом ровно НАД кнопкой Save Pose!
+                // Смещаем её по вертикали (ось Y) на 27 пикселей вверх от новой позиции Save
+                rectVanillaLoad.anchoredPosition = new Vector2(originalLoadPos.x, originalLoadPos.y + 27f);
+            }
+
+            LocalizationText locText = newButtonObj.GetComponentInChildren<LocalizationText>();
+            if (locText != null) UnityEngine.Object.Destroy(locText);
+
+            UnityEngine.UI.Text buttonText = newButtonObj.GetComponentInChildren<UnityEngine.UI.Text>();
+            if (buttonText != null)
+            {
+                buttonText.text = "Initializing SDK...";
+                buttonText.color = Color.white;
+                buttonText.fontSize = 12;
+                buttonText.alignment = TextAnchor.MiddleCenter;
+            }
+
+            UnityEngine.UI.Button buttonComp = newButtonObj.GetComponent<UnityEngine.UI.Button>();
+            if (buttonComp != null)
+            {
+                buttonComp.onClick = new UnityEngine.UI.Button.ButtonClickedEvent();
+                buttonComp.onClick.AddListener(new UnityEngine.Events.UnityAction(() =>
+                {
+                    PoseExporter.OnSaveInteractClicked(__instance);
+                }));
+            }
+
+            newButtonObj.AddComponent<FurnitureSdkButtonController>().Setup(__instance);
+            newButtonObj.SetActive(true);
+        }
+    }
+
+    [HarmonyPatch(typeof(UIFreePose), "SelectPose")]
+    public class UIFreePoseSelectPoseTracker
+    {
+        [HarmonyPostfix]
+        public static void Postfix()
+        {
+            Plugin.IsAnyPoseSelected = true;
+            Plugin.IsCustomPoseActive = false;
+            Plugin.Log.LogInfo("[SDK_Tracker] Выбрана готовая ванильная поза из списка.");
+        }
+    }
+
+    [HarmonyPatch(typeof(UIFreePose), "ToggleCustomPoseMode")]
+    public class UIFreePoseToggleModeTracker
+    {
+        [HarmonyPostfix]
+        public static void Postfix(UIFreePose __instance)
+        {
+            Plugin.IsCustomPoseActive = __instance.isCustomPoseMode;
+            Plugin.Log.LogInfo($"[SDK_Tracker] Переключение режима ручной правки костей: {Plugin.IsCustomPoseActive}");
+        }
+    }
+
+    [HarmonyPatch(typeof(UIFreePose), "Close")]
+    public class UIFreePoseCloseTracker
+    {
+        [HarmonyPostfix]
+        public static void Postfix()
+        {
+            Plugin.IsAnyPoseSelected = false;
+            Plugin.IsCustomPoseActive = false;
+            Plugin.Log.LogInfo("[SDK_Tracker] ... Меню закрыто, флаги сброшены ...");
+        }
+    }
+
+    [HarmonyPatch(typeof(global::Pose), "Warp")]
+    public class DebugPoseWarpSpy
+    {
+        [HarmonyPostfix]
+        public static void Postfix(global::Pose __instance, Transform character)
+        {
+            if (__instance == null || character == null) return;
+
+            Animator anim = character.GetComponent<Animator>();
+            string ctrlName = anim?.runtimeAnimatorController?.name ?? "None";
+            bool isEnabled = anim != null && anim.enabled;
+
+            Plugin.Log.LogWarning(
+                $"[TIMING_DEBUG] -> 1. Сработал метод Pose.Warp для позы '{__instance.name}'\n" +
+                $"Персонаж: {character.name}\n" +
+                $"Animator Enabled: {isEnabled}\n" +
+                $"Controller Name: {ctrlName}"
+            );
+        }
+    }
+
+    [HarmonyPatch(typeof(Furniture), "WarpCharacter")]
+    public class DebugWarpCharacterSpy
+    {
+        [HarmonyPostfix]
+        public static void Postfix(Furniture __instance, Transform character, Transform pose)
+        {
+            if (__instance == null || character == null || pose == null) return;
+
+            Animator anim = character.GetComponent<Animator>();
+            string ctrlName = anim?.runtimeAnimatorController?.name ?? "None";
+            bool isEnabled = anim != null && anim.enabled;
+
+            Plugin.Log.LogError(
+                $"[TIMING_DEBUG] -> 2. Сработал метод Furniture.WarpCharacter для мебели '{__instance.name}'\n" +
+                $"Выбранный локатор позы: {pose.name}\n" +
+                $"Animator Enabled: {isEnabled}\n" +
+                $"Controller Name: {ctrlName}"
+            );
+        }
+    }
+}
+
+================
 File: FurnitureAnimations/Plugin.cs
 ================
 using BepInEx;
@@ -2151,7 +3046,7 @@ namespace FurnitureAnimationsMod
     {
         public const string PluginGuid = "com.lorifel007.furnitureanimations";
         public const string PluginName = "Furniture Animations Mod";
-        public const string PluginVersion = "1.3.7";
+        public const string PluginVersion = "1.3.8";
 
         public static ManualLogSource Log;
         private Harmony harmony;
@@ -2584,614 +3479,6 @@ namespace FurnitureAnimationsMod
                 Plugin.Log.LogError($"[BonesBake] Ошибка: {ex.Message}");
                 return "{}";
             }
-        }
-    }
-}
-
-================
-File: FurnitureAnimations/FurnitureInjectorPatch.cs
-================
-using HarmonyLib;
-using Newtonsoft.Json.Linq;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Xml.Linq;
-using UnityEngine;
-using UnityEngine.UI;
-using UnityStandardAssets.Cameras;
-using static System.Net.Mime.MediaTypeNames;
-
-namespace FurnitureAnimationsMod
-{
-    // === ПАТЧ 1: ИНЖЕКЦИЯ СТРУКТУРЫ ПОЗ ПРИ СТАРТЕ МЕБЕЛИ (RELEASE 0.2.0 С АВТО-РЕФРЕШЕМ) ===
-    [HarmonyPatch(typeof(Furniture), "Start")]
-    public class FurnitureInjectorPatch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(Furniture __instance)
-        {
-            if (__instance == null) return;
-            RebuildFurniturePoses(__instance);
-        }
-
-        public static void RebuildFurniturePoses(Furniture __instance)
-        {
-            if (__instance == null) return;
-
-            string furnitureName = __instance.name.Replace("(Clone)", "").Trim();
-
-            // Ищем, есть ли для этой мебели конфигурация в нашем моде
-            if (ConfigManager.LoadedConfigs.TryGetValue(furnitureName, out FurnitureConfig config))
-            {
-                Plugin.Log.LogWarning($"[Injector] Инжекция кастомных поз для мебели: {furnitureName} (Ванильные позы БУДУТ сохранены!)");
-
-                // --- КРИТИЧЕСКИЙ ФИКС №1: БОЛЬШЕ НЕ УНИЧТОЖАЕМ "posesGroup" И НЕ ОЧИЩАЕМ СПИСКИ КАМЕР/ПОЗ ИГРЫ! ---
-                // Если у мебели почему-то нет инициализированных списков — создаем их (защита от краша)
-                if (__instance.poses == null) __instance.poses = new CommonArray();
-                if (__instance.cameras == null) __instance.cameras = new CommonArray();
-
-                // Находим или создаем кастомную подпапку для НАШИХ поз внутри мебели, чтобы не захламлять оригинальный posesGroup
-                Transform modPosesGroup = __instance.transform.Find("Mod_CustomPosesGroup");
-                if (modPosesGroup == null)
-                {
-                    GameObject modGroupObj = new GameObject("Mod_CustomPosesGroup");
-                    modGroupObj.transform.SetParent(__instance.transform, false);
-                    modPosesGroup = modGroupObj.transform;
-                }
-
-                Pose[] allGamePoses = Resources.FindObjectsOfTypeAll<Pose>();
-                RuntimeAnimatorController[] allControllers = Resources.FindObjectsOfTypeAll<RuntimeAnimatorController>();
-
-                // Проходим циклом по позам из нашего JSON конфига
-                foreach (PoseData poseConfig in config.InteractionPoses)
-                {
-                    if (poseConfig == null) continue;
-
-                    // --- КРИТИЧЕСКИЙ ФИКС №2: ИСКЛЮЧАЕМ ДУБЛИРОВАНИЕ ПРИ СЛУЧАЙНОМ ПОВТОРНОМ ВЫЗОВЕ ---
-                    bool alreadyInjected = false;
-                    foreach (Transform existingPose in __instance.poses.items)
-                    {
-                        if (existingPose != null && existingPose.name == poseConfig.DisplayName)
-                        {
-                            alreadyInjected = true;
-                            break;
-                        }
-                    }
-                    if (alreadyInjected) continue; // Если поза уже добавлена к этой мебели — идем дальше
-
-                    bool isCustomPose = poseConfig.Type.Equals("CustomJSON", System.StringComparison.OrdinalIgnoreCase) || poseConfig.Type.Contains("Кастомная");
-                    bool isExternalModAnim = poseConfig.Type.Equals("PoseAnimationsMod", System.StringComparison.OrdinalIgnoreCase);
-
-                    RuntimeAnimatorController targetController = null;
-                    string searchName = (isCustomPose || isExternalModAnim) ? "UnarmedController" : poseConfig.ControllerName;
-
-                    foreach (var rc in allControllers)
-                    {
-                        if (rc != null && rc.name == searchName) { targetController = rc; break; }
-                    }
-
-                    if (targetController == null && !isCustomPose && !isExternalModAnim) continue;
-
-                    // Создаем новый GameObject для НАШЕЙ кастомной позы
-                    GameObject newPoseObj = new GameObject(poseConfig.DisplayName);
-                    newPoseObj.transform.SetParent(modPosesGroup, false); // Кладем в нашу изолированную папку мода
-
-                    Pose newPose = newPoseObj.AddComponent<Pose>();
-                    newPose.controller = targetController;
-                    newPose.notshown = false;
-                    newPose.locked = false;
-                    newPose.crystals = 0;
-
-                    // Инжекция картинки-иконки с диска
-                    if (isCustomPose || isExternalModAnim)
-                    {
-                        newPose.categoryName = "Custom";
-                        string iconName = isCustomPose ? poseConfig.JsonFileName.Replace(".json", ".png") : $"{poseConfig.ControllerName}.png";
-                        string iconFullPath = Path.Combine(ConfigManager.IconsPath, iconName);
-
-                        if (File.Exists(iconFullPath))
-                        {
-                            try
-                            {
-                                byte[] imgBytes = File.ReadAllBytes(iconFullPath);
-                                Texture2D customTex = new Texture2D(2, 2);
-                                customTex.LoadImage(imgBytes);
-                                newPose.icon = customTex;
-                            }
-                            catch (Exception ex)
-                            {
-                                Plugin.Log.LogError($"[Injector] Сбой загрузки иконки {iconName}: {ex.Message}");
-                            }
-                        }
-                    }
-                    else
-                    {
-                        Pose exactVanillaPose = null;
-                        foreach (var p in allGamePoses)
-                        {
-                            if (p != null && p.controller != null && p.controller.name == poseConfig.ControllerName && p.icon != null)
-                            {
-                                exactVanillaPose = p; break;
-                            }
-                        }
-
-                        if (exactVanillaPose != null && exactVanillaPose.icon != null)
-                        {
-                            try
-                            {
-                                // --- ГЛУБОКОЕ КОПИРОВАНИЕ ТЕКСТУРЫ ДЛЯ ЗАЩИТЫ ОТ UNLOAD 🌟 ---
-                                Texture2D sourceTex = exactVanillaPose.icon;
-
-                                // Создаем чистую рантайм-текстуру точно такого же размера и формата
-                                Texture2D clonedTex = new Texture2D(sourceTex.width, sourceTex.height, sourceTex.format, sourceTex.mipmapCount > 1);
-
-                                // Программный дубликат на уровне графического чипа
-                                Graphics.CopyTexture(sourceTex, clonedTex);
-
-                                newPose.icon = clonedTex;
-                            }
-                            catch (Exception ex)
-                            {
-                                // Фаллбэк на случай, если текстура защищена от чтения/записи (Read/Write Disabled)
-                                newPose.icon = UnityEngine.Object.Instantiate(exactVanillaPose.icon);
-                                Plugin.Log.LogInfo($"[Injector] Использован Instantiate-клон для иконки {poseConfig.DisplayName}: {ex.Message}");
-                            }
-
-                            newPose.categoryName = exactVanillaPose.categoryName;
-                            newPose.mood = exactVanillaPose.mood;
-                        }
-                        else
-                        {
-                            newPose.categoryName = "Dances";
-                        }
-                    }
-
-                    // Настройка координат локатора позы
-                    GameObject locObj = new GameObject("loc");
-                    locObj.transform.SetParent(newPoseObj.transform, false);
-                    locObj.transform.localPosition = new Vector3(poseConfig.LocPosition.x, poseConfig.LocPosition.y, poseConfig.LocPosition.z);
-                    locObj.transform.localEulerAngles = new Vector3(poseConfig.LocRotation.x, poseConfig.LocRotation.y, poseConfig.LocRotation.z);
-                    newPose.loc = locObj.transform;
-
-                    newPoseObj.SetActive(false);
-
-                    // --- КРИТИЧЕСКИЙ ФИКС №3: СЛИЯНИЕ НА УРОВНЕ КОЛЛЕКЦИИ ---
-                    // Аккуратно пушим нашу позу в КОНЕЦ оригинального списка игры. Ванильные позы остаются на позициях 0, 1, 2...
-                    __instance.poses.AddItem(newPoseObj.transform);
-                }
-
-                // Перерегистрируем мебель в глобальном трекере интерактивов, чтобы игра обновила кэш меню взаимодействия
-                if (Global.code != null && Global.code.interactableFurnitures != null)
-                {
-                    Global.code.interactableFurnitures.items.Remove(__instance.transform);
-                    Global.code.interactableFurnitures.AddItemDifferentObject(__instance.transform);
-                }
-
-                Plugin.Log.LogWarning($"[Injector] Слияние завершено! Всего доступных поз для {furnitureName}: {__instance.poses.items.Count} (включая ванильные и кастомные).");
-            }
-        }
-
-    }
-
-    // === ПАТЧ 2: АВТО-ПОЗА И ФИКСАЦИЯ КАМЕРЫ ПРИ ВХОДЕ ИНТЕРАКТИВА ===
-    [HarmonyPatch(typeof(Furniture), "InitiateInteract")]
-    public class FurnitureAutoPosePatch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(Furniture __instance, CharacterCustomization customization)
-        {
-            if (__instance == null || customization == null) return;
-
-            string furnitureName = __instance.name.Replace("(Clone)", "").Trim();
-
-            if (ConfigManager.LoadedConfigs.ContainsKey(furnitureName))
-            {
-                Plugin.Log.LogWarning($"[AutoInteract] Настройка бесшовного входа для: {furnitureName}");
-
-                if (FreeLookCam.code != null && Global.code != null)
-                {
-                    GameObject freeCamObj = Global.code.freeCamera;
-                    if (freeCamObj != null)
-                    {
-                        freeCamObj.SetActive(true);
-                        freeCamObj.transform.position = FreeLookCam.code.transform.position;
-                        freeCamObj.transform.rotation = FreeLookCam.code.transform.rotation;
-                        Plugin.Log.LogInfo("[AutoInteract] Free Camera успешно зафиксирована в ракурсе игрока!");
-                    }
-                }
-
-                if (__instance.poses != null && __instance.poses.items.Count > 0)
-                {
-                    Transform firstPoseTransform = __instance.poses.items[0];
-                    if (firstPoseTransform != null)
-                    {
-                        Pose firstPose = firstPoseTransform.GetComponent<Pose>();
-                        if (firstPose != null)
-                        {
-                            Plugin.Log.LogWarning($"[AutoInteract] Авто-вызов позы: {firstPose.name}");
-                            __instance.DoPose(firstPose);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // === ПАТЧ 3: БЕЗОПАСНЫЙ ВЫХОД ИЗ ИНТЕРАКТИВА ===
-    [HarmonyPatch(typeof(Furniture), "DoQuitInteraction")]
-    public class FurnitureQuitSafetyPatch
-    {
-        [HarmonyPrefix]
-        public static bool Prefix(Furniture __instance)
-        {
-            if (__instance.user == null)
-            {
-                Plugin.Log.LogWarning("[SafetyPatch] Безопасный выход из пустого интерактива.");
-                var playerComp = UnityEngine.Object.FindObjectOfType<CharacterCustomization>();
-                if (playerComp != null)
-                {
-                    playerComp.gameObject.SetActive(true);
-                }
-                return false;
-            }
-            return true;
-        }
-    }
-
-    // === ПАТЧ 4: УЛЬТИМАТИВНЫЙ ПОСТФИКС-ПЕРЕХВАТ ДЛЯ ОКНА UIPOSE (RELEASE 0.2.0 STABLE) ===
-    [HarmonyPatch(typeof(PoseIcon), "Click")]
-    public class PoseIconClickDioramaPatch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(PoseIcon __instance)
-        {
-            if (__instance == null || __instance.pose == null) return;
-
-            string uiPoseName = __instance.pose.name ?? "NULL";
-            string uiCtrlName = __instance.pose.controller != null ? __instance.pose.controller.name : "NULL";
-
-            Plugin.Log.LogWarning($"[SDK_Icon] Клик зафиксирован! Поза: '{uiPoseName}' | Контроллер: '{uiCtrlName}'");
-
-            Furniture parentFurniture = __instance.GetComponentInParent<Furniture>() ?? __instance.pose.GetComponentInParent<Furniture>();
-
-            if (parentFurniture == null)
-            {
-                Furniture[] allFurniture = UnityEngine.Object.FindObjectsOfType<Furniture>();
-                if (allFurniture != null && allFurniture.Length > 0)
-                {
-                    parentFurniture = allFurniture[0];
-                }
-            }
-
-            if (parentFurniture == null || parentFurniture.user == null) return;
-
-            CharacterCustomization activeChar = parentFurniture.user;
-
-            if (activeChar != null && activeChar.anim != null)
-            {
-                activeChar.anim.enabled = true;
-                activeChar.anim.speed = 1f;
-            }
-
-            ProcessPoseClick(activeChar, parentFurniture, uiPoseName, uiCtrlName);
-        }
-
-        private static void ProcessPoseClick(CharacterCustomization characterComp, Furniture furniture, string uiPoseName, string uiCtrlName)
-        {
-            if (characterComp == null || furniture == null) return;
-
-            string furnitureName = furniture.name.Replace("(Clone)", "").Trim();
-
-            if (ConfigManager.LoadedConfigs.TryGetValue(furnitureName, out FurnitureConfig config))
-            {
-                string cleanUiName = uiPoseName.ToLower().Replace(" ", "").Replace("-", "").Replace("—", "").Replace("–", "").Trim();
-
-                PoseData currentPoseData = config.InteractionPoses.Find(p =>
-                    p != null &&
-                    p.DisplayName.ToLower().Replace(" ", "").Replace("-", "").Replace("—", "").Replace("–", "").Trim() == cleanUiName
-                );
-
-                if (currentPoseData == null && (cleanUiName.Contains("custom") || uiCtrlName.ToLower().Contains("unarmed")))
-                {
-                    currentPoseData = config.InteractionPoses.Find(p => p != null && p.Type.Equals("CustomJSON", StringComparison.OrdinalIgnoreCase));
-                }
-
-                // --- КРИТИЧЕСКИЙ ФИКС СЛИЯНИЯ: ЕСЛИ ПОЗА НЕ НАЙДЕНА В КОНФИГЕ МОДА ---
-                if (currentPoseData == null)
-                {
-                    // Это значит, что игрок кликнул по оригинальной ВАНИЛЬНОЙ позе игры!
-                    // Сносим наш кастомный плеер анимаций (используем уникальное имя переменной, чтобы не было конфликта)
-                    var vanillaCleanupPlayer = characterComp.gameObject.GetComponent<FurnitureAnimationPlayer>();
-                    if (vanillaCleanupPlayer != null)
-                    {
-                        UnityEngine.Object.Destroy(vanillaCleanupPlayer);
-                    }
-
-                    // Включаем встроенный аниматор игры обратно, чтобы ванильная поза могла запуститься!
-                    if (characterComp.anim != null)
-                    {
-                        characterComp.anim.enabled = true;
-                        characterComp.anim.speed = 1f;
-                    }
-
-                    Plugin.Log.LogInfo($"[SDK_Icon] Клик по ванильной позе '{uiPoseName}'. Наш плеер уничтожен, управление возвращено игре.");
-                    return; // Просто выходим, позволяя игре выполнить её стандартный метод DoPose
-                }
-
-                // =========================================================================
-                // УМНЫЙ ПЕРЕХВАТ ДЛЯ СМЕНЫ И ОСТАНОВКИ АНИМАЦИЙ 🛑💃
-                // =========================================================================
-
-                // 1. Проверяем, запущен ли наш встроенный плеер на персонаже прямо сейчас
-                var activePlayer = characterComp.gameObject.GetComponent<FurnitureAnimationPlayer>();
-
-                if (activePlayer != null)
-                {
-                    // Узнаем имя анимации, которая крутится в данный момент
-                    string currentlyPlayingAnim = activePlayer.GetPlayingAnimationName();
-
-                    // ЕСЛИ КЛИКНУЛИ ПО ТОЙ ЖЕ ИКОНКЕ -> Просто останавливаем «горшочек»
-                    if (currentPoseData.Type.Equals("PoseAnimationsMod", StringComparison.OrdinalIgnoreCase) &&
-                        currentPoseData.ControllerName == currentlyPlayingAnim)
-                    {
-                        Plugin.Log.LogWarning($"[SDK_Icon] Клик по той же анимации '{currentlyPlayingAnim}'. Останавливаем плеер.");
-                        UnityEngine.Object.Destroy(activePlayer as UnityEngine.Component);
-                        return; // Мгновенный выход, ничего нового не запускаем
-                    }
-
-                    // ЕСЛИ КЛИКНУЛИ ПО ЛЮБОЙ ДРУГОЙ ИКОНКЕ -> Сносим старый плеер и даем коду идти дальше
-                    Plugin.Log.LogWarning($"[SDK_Icon] Переключение! Удаляем старую анимацию '{currentlyPlayingAnim}' перед запуском нового режима.");
-                    UnityEngine.Object.Destroy(activePlayer as UnityEngine.Component);
-                }
-
-                // =========================================================================
-
-                // Логика запуска внешней JSON-анимации мода
-                if (currentPoseData.Type.Equals("PoseAnimationsMod", StringComparison.OrdinalIgnoreCase))
-                {
-                    Plugin.Log.LogWarning($"[SDK_Icon] Активирован локальный встроенный плеер для анимации: {currentPoseData.ControllerName}");
-
-                    var newPlayer = characterComp.gameObject.AddComponent<FurnitureAnimationPlayer>();
-                    newPlayer.Play(characterComp, currentPoseData.ControllerName, furniture, currentPoseData);
-                    return;
-                }
-
-                // Логика Диорамы (Сценарий Б)
-                if (currentPoseData.Type.Equals("CustomJSON", StringComparison.OrdinalIgnoreCase))
-                {
-                    Plugin.Log.LogWarning($"[SDK_Icon] Целевой файл Диорамы найден: {currentPoseData.JsonFileName}. Запускаем отложенный поток...");
-                    if (Global.code != null)
-                    {
-                        Global.code.StartCoroutine(ExecuteBonesInjectionDelayed(characterComp, currentPoseData.JsonFileName));
-                    }
-                }
-            }
-        }
-
-        private static System.Collections.IEnumerator ExecuteBonesInjectionDelayed(CharacterCustomization characterComp, string jsonFileName)
-        {
-            for (int i = 0; i < 3; i++)
-            {
-                yield return null;
-            }
-
-            if (characterComp == null || characterComp.anim == null) yield break;
-
-            string customAnimFullPath = Path.Combine(ConfigManager.CustomAnimsPath, jsonFileName);
-            if (!File.Exists(customAnimFullPath))
-            {
-                Plugin.Log.LogError($"[SDK_Coroutine] Ошибка: Файл слепка костей отсутствует: {customAnimFullPath}");
-                yield break;
-            }
-
-            try
-            {
-                Transform character = characterComp.transform;
-                string jsonContent = File.ReadAllText(customAnimFullPath);
-                var rawBonesData = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, BakedElementData>>(jsonContent);
-
-                if (rawBonesData != null)
-                {
-                    Plugin.Log.LogWarning($"[SDK_Coroutine] Кадры ожидания прошли! Раскатываем {rawBonesData.Count} элементов Диорамы на скелет...");
-
-                    Transform FindChildRecursive(Transform parent, string name)
-                    {
-                        if (parent == null) return null;
-                        if (parent.name == name) return parent;
-                        for (int i = 0; i < parent.childCount; i++)
-                        {
-                            Transform found = FindChildRecursive(parent.GetChild(i), name);
-                            if (found != null) return found;
-                        }
-                        return null;
-                    }
-
-                    foreach (var kp in rawBonesData)
-                    {
-                        Transform boneTrans = FindChildRecursive(character, kp.Key);
-                        if (boneTrans == null || kp.Value == null) continue;
-
-                        if ((kp.Value.type ?? "").Equals("Light", StringComparison.OrdinalIgnoreCase))
-                        {
-                            Light light = boneTrans.GetComponent<Light>();
-                            if (light != null)
-                            {
-                                light.enabled = kp.Value.enabled;
-                                light.intensity = kp.Value.intensity;
-                                light.range = kp.Value.range;
-                                if (kp.Value.color != null) light.color = new Color(kp.Value.color.r, kp.Value.color.g, kp.Value.color.b);
-                            }
-                        }
-                        else
-                        {
-                            if (kp.Value.rot != null) boneTrans.localEulerAngles = new Vector3(kp.Value.rot.x, kp.Value.rot.y, kp.Value.rot.z);
-                            if (DioramaConstants.PositionalObjectsRegistry.Contains(kp.Key) && kp.Value.pos != null)
-                            {
-                                boneTrans.localPosition = new Vector3(kp.Value.pos.x, kp.Value.pos.y, kp.Value.pos.z);
-                            }
-                        }
-                    }
-                }
-
-                characterComp.anim.applyRootMotion = false;
-                characterComp.anim.speed = 0f;
-                characterComp.anim.enabled = false;
-
-                Plugin.Log.LogWarning($"[SDK_Coroutine] Скелет Диорамы из файла {jsonFileName} успешно зафиксирован поверх А-позы!");
-            }
-            catch (Exception ex)
-            {
-                Plugin.Log.LogError($"[SDK_Coroutine] Краш в потоке раскатки костей: {ex.Message}");
-            }
-        }
-    }
-
-    // === ПАТЧ 5: РОКИРОВКА КНОПОК И ПОЛНАЯ ЗАЧИСТКА ОКНА СОХРАНЕНИЯ (RELEASE 0.2.0 STABLE) ===
-    [HarmonyPatch(typeof(UIFreePose), "Open")]
-    public class UIFreePoseButtonPatch
-    {
-        [HarmonyPostfix]
-        public static void Postfix(UIFreePose __instance)
-        {
-            if (__instance == null) return;
-
-            Transform existingBtn = __instance.transform.Find("Button_SaveInteract");
-            if (existingBtn != null) return;
-
-            Plugin.Log.LogWarning("[UI_Patch] ... Меню открыто. Запуск рокировки ...");
-
-            Transform vanillaSaveBtn = __instance.transform.Find("Button Save");
-            Transform vanillaLoadBtn = __instance.transform.Find("Button Load");
-
-            Transform targetTemplateBtn = vanillaSaveBtn ?? vanillaLoadBtn ?? __instance.GetComponentInChildren<UnityEngine.UI.Button>()?.transform;
-            if (targetTemplateBtn == null) return;
-
-            GameObject newButtonObj = UnityEngine.Object.Instantiate(targetTemplateBtn.gameObject, __instance.transform);
-            newButtonObj.name = "Button_SaveInteract";
-            newButtonObj.transform.localScale = Vector3.one;
-
-            RectTransform rectSDK = newButtonObj.GetComponent<RectTransform>();
-            RectTransform rectVanillaSave = vanillaSaveBtn != null ? vanillaSaveBtn.GetComponent<RectTransform>() : null;
-            RectTransform rectVanillaLoad = vanillaLoadBtn != null ? vanillaLoadBtn.GetComponent<RectTransform>() : null;
-
-            if (rectSDK != null && rectVanillaSave != null && rectVanillaLoad != null)
-            {
-                Vector2 originalSavePos = rectVanillaSave.anchoredPosition;
-                Vector2 originalLoadPos = rectVanillaLoad.anchoredPosition;
-
-                rectSDK.anchorMin = rectVanillaSave.anchorMin; rectSDK.anchorMax = rectVanillaSave.anchorMax; rectSDK.pivot = rectVanillaSave.pivot;
-                rectSDK.anchoredPosition = originalSavePos;
-                rectSDK.sizeDelta = rectVanillaSave.sizeDelta;
-                // Б. Родную кнопку Save Pose смещаем вправо на оригинальное место кнопки Load!
-                rectVanillaSave.anchoredPosition = originalLoadPos;
-
-                // В. Родную кнопку Load Pose поднимаем вторым этажом ровно НАД кнопкой Save Pose!
-                // Смещаем её по вертикали (ось Y) на 27 пикселей вверх от новой позиции Save
-                rectVanillaLoad.anchoredPosition = new Vector2(originalLoadPos.x, originalLoadPos.y + 27f);
-            }
-
-            LocalizationText locText = newButtonObj.GetComponentInChildren<LocalizationText>();
-            if (locText != null) UnityEngine.Object.Destroy(locText);
-
-            UnityEngine.UI.Text buttonText = newButtonObj.GetComponentInChildren<UnityEngine.UI.Text>();
-            if (buttonText != null)
-            {
-                buttonText.text = "Initializing SDK...";
-                buttonText.color = Color.white;
-                buttonText.fontSize = 12;
-                buttonText.alignment = TextAnchor.MiddleCenter;
-            }
-
-            UnityEngine.UI.Button buttonComp = newButtonObj.GetComponent<UnityEngine.UI.Button>();
-            if (buttonComp != null)
-            {
-                buttonComp.onClick = new UnityEngine.UI.Button.ButtonClickedEvent();
-                buttonComp.onClick.AddListener(new UnityEngine.Events.UnityAction(() =>
-                {
-                    PoseExporter.OnSaveInteractClicked(__instance);
-                }));
-            }
-
-            newButtonObj.AddComponent<FurnitureSdkButtonController>().Setup(__instance);
-            newButtonObj.SetActive(true);
-        }
-    }
-
-    [HarmonyPatch(typeof(UIFreePose), "SelectPose")]
-    public class UIFreePoseSelectPoseTracker
-    {
-        [HarmonyPostfix]
-        public static void Postfix()
-        {
-            Plugin.IsAnyPoseSelected = true;
-            Plugin.IsCustomPoseActive = false;
-            Plugin.Log.LogInfo("[SDK_Tracker] Выбрана готовая ванильная поза из списка.");
-        }
-    }
-
-    [HarmonyPatch(typeof(UIFreePose), "ToggleCustomPoseMode")]
-    public class UIFreePoseToggleModeTracker
-    {
-        [HarmonyPostfix]
-        public static void Postfix(UIFreePose __instance)
-        {
-            Plugin.IsCustomPoseActive = __instance.isCustomPoseMode;
-            Plugin.Log.LogInfo($"[SDK_Tracker] Переключение режима ручной правки костей: {Plugin.IsCustomPoseActive}");
-        }
-    }
-
-    [HarmonyPatch(typeof(UIFreePose), "Close")]
-    public class UIFreePoseCloseTracker
-    {
-        [HarmonyPostfix]
-        public static void Postfix()
-        {
-            Plugin.IsAnyPoseSelected = false;
-            Plugin.IsCustomPoseActive = false;
-            Plugin.Log.LogInfo("[SDK_Tracker] ... Меню закрыто, флаги сброшены ...");
-        }
-    }
-
-    [HarmonyPatch(typeof(global::Pose), "Warp")]
-    public class DebugPoseWarpSpy
-    {
-        [HarmonyPostfix]
-        public static void Postfix(global::Pose __instance, Transform character)
-        {
-            if (__instance == null || character == null) return;
-
-            Animator anim = character.GetComponent<Animator>();
-            string ctrlName = anim?.runtimeAnimatorController?.name ?? "None";
-            bool isEnabled = anim != null && anim.enabled;
-
-            Plugin.Log.LogWarning(
-                $"[TIMING_DEBUG] -> 1. Сработал метод Pose.Warp для позы '{__instance.name}'\n" +
-                $"Персонаж: {character.name}\n" +
-                $"Animator Enabled: {isEnabled}\n" +
-                $"Controller Name: {ctrlName}"
-            );
-        }
-    }
-
-    [HarmonyPatch(typeof(Furniture), "WarpCharacter")]
-    public class DebugWarpCharacterSpy
-    {
-        [HarmonyPostfix]
-        public static void Postfix(Furniture __instance, Transform character, Transform pose)
-        {
-            if (__instance == null || character == null || pose == null) return;
-
-            Animator anim = character.GetComponent<Animator>();
-            string ctrlName = anim?.runtimeAnimatorController?.name ?? "None";
-            bool isEnabled = anim != null && anim.enabled;
-
-            Plugin.Log.LogError(
-                $"[TIMING_DEBUG] -> 2. Сработал метод Furniture.WarpCharacter для мебели '{__instance.name}'\n" +
-                $"Выбранный локатор позы: {pose.name}\n" +
-                $"Animator Enabled: {isEnabled}\n" +
-                $"Controller Name: {ctrlName}"
-            );
         }
     }
 }
