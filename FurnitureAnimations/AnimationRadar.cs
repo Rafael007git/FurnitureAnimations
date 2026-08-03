@@ -55,22 +55,19 @@ namespace FurnitureAnimationsMod
             float speedMod = _player.GetSpeed();
             string easeMode = _player.GetEaseMode().ToString();
 
+            // Точечно вытягиваем ваши приватные переменные
             int currentTransition = (int)(type.GetField("_currentTransitionIndex", flags)?.GetValue(_player) ?? 0);
-            float currentFrameTime = (float)(type.GetField("_currentFrameTime", flags)?.GetValue(_player) ?? 0f);
+            int gameFrameCounter = (int)(type.GetField("_gameFrameCounter", flags)?.GetValue(_player) ?? 0);
+            int totalTargetFrames = (int)(type.GetField("_totalTargetFrames", flags)?.GetValue(_player) ?? 0);
             bool isReversing = (bool)(type.GetField("_reversing", flags)?.GetValue(_player) ?? false);
 
-            // Безопасно достаем PoseAnimationData и данные текущей дельты
             var animDataField = type.GetField("_animData", flags)?.GetValue(_player);
             int currentDeltaFrames = 0;
             int totalAnimFrames = 0;
-            float baseRate = 0.0333f;
 
             if (animDataField != null)
             {
                 var deltasProp = animDataField.GetType().GetField("deltas", flags)?.GetValue(animDataField) as System.Collections.IList;
-                baseRate = (float)(animDataField.GetType().GetField("rate", flags)?.GetValue(animDataField) ?? 0.0333f);
-                if (baseRate <= 0f) baseRate = 0.0333f;
-
                 if (deltasProp != null)
                 {
                     // Считаем общее число авторских кадров
@@ -79,18 +76,17 @@ namespace FurnitureAnimationsMod
                         totalAnimFrames += (int)(d.GetType().GetField("frames", flags)?.GetValue(d) ?? 0);
                     }
 
-                    // Кадры текущей дельты
-                    int arrayIdx = currentTransition - 1;
-                    if (arrayIdx >= 0 && arrayIdx < deltasProp.Count)
+                    // Кадры текущего перехода
+                    if (currentTransition >= 0 && currentTransition < deltasProp.Count)
                     {
-                        var currentDelta = deltasProp[arrayIdx];
+                        var currentDelta = deltasProp[currentTransition];
                         currentDeltaFrames = (int)(currentDelta.GetType().GetField("frames", flags)?.GetValue(currentDelta) ?? 0);
                     }
                 }
             }
 
-            float transitionDuration = currentDeltaFrames * baseRate;
-            float localFraction = transitionDuration > 0 ? Mathf.Clamp01(currentFrameTime / transitionDuration) : 0f;
+            // float transitionDuration = currentDeltaFrames * baseRate;
+            // float localFraction = transitionDuration > 0 ? Mathf.Clamp01(currentFrameTime / transitionDuration) : 0f;
 
             // Формируем строки радара
             sb.AppendLine($"[SYSTEM]");
@@ -100,12 +96,12 @@ namespace FurnitureAnimationsMod
             sb.AppendLine($"  Speed Modifier: {speedMod * 100:F0}%");
             sb.AppendLine($"  Interpolation Mode: {easeMode}");
             sb.AppendLine($"[TIMING]");
-            sb.AppendLine($"  Current Transition: idx {currentTransition} (Array: {currentTransition - 1})");
+            sb.AppendLine($"  Transition Index: {currentTransition} / {totalAnimFrames}");
             sb.AppendLine($"  Direction: {(isReversing ? "REVERSE <<" : "FORWARD >>")}");
-            sb.AppendLine($"  Delta Duration: {transitionDuration:F3}s ({currentDeltaFrames} author frames)");
-            sb.AppendLine($"  Local Time Progress: {currentFrameTime:F3}s / {transitionDuration:F3}s");
-            sb.AppendLine($"  Calculated Frame: {localFraction * currentDeltaFrames:F1} / {currentDeltaFrames}");
-            sb.AppendLine($"  Total Animation Frames: {totalAnimFrames}");
+            sb.AppendLine($"  Current Transition Frames: {currentDeltaFrames} author frames");
+            sb.AppendLine($"  Engine Target Frames: {totalTargetFrames} generated frames");
+            sb.AppendLine($"  Progress Frame Counter: {gameFrameCounter} / {totalTargetFrames}");
+            sb.AppendLine($"  Total Animation Key-Frames: {totalAnimFrames}");
 
             // Отрисовка в окне GUI
             GUIStyle labelStyle = new GUIStyle(GUI.skin.label);
@@ -119,7 +115,12 @@ namespace FurnitureAnimationsMod
             // Кнопка копирования в буфер обмена
             if (GUI.Button(new Rect(10, 280, 330, 30), "COPY TO CLIPBOARD"))
             {
-                GUIUtility.systemCopyBuffer = sb.ToString();
+                // Используем TextEditor, который BepInEx пропускает без ошибок безопасности
+                TextEditor te = new TextEditor();
+                te.text = sb.ToString();
+                te.SelectAll();
+                te.Copy();
+
                 Plugin.Log.LogInfo("[Radar] Radar data successfully copied to clipboard!");
             }
         }
