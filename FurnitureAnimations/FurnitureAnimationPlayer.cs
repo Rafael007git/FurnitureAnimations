@@ -18,13 +18,13 @@ namespace FurnitureAnimationsMod
         public static FurnitureAnimationPlayer Instance { get; private set; }
 
         private CharacterCustomization _character;
-        private PoseAnimationData _animData;
+        internal PoseAnimationData _animData;
 
         // Новая целочисленная кадровая сетка на базе стабильного FPS
-        private int _currentTransitionIndex = 1; // Человеческие индексы: 1 и 2
-        private int _gameFrameCounter = 0;
-        private int _totalTargetFrames = 0;
-        private bool _reversing = false;
+        internal int _currentTransitionIndex = 1; // Человеческие индексы: 1 и 2
+        internal int _gameFrameCounter = 0;
+        internal int _totalTargetFrames = 0;
+        internal bool _reversing = false;
 
         private Vector3 _baseWorldPos;
         private Quaternion _baseWorldRot;
