@@ -125,11 +125,6 @@ namespace FurnitureAnimationsMod
             _gameFrameCounter = 0;
             _totalTargetFrames = 0; // Спровоцирует перерасчет плотности на первом тике
             _reversing = false;
-
-            _currentTransitionIndex = 0;
-            _gameFrameCounter = 0;
-            _totalTargetFrames = 0;
-            _reversing = false;
         }
 
         public void ChangeSpeed(float delta)
