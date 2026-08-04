@@ -44,10 +44,11 @@ namespace FurnitureAnimationsMod
         {
             GUI.DragWindow(new Rect(0, 0, 10000, 20));
 
-            // Если плеер еще не успел прочитать JSON или упал до этого, выводим аварийный статус
-            if (_player == null || _player._animData == null)
+            // ЖЕСТКИЙ ПЕРЕХВАТ: Если плеер еще инициализируется в методе Play,
+            // просто пишем статус ожидания и выходим, не трогая переменные!
+            if (_player == null || _player._animData == null || _player._animData.deltas == null)
             {
-                GUILayout.Label("CRITICAL ENGINE ERROR: JSON not loaded or Player crashed!", GUI.skin.label);
+                GUILayout.Label("LOADING ENGINE DATA...", GUI.skin.label);
                 return;
             }
 
@@ -57,7 +58,7 @@ namespace FurnitureAnimationsMod
             float speedMod = _player.GetSpeed();
             string easeMode = _player.GetEaseMode().ToString();
 
-            // Читаем переменные напрямую через internal-доступ
+            // Читаем переменные через internal-доступ (убедитесь, что в плеере у них стоит internal)
             int currentTransition = _player._currentTransitionIndex;
             int gameFrameCounter = _player._gameFrameCounter;
             int totalTargetFrames = _player._totalTargetFrames;
@@ -65,23 +66,20 @@ namespace FurnitureAnimationsMod
 
             int currentDeltaFrames = 0;
             int totalAnimFrames = 0;
-            int totalTransitions = 0;
+            int totalTransitions = _player._animData.deltas.Count;
 
-            if (_player._animData != null && _player._animData.deltas != null)
+            // Безопасный подсчет кадров автора
+            for (int i = 0; i < totalTransitions; i++)
             {
-                totalTransitions = _player._animData.deltas.Count;
-
-                // Считаем общее число авторских кадров
-                for (int i = 0; i < totalTransitions; i++)
+                if (_player._animData.deltas[i] != null)
                 {
                     totalAnimFrames += _player._animData.deltas[i].frames;
                 }
+            }
 
-                // Кадры текущего перехода
-                if (currentTransition >= 0 && currentTransition < totalTransitions)
-                {
-                    currentDeltaFrames = _player._animData.deltas[currentTransition].frames;
-                }
+            if (currentTransition >= 0 && currentTransition < totalTransitions)
+            {
+                currentDeltaFrames = _player._animData.deltas[currentTransition].frames;
             }
 
             sb.AppendLine($"[SYSTEM]");
@@ -110,21 +108,16 @@ namespace FurnitureAnimationsMod
             {
                 try
                 {
-                    // Путь к рабочему столу текущего пользователя Windows
                     string desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
                     string filePath = Path.Combine(desktopPath, "animation_debug.txt");
-
-                    // Жестко записываем лог радара в файл
                     File.WriteAllText(filePath, sb.ToString());
-
-                    Plugin.Log.LogWarning($"[Radar] Успех! Данные сохранены на рабочий стол: {filePath}");
+                    Plugin.Log.LogWarning($"[Radar] Лог успешно сохранен на рабочий стол!");
                 }
                 catch (Exception ex)
                 {
-                    Plugin.Log.LogError($"[Radar] Ошибка записи файла на рабочий стол: {ex.Message}");
+                    Plugin.Log.LogError($"[Radar] Ошибка записи файла: {ex.Message}");
                 }
             }
-
         }
 
     }
