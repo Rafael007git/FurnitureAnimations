@@ -253,7 +253,7 @@ namespace FurnitureAnimationsMod
                 _character.transform.position = _targetFurniture.transform.TransformPoint(targetLocalPos);
                 _character.transform.rotation = _targetFurniture.transform.rotation * targetLocalRot;
 
-                // 3. ИНТЕРПОЛЯЦИЯ ВНУТРЕННИХ КОСТЕЙ СКЕЛЕТА (Остается локальной внутри тела)
+                // 3. ИНТЕРПОЛЯЦИЯ ВНУТРЕННИХ КОСТЕЙ СКЕЛЕТА (По канонам aedenthorn)
                 if (currentTransitionData.boneDatas != null)
                 {
                     foreach (var kp in currentTransitionData.boneDatas)
@@ -265,24 +265,27 @@ namespace FurnitureAnimationsMod
                             Quaternion boneStartRot = Quaternion.Euler(ArrayToVector3(kp.Value.startRot));
                             Quaternion boneEndRot = Quaternion.Euler(ArrayToVector3(kp.Value.endRot));
 
-                            // ВОЗВРАЩАЕМ АМПЛИТУДУ: Кость hip движется на полную мощность без обрезания осей
+                            // КРИТИЧЕСКИЙ ФИКС СИСТЕМНОЙ ОШИБКИ: Защита корня скелета
                             if (kp.Key.Equals("hip", StringComparison.OrdinalIgnoreCase))
                             {
-                                // Позволяем тазу смещаться по X, Y и Z на любые расстояния, заложенные автором
-                                boneTransform.localPosition = Vector3.Lerp(boneStartPos, boneEndPos, lerpFraction);
+                                // НАМЕРТВО БЛОКИРУЕМ ЛОКАЛЬНЫЙ СДВИГ:
+                                // Позиция таза должна быть статичной (0, высота_куклы, 0), 
+                                // чтобы предотвратить уползание персонажа и дрейф осей!
+                                boneTransform.localPosition = new Vector3(0f, boneStartPos.y, 0f);
 
-                                // Полноценно вращаем таз во всех плоскостях для максимального виляния и наклонов
+                                // Вращение отдаем полностью — оно отвечает за наклоны корпуса и анимацию бёдер
                                 boneTransform.localRotation = Quaternion.Lerp(boneStartRot, boneEndRot, lerpFraction);
                             }
                             else
                             {
-                                // Все остальные кости (руки, ноги, позвоночник) плавно движутся по умолчанию
+                                // Все остальные кости (руки, ноги, шея) плавно движутся по дельтам JSON
                                 boneTransform.localPosition = Vector3.Lerp(boneStartPos, boneEndPos, lerpFraction);
                                 boneTransform.localRotation = Quaternion.Lerp(boneStartRot, boneEndRot, lerpFraction);
                             }
                         }
                     }
                 }
+
             }
             catch (Exception ex)
             {
