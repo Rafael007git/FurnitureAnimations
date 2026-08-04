@@ -241,28 +241,38 @@ namespace FurnitureAnimationsMod
                 _character.transform.position = _targetFurniture.transform.TransformPoint(targetLocalPos);
                 _character.transform.rotation = _targetFurniture.transform.rotation * targetLocalRot;
 
-                // =========================================================================
-                // ИНТЕРПОЛЯЦИЯ ВНУТРЕННИХ КОСТЕЙ СКЕЛЕТА (РАЗБЛОКИРОВКА HIP) 🦴✨
-                // =========================================================================
-                if (toDelta.boneDatas != null)
+                // ======================================================================
+                // 3. ИНТЕРПОЛЯЦИЯ ВНУТРЕННИХ КОСТЕЙ СКЕЛЕТА (МЕЖКАДРОВЫЙ LERP) 🦴✨
+                // ======================================================================
+                // Нам нужны данные ОБОИХ кадров, чтобы плавно перетекать из позы From в позу To
+                if (fromDelta.boneDatas != null && toDelta.boneDatas != null)
                 {
                     foreach (var kp in toDelta.boneDatas)
                     {
-                        if (_boneCache.TryGetValue(kp.Key, out Transform boneTransform) && boneTransform != null)
+                        string boneName = kp.Key;
+                        if (_boneCache.TryGetValue(boneName, out Transform boneTransform) && boneTransform != null)
                         {
-                            Vector3 boneStartPos = ArrayToVector3(kp.Value.startPos);
+                            // Точка Финиша (целевая поза текущего перехода)
                             Vector3 boneEndPos = ArrayToVector3(kp.Value.endPos);
-                            Quaternion boneStartRot = Quaternion.Euler(ArrayToVector3(kp.Value.startRot));
                             Quaternion boneEndRot = Quaternion.Euler(ArrayToVector3(kp.Value.endRot));
 
-                            // ПОЛНАЯ СВОБОДА ДЛЯ HIP И ОСТАЛЬНЫХ КОСТЕЙ:
-                            // Больше никакого принудительного зануления Vector3(0f, boneStartPos.y, 0f)!
-                            // Таз теперь честно ходит по осям X и Z, как задумал художник во Free Pose Mode.
+                            // Точка Старта (берём из конечной позы предыдущей дельты 'fromDelta')
+                            Vector3 boneStartPos = boneEndPos;
+                            Quaternion boneStartRot = boneEndRot;
+
+                            if (fromDelta.boneDatas.TryGetValue(boneName, out BoneDelta prevBoneData))
+                            {
+                                boneStartPos = ArrayToVector3(prevBoneData.endPos);
+                                boneStartRot = Quaternion.Euler(ArrayToVector3(prevBoneData.endRot));
+                            }
+
+                            // Честная плавная интерполяция костей скелета МЕЖДУ кадрами автора
                             boneTransform.localPosition = Vector3.Lerp(boneStartPos, boneEndPos, lerpFraction);
                             boneTransform.localRotation = Quaternion.Lerp(boneStartRot, boneEndRot, lerpFraction);
                         }
                     }
                 }
+
             }
             catch (Exception ex)
             {
