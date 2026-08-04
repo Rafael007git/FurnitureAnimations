@@ -265,9 +265,21 @@ namespace FurnitureAnimationsMod
                             Quaternion boneStartRot = Quaternion.Euler(ArrayToVector3(kp.Value.startRot));
                             Quaternion boneEndRot = Quaternion.Euler(ArrayToVector3(kp.Value.endRot));
 
-                            // Плавный Lerp/SmoothStep для абсолютно всех костей, включая таз
-                            boneTransform.localPosition = Vector3.Lerp(boneStartPos, boneEndPos, lerpFraction);
-                            boneTransform.localRotation = Quaternion.Lerp(boneStartRot, boneEndRot, lerpFraction);
+                            // ВОЗВРАЩАЕМ АМПЛИТУДУ: Кость hip движется на полную мощность без обрезания осей
+                            if (kp.Key.Equals("hip", StringComparison.OrdinalIgnoreCase))
+                            {
+                                // Позволяем тазу смещаться по X, Y и Z на любые расстояния, заложенные автором
+                                boneTransform.localPosition = Vector3.Lerp(boneStartPos, boneEndPos, lerpFraction);
+
+                                // Полноценно вращаем таз во всех плоскостях для максимального виляния и наклонов
+                                boneTransform.localRotation = Quaternion.Lerp(boneStartRot, boneEndRot, lerpFraction);
+                            }
+                            else
+                            {
+                                // Все остальные кости (руки, ноги, позвоночник) плавно движутся по умолчанию
+                                boneTransform.localPosition = Vector3.Lerp(boneStartPos, boneEndPos, lerpFraction);
+                                boneTransform.localRotation = Quaternion.Lerp(boneStartRot, boneEndRot, lerpFraction);
+                            }
                         }
                     }
                 }
