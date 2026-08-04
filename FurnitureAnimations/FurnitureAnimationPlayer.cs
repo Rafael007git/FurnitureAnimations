@@ -20,6 +20,12 @@ namespace FurnitureAnimationsMod
         private CharacterCustomization _character;
         internal PoseAnimationData _animData;
 
+        private Furniture _targetFurniture;                 // Ссылка на целевой объект мебели
+        private Vector3 _localBasePos;                      // Стартовая локальная позиция из конфига
+        private Quaternion _localBaseRot;                   // Стартовый локальный поворот из конфига
+        private Quaternion _recordToFurnitureRotModifier;   // Переводчик осей из пространства записи в мебель
+
+
         // Новая целочисленная кадровая сетка на базе стабильного FPS
         internal int _currentTransitionIndex = 1; // Человеческие индексы: 1 и 2
         internal int _gameFrameCounter = 0;
@@ -29,15 +35,6 @@ namespace FurnitureAnimationsMod
         private Vector3 _baseWorldPos;
         private Quaternion _baseWorldRot;
         private Quaternion _modelRotationModifier;
-
-        private struct AbsoluteWorldFrame
-        {
-            public Vector3 Position;
-            public Quaternion Rotation;
-        }
-
-        // Массив для хранения предрассчитанных координат всех кадров автора
-        private AbsoluteWorldFrame[] _calculatedWorldFrames;
 
         private readonly Dictionary<string, Transform> _boneCache = new Dictionary<string, Transform>();
 
@@ -87,16 +84,22 @@ namespace FurnitureAnimationsMod
             gameObject.AddComponent<AnimationAudioManager>().Initialize(animationName, _animData.loop);
             gameObject.AddComponent<AnimationUiControls>().Initialize(this);
 
-            // --- ДОБАВЬТЕ ЭТУ СТРОКУ ДЛЯ ПОДКЛЮЧЕНИЯ РАДАРА ---
-            // gameObject.AddComponent<AnimationRadar>();
-
             if (furniture != null && poseConfig != null)
             {
-                _baseWorldPos = furniture.transform.TransformPoint(new Vector3(poseConfig.LocPosition.x, poseConfig.LocPosition.y, poseConfig.LocPosition.z));
-                _baseWorldRot = furniture.transform.rotation * Quaternion.Euler(new Vector3(poseConfig.LocRotation.x, poseConfig.LocRotation.y, poseConfig.LocRotation.z));
-                _modelRotationModifier = _baseWorldRot * Quaternion.Inverse(Quaternion.Euler(ArrayToVector3(_animData.startRot)));
-                _character.transform.position = _baseWorldPos;
-                _character.transform.rotation = _baseWorldRot;
+                // 1. Сохраняем ссылку на мебель, чтобы LateUpdate знал её наклон
+                _targetFurniture = furniture;
+
+                // 2. Запоминаем стартовые локальные координаты посадки из конфига
+                _localBasePos = new Vector3(poseConfig.LocPosition.x, poseConfig.LocPosition.y, poseConfig.LocPosition.z);
+                _localBaseRot = Quaternion.Euler(new Vector3(poseConfig.LocRotation.x, poseConfig.LocRotation.y, poseConfig.LocRotation.z));
+
+                // 3. Рассчитываем переводчик осей из пространства записи в локальное пространство мебели
+                Quaternion recordStartRot = Quaternion.Euler(ArrayToVector3(_animData.startRot));
+                _recordToFurnitureRotModifier = _localBaseRot * Quaternion.Inverse(recordStartRot);
+
+                // 4. Физически позиционируем персонажа в мире с учетом любого наклона стула
+                _character.transform.position = _targetFurniture.transform.TransformPoint(_localBasePos);
+                _character.transform.rotation = _targetFurniture.transform.rotation * _localBaseRot;
             }
 
             if (_character.anim != null)
@@ -123,36 +126,6 @@ namespace FurnitureAnimationsMod
             _totalTargetFrames = 0; // Спровоцирует перерасчет плотности на первом тике
             _reversing = false;
 
-            // =========================================================================
-            // ПРЕДВАРИТЕЛЬНЫЙ РАСЧЕТ АБСОЛЮТНЫХ МИРОВЫХ КООРДИНАТ ДЛЯ ВСЕХ КАДРОВ - нужен ли он?
-            // =========================================================================
-            int totalFramesCount = _animData.deltas.Count;
-            _calculatedWorldFrames = new AbsoluteWorldFrame[totalFramesCount];
-
-            // 0-й (стартовый) кадр всегда равен базовым координатам мода на мебели
-            _calculatedWorldFrames[0] = new AbsoluteWorldFrame
-            {
-                Position = _baseWorldPos,
-                Rotation = _baseWorldRot
-            };
-
-            // Последовательно нанизываем смещения для всех последующих кадров автора
-            Vector3 currentAccumulatedPos = _baseWorldPos;
-            Quaternion currentAccumulatedRot = _baseWorldRot;
-
-            for (int i = 1; i < totalFramesCount; i++)
-            {
-                var currentDelta = _animData.deltas[i];
-                currentAccumulatedRot *= Quaternion.Euler(ArrayToVector3(currentDelta.endRotDelta));
-                currentAccumulatedPos += _modelRotationModifier * ArrayToVector3(currentDelta.endPosDelta);
-
-                _calculatedWorldFrames[i] = new AbsoluteWorldFrame
-                {
-                    Position = currentAccumulatedPos,
-                    Rotation = currentAccumulatedRot
-                };
-            }
-            // =========================================================================
             _currentTransitionIndex = 0;
             _gameFrameCounter = 0;
             _totalTargetFrames = 0;
@@ -179,17 +152,15 @@ namespace FurnitureAnimationsMod
 
         private void LateUpdate()
         {
-            if (_character == null || _animData == null || _animData.deltas == null) return;
+            if (_character == null || _animData == null || _animData.deltas == null || _targetFurniture == null) return;
 
-            // 1. Общее количество дельта-переходов, заложенных автором в JSON
+            // 1. Общее количество дельта-переходов в JSON
             int totalTransitions = _animData.deltas.Count;
             if (totalTransitions < 1) return;
 
-            // Строгая рантайм-защита от вылета за границы массива дельт
             if (_currentTransitionIndex >= totalTransitions) _currentTransitionIndex = totalTransitions - 1;
             if (_currentTransitionIndex < 0) _currentTransitionIndex = 0;
 
-            // Берем данные текущего активного перехода
             PoseAnimationDelta currentTransitionData = _animData.deltas[_currentTransitionIndex];
 
             float durationInSeconds = currentTransitionData.frames * (_animData.rate > 0 ? _animData.rate : 0.0333f);
@@ -198,85 +169,91 @@ namespace FurnitureAnimationsMod
                 float currentFps = (Time.deltaTime > 0f) ? (1f / Time.deltaTime) : 60f;
                 if (currentFps < 10f) currentFps = 10f;
 
-                // Рассчитываем целевые игровые кадры с учётом модификатора скорости
                 _totalTargetFrames = Mathf.RoundToInt((durationInSeconds * currentFps) / _speedModifier);
                 if (_totalTargetFrames <= 0) _totalTargetFrames = 1;
             }
 
-            // 2. Инкремент шага игровых кадров
             _gameFrameCounter++;
             float localFraction = Mathf.Clamp01((float)_gameFrameCounter / _totalTargetFrames);
-
-            // Если включен реверс, фракция идет в обратную сторону (от 1 к 0)
             float actualFraction = _reversing ? (1f - localFraction) : localFraction;
 
-            // =========================================================================
-            // МАТЕМАТИЧЕСКИЕ РЕЖИМЫ ИНТЕРПОЛЯЦИИ (EASEMODE)
-            // =========================================================================
+            // Обработка режимов сглаживания (модификация фракции)
             float lerpFraction = actualFraction;
-
             switch (_currentEaseMode)
             {
                 case EaseMode.PerFrame:
                     lerpFraction = Mathf.SmoothStep(0f, 1f, actualFraction);
                     break;
-
                 case EaseMode.Global:
                     float totalAnimationFrames = 0f;
-                    for (int i = 0; i < totalTransitions; i++)
-                    {
-                        totalAnimationFrames += _animData.deltas[i].frames;
-                    }
-
+                    for (int i = 0; i < totalTransitions; i++) totalAnimationFrames += _animData.deltas[i].frames;
                     float passedAuthorFrames = 0f;
-                    for (int i = 0; i < _currentTransitionIndex; i++)
-                    {
-                        passedAuthorFrames += _animData.deltas[i].frames;
-                    }
+                    for (int i = 0; i < _currentTransitionIndex; i++) passedAuthorFrames += _animData.deltas[i].frames;
 
                     float currentGlobalAuthorFrame = passedAuthorFrames + (actualFraction * _animData.deltas[_currentTransitionIndex].frames);
                     float globalFraction = Mathf.Clamp01(currentGlobalAuthorFrame / totalAnimationFrames);
-
                     float smoothedGlobal = Mathf.SmoothStep(0f, 1f, globalFraction);
 
                     float currentDeltaStartGlobal = passedAuthorFrames / totalAnimationFrames;
                     float currentDeltaEndGlobal = (passedAuthorFrames + _animData.deltas[_currentTransitionIndex].frames) / totalAnimationFrames;
                     float globalDeltaDuration = currentDeltaEndGlobal - currentDeltaStartGlobal;
 
-                    lerpFraction = globalDeltaDuration > 0
-                        ? Mathf.Clamp01((smoothedGlobal - currentDeltaStartGlobal) / globalDeltaDuration)
-                        : 1f;
+                    lerpFraction = globalDeltaDuration > 0 ? Mathf.Clamp01((smoothedGlobal - currentDeltaStartGlobal) / globalDeltaDuration) : 1f;
                     break;
-
                 case EaseMode.Linear:
                 default:
                     break;
             }
 
-            // 3. МАТЕМАТИЧЕСКИЙ РЕНДЕР ТЕЛА И КОСТЕЙ
+            // =========================================================================
+            // МАТЕМАТИЧЕСКИЙ РЕНДЕР В ЛОКАЛЬНОМ ПРОСТРАНСТВЕ МЕБЕЛИ 🪑🌀
+            // =========================================================================
             try
             {
-                // Вычисляем стартовую мирового пространства для ТЕЛА рута персонажа
-                Vector3 startFramePos = _baseWorldPos;
-                Quaternion startFrameRot = _baseWorldRot;
+                // Начинаем накопление строго с локальной базовой точки посадки на мебель
+                Vector3 accumulatedLocalPos = _localBasePos;
 
-                // Накапливаем смещения ВСЕХ предыдущих дельт, которые персонаж уже физически прошел
+                // Базовый поворот автора в пространстве записи (Blender/World при создании)
+                Quaternion authorAccumulatedRot = Quaternion.Euler(ArrayToVector3(_animData.startRot));
+
+                // НАКОПЛЕНИЕ ТРАЕКТОРИИ В ПРОСТРАНСТВЕ ЗАПИСИ И ЕЕ ПЕРЕВОД В ЛОКАЛЬНЫЕ ОСИ МЕБЕЛИ
                 for (int i = 0; i < _currentTransitionIndex; i++)
                 {
                     var prevDelta = _animData.deltas[i];
-                    startFrameRot *= Quaternion.Euler(ArrayToVector3(prevDelta.endRotDelta));
-                    startFramePos += _modelRotationModifier * ArrayToVector3(prevDelta.endPosDelta);
+
+                    // Берём чистый вектор шага автора и разворачиваем его по текущему направлению записи
+                    Vector3 localPosDelta = ArrayToVector3(prevDelta.endPosDelta);
+                    Vector3 recordWorldPosDelta = authorAccumulatedRot * localPosDelta;
+
+                    // Переводим вектор записи в локальную систему координат мебели через модификатор базиса!
+                    Vector3 furnitureLocalPosDelta = _recordToFurnitureRotModifier * recordWorldPosDelta;
+                    accumulatedLocalPos += furnitureLocalPosDelta;
+
+                    // Накапливаем поворот в пространстве записи
+                    authorAccumulatedRot *= Quaternion.Euler(ArrayToVector3(prevDelta.endRotDelta));
                 }
 
-                // Конечная точка текущей дельты — это накопленный старт плюс дельта смещения текущего шага
-                Quaternion endFrameRot = startFrameRot * Quaternion.Euler(ArrayToVector3(currentTransitionData.endRotDelta));
-                Vector3 endFramePos = startFramePos + _modelRotationModifier * ArrayToVector3(currentTransitionData.endPosDelta);
+                // Вычисляем старт и финиш для ТЕКУЩЕГО активного перехода (в локальном пространстве мебели)
+                Vector3 startLocalPos = accumulatedLocalPos;
+                Quaternion startLocalRot = _recordToFurnitureRotModifier * authorAccumulatedRot;
 
-                // Плавно двигаем рут персонажа в пространстве мебели
-                _character.transform.position = Vector3.Lerp(startFramePos, endFramePos, lerpFraction);
-                _character.transform.rotation = Quaternion.Lerp(startFrameRot, endFrameRot, lerpFraction);
+                Vector3 currentLocalPosDelta = ArrayToVector3(currentTransitionData.endPosDelta);
+                Vector3 recordCurrentWorldPosDelta = authorAccumulatedRot * currentLocalPosDelta;
+                Vector3 furnitureCurrentLocalPosDelta = _recordToFurnitureRotModifier * recordCurrentWorldPosDelta;
 
-                // ИНТЕРПОЛЯЦИЯ КОСТЕЙ: строго внутри текущей дельты от startPos к endPos
+                Vector3 endLocalPos = startLocalPos + furnitureCurrentLocalPosDelta;
+                Quaternion endLocalRot = _recordToFurnitureRotModifier * (authorAccumulatedRot * Quaternion.Euler(ArrayToVector3(currentTransitionData.endRotDelta)));
+
+                // Интерполируем промежуточную ЛОКАЛЬНУЮ позицию куклы относительно стула
+                Vector3 targetLocalPos = Vector3.Lerp(startLocalPos, endLocalPos, lerpFraction);
+                Quaternion targetLocalRot = Quaternion.Lerp(startLocalRot, endLocalRot, lerpFraction);
+
+                // ФИНАЛЬНЫЙ СВЕРХВКОЛ: Переводим локальные координаты мебели в глобальный мир Unity
+                // Благодаря этому, если bugerry положил стул на бок, персонаж ляжет на бок вслед за ним автоматически!
+                _character.transform.position = _targetFurniture.transform.TransformPoint(targetLocalPos);
+                _character.transform.rotation = _targetFurniture.transform.rotation * targetLocalRot;
+
+                // 3. ИНТЕРПОЛЯЦИЯ ВНУТРЕННИХ КОСТЕЙ СКЕЛЕТА (Остается локальной внутри тела)
                 if (currentTransitionData.boneDatas != null)
                 {
                     foreach (var kp in currentTransitionData.boneDatas)
@@ -286,71 +263,53 @@ namespace FurnitureAnimationsMod
                             Vector3 boneStartPos = ArrayToVector3(kp.Value.startPos);
                             Vector3 boneEndPos = ArrayToVector3(kp.Value.endPos);
                             Quaternion boneStartRot = Quaternion.Euler(ArrayToVector3(kp.Value.startRot));
-                            Quaternion boneRotEnd = Quaternion.Euler(ArrayToVector3(kp.Value.endRot));
+                            Quaternion boneEndRot = Quaternion.Euler(ArrayToVector3(kp.Value.endRot));
 
+                            // Плавный Lerp/SmoothStep для абсолютно всех костей, включая таз
                             boneTransform.localPosition = Vector3.Lerp(boneStartPos, boneEndPos, lerpFraction);
-                            boneTransform.localRotation = Quaternion.Lerp(boneStartRot, boneRotEnd, lerpFraction);
+                            boneTransform.localRotation = Quaternion.Lerp(boneStartRot, boneEndRot, lerpFraction);
                         }
                     }
                 }
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogError($"[SubframePlayer] Ошибка рендера костей: {ex.Message}");
+                Plugin.Log.LogError($"[SubframePlayer] Критическая ошибка наклона пивота: {ex.Message}");
             }
 
-            // 4. АВТОМАТ СМЕНЫ ДЕЛЬТ И ЗАЦИКЛИВАНИЯ
+            // 4. АВТОМАТ СМЕНЫ ДЕЛЬТ И ЗАЦИКЛИВАНИЯ (С фиксом уплывания)
             if (_gameFrameCounter >= _totalTargetFrames)
             {
                 _gameFrameCounter = 0;
-                _totalTargetFrames = 0; // Сбрасываем для пересчета длительности следующего шага
+                _totalTargetFrames = 0;
 
                 if (!_reversing)
                 {
-                    // Идем вперед по цепочке дельт
                     if (_currentTransitionIndex < totalTransitions - 1)
                     {
                         _currentTransitionIndex++;
                     }
                     else
                     {
-                        // Мы полностью завершили самую последнюю дельту в JSON!
-                        if (_animData.reverse)
-                        {
-                            _reversing = true;
-                            // Остаемся на максимальном индексе, чтобы начать проигрывать его назад
-                        }
+                        if (_animData.reverse) { _reversing = true; }
                         else if (_animData.loop)
                         {
-                            _currentTransitionIndex = 0; // Для DanceAround01 сбрасываем в 0 и идем на новый круг!
+                            _currentTransitionIndex = 0;
+                            Plugin.Log.LogInfo($"[Engine] Бесшовный перезапуск цикла. Координаты удерживаются в базисе мебели.");
                         }
-                        else
-                        {
-                            Destroy(this);
-                            return;
-                        }
+                        else { Destroy(this); return; }
                     }
                 }
                 else
                 {
-                    // Идем назад (реверс)
                     if (_currentTransitionIndex > 0)
                     {
                         _currentTransitionIndex--;
                     }
                     else
                     {
-                        // Вернулись в самое начало первой дельты (индекс 0)
-                        if (_animData.loop)
-                        {
-                            _reversing = false;
-                            _currentTransitionIndex = 0;
-                        }
-                        else
-                        {
-                            Destroy(this);
-                            return;
-                        }
+                        if (_animData.loop) { _reversing = false; _currentTransitionIndex = 0; }
+                        else { Destroy(this); return; }
                     }
                 }
             }
