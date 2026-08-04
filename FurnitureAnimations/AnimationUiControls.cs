@@ -70,10 +70,25 @@ namespace FurnitureAnimationsMod
                         });
 
                         RebindButtonAction(buttonsContainer, "Mod_BtnNextAudio", () => {
-                            if (AnimationAudioManager.Instance != null)
+                            var activeAudio = GameObject.FindObjectOfType<AnimationAudioManager>();
+                            if (activeAudio != null)
                             {
-                                AnimationAudioManager.Instance.PlayNextTrack();
-                                UpdateSoundButton();
+                                activeAudio.PlayNextTrack();
+
+                                // Обновляем кнопку звука через безопасный вызов
+                                Transform btnMute = buttonsContainer.Find("Mod_BtnMuteToggle");
+                                if (btnMute != null)
+                                {
+                                    var rawImg = btnMute.GetComponent<RawImage>();
+                                    if (rawImg != null)
+                                    {
+                                        rawImg.texture = activeAudio.IsMuted() ? _iconSoundOff : _iconSoundOn;
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                Plugin.Log.LogWarning("[UI] Кнопка NextAudio нажата, но активный AnimationAudioManager в сцене не найден!");
                             }
                         });
                     }

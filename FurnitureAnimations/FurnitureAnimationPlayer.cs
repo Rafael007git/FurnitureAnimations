@@ -43,14 +43,14 @@ namespace FurnitureAnimationsMod
 
         public void Play(CharacterCustomization character, string animationName, Furniture furniture, PoseData poseConfig)
         {
-            // --- ХИРУРГИЧЕСКИЙ ВКОЛ: Радар создается в первую наносекунду запуска ---
-            if (gameObject.GetComponent<AnimationRadar>() == null)
-            {
-                gameObject.AddComponent<AnimationRadar>();
-            }
-
-            Instance = this;
             _character = character;
+            Instance = this;
+
+            // --- РАННИЙ ВКОЛ РАДАРА: вешаем строго на персонажа ---
+            if (_character != null && _character.gameObject.GetComponent<AnimationRadar>() == null)
+            {
+                _character.gameObject.AddComponent<AnimationRadar>();
+            }
 
             string assetPath = Path.Combine(BepInEx.Paths.PluginPath, "PoseAnimations", $"{animationName}.json");
             if (!File.Exists(assetPath))
