@@ -204,6 +204,54 @@ namespace FurnitureAnimationsMod
             // Если включен реверс, фракция идет в обратную сторону (от 1 к 0)
             float actualFraction = _reversing ? (1f - localFraction) : localFraction;
 
+            // =========================================================================
+            // МАТЕМАТИЧЕСКИЕ РЕЖИМЫ ИНТЕРПОЛЯЦИИ (EASEMODE)
+            // =========================================================================
+            float lerpFraction = actualFraction; // По умолчанию используем линейный шаг
+
+            switch (_currentEaseMode)
+            {
+                case EaseMode.PerFrame:
+                    // Накатываем классическое сглаживание S-образной кривой на текущий шаг
+                    lerpFraction = Mathf.SmoothStep(0f, 1f, actualFraction);
+                    break;
+
+                case EaseMode.Global:
+                    // Рассчитываем глобальный прогресс по всей цепочке кадров автора
+                    float totalAnimationFrames = 0f;
+                    for (int i = 0; i < totalTransitions; i++)
+                    {
+                        totalAnimationFrames += _animData.deltas[i].frames;
+                    }
+
+                    float passedAuthorFrames = 0f;
+                    for (int i = 0; i < _currentTransitionIndex; i++)
+                    {
+                        passedAuthorFrames += _animData.deltas[i].frames;
+                    }
+
+                    // Переводим текущий локальный шаг в масштаб всей анимации
+                    float currentGlobalAuthorFrame = passedAuthorFrames + (actualFraction * _animData.deltas[_currentTransitionIndex].frames);
+                    float globalFraction = Mathf.Clamp01(currentGlobalAuthorFrame / totalAnimationFrames);
+
+                    // Сглаживаем глобальную временную шкалу
+                    float smoothedGlobal = Mathf.SmoothStep(0f, 1f, globalFraction);
+
+                    // Проецируем глобальное сглаживание обратно на локальный отрез текущей дельты
+                    float currentDeltaStartGlobal = passedAuthorFrames / totalAnimationFrames;
+                    float currentDeltaEndGlobal = (passedAuthorFrames + _animData.deltas[_currentTransitionIndex].frames) / totalAnimationFrames;
+                    float globalDeltaDuration = currentDeltaEndGlobal - currentDeltaStartGlobal;
+
+                    lerpFraction = globalDeltaDuration > 0
+                        ? Mathf.Clamp01((smoothedGlobal - currentDeltaStartGlobal) / globalDeltaDuration)
+                        : 1f;
+                    break;
+
+                case EaseMode.Linear:
+                default:
+                    break;
+            }
+
             // 3. МАТЕМАТИЧЕСКИЙ РЕНДЕР И ИНЪЕКЦИЯ КОСТЕЙ
             try
             {
@@ -225,8 +273,8 @@ namespace FurnitureAnimationsMod
                 Quaternion endFrameRot = startFrameRot * Quaternion.Euler(ArrayToVector3(currentTransitionData.endRotDelta));
                 Vector3 endFramePos = startFramePos + _modelRotationModifier * ArrayToVector3(currentTransitionData.endPosDelta);
 
-                _character.transform.position = Vector3.Lerp(startFramePos, endFramePos, actualFraction);
-                _character.transform.rotation = Quaternion.Lerp(startFrameRot, endFrameRot, actualFraction);
+                _character.transform.position = Vector3.Lerp(startFramePos, endFramePos, lerpFraction);
+                _character.transform.rotation = Quaternion.Lerp(startFrameRot, endFrameRot, lerpFraction);
 
                 // ИНТЕРПОЛЯЦИЯ КОСТЕЙ: строго внутри ОДНОЙ дельты от start к end!
                 if (currentTransitionData.boneDatas != null)
@@ -241,8 +289,8 @@ namespace FurnitureAnimationsMod
                             Quaternion boneStartRot = Quaternion.Euler(ArrayToVector3(kp.Value.startRot));
                             Quaternion boneRotEnd = Quaternion.Euler(ArrayToVector3(kp.Value.endRot));
 
-                            boneTransform.localPosition = Vector3.Lerp(boneStartPos, boneEndPos, actualFraction);
-                            boneTransform.localRotation = Quaternion.Lerp(boneStartRot, boneRotEnd, actualFraction);
+                            boneTransform.localPosition = Vector3.Lerp(boneStartPos, boneEndPos, lerpFraction);
+                            boneTransform.localRotation = Quaternion.Lerp(boneStartRot, boneRotEnd, lerpFraction);
                         }
                     }
                 }
