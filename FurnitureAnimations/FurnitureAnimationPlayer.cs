@@ -206,56 +206,57 @@ namespace FurnitureAnimationsMod
             }
 
             // =========================================================================
-            // МАТЕМАТИЧЕСКИЙ РЕНДЕР МОДЕЛИ (ИСПРАВЛЕН ПО КАНОНАМ AEDENTHORN) 🪑🌀
+            // МАТЕМАТИЧЕСКИЙ РЕНДЕР В ЛОКАЛЬНОМ ПРОСТРАНСТВЕ МЕБЕЛИ 🪑🌀
             // =========================================================================
             try
             {
-                int fromFrameIndex = _currentTransitionIndex - 1;
-                int toFrameIndex = _currentTransitionIndex;
-
-                PoseAnimationDelta fromDelta = _animData.deltas[fromFrameIndex];
-                PoseAnimationDelta toDelta = _animData.deltas[toFrameIndex];
-
-                // Начинаем накопление строго с локальной базовой точки мебели
+                // Начинаем накопление строго с локальной базовой точки посадки на мебель
                 Vector3 accumulatedLocalPos = _localBasePos;
-                Quaternion authorAccumulatedRot = Quaternion.identity;
 
-                // Накапливаем путь ПРЕДЫДУЩИХ шагов (зеркально коду Aedenthorn)
-                for (int i = 0; i < fromFrameIndex; i++)
+                // Базовый поворот автора в пространстве записи (Blender/World при создании)
+                Quaternion authorAccumulatedRot = Quaternion.Euler(ArrayToVector3(_animData.startRot));
+
+                // НАКОПЛЕНИЕ ТРАЕКТОРИИ В ПРОСТРАНСТВЕ ЗАПИСИ И ЕЕ ПЕРЕВОД В ЛОКАЛЬНЫЕ ОСИ МЕБЕЛИ
+                for (int i = 0; i < _currentTransitionIndex; i++)
                 {
                     var prevDelta = _animData.deltas[i];
 
-                    // Вектор шага умножается строго на константный переводчик осей мебели!
-                    accumulatedLocalPos += _recordToFurnitureRotModifier * ArrayToVector3(prevDelta.endPosDelta);
+                    // Берём чистый вектор шага автора и разворачиваем его по текущему направлению записи
+                    Vector3 localPosDelta = ArrayToVector3(prevDelta.endPosDelta);
+                    Vector3 recordWorldPosDelta = authorAccumulatedRot * localPosDelta;
 
-                    // Накапливаем поворот персонажа
+                    // Переводим вектор записи в локальную систему координат мебели через модификатор базиса!
+                    Vector3 furnitureLocalPosDelta = _recordToFurnitureRotModifier * recordWorldPosDelta;
+                    accumulatedLocalPos += furnitureLocalPosDelta;
+
+                    // Накапливаем поворот в пространстве записи
                     authorAccumulatedRot *= Quaternion.Euler(ArrayToVector3(prevDelta.endRotDelta));
                 }
 
-                // Вычисляем старт и финиш для ТЕКУЩЕГО активного перехода
+                // Вычисляем старт и финиш для ТЕКУЩЕГО активного перехода (в локальном пространстве мебели)
                 Vector3 startLocalPos = accumulatedLocalPos;
-                Quaternion startLocalRot = _localBaseRot * authorAccumulatedRot;
+                Quaternion startLocalRot = _recordToFurnitureRotModifier * authorAccumulatedRot;
 
-                // Смещение текущего шага также идет строго через константный модификатор
-                Vector3 furnitureCurrentLocalPosDelta = _recordToFurnitureRotModifier * ArrayToVector3(toDelta.endPosDelta);
+                Vector3 currentLocalPosDelta = ArrayToVector3(currentTransitionData.endPosDelta);
+                Vector3 recordCurrentWorldPosDelta = authorAccumulatedRot * currentLocalPosDelta;
+                Vector3 furnitureCurrentLocalPosDelta = _recordToFurnitureRotModifier * recordCurrentWorldPosDelta;
+
                 Vector3 endLocalPos = startLocalPos + furnitureCurrentLocalPosDelta;
+                Quaternion endLocalRot = _recordToFurnitureRotModifier * (authorAccumulatedRot * Quaternion.Euler(ArrayToVector3(currentTransitionData.endRotDelta)));
 
-                Quaternion endLocalRot = _localBaseRot * authorAccumulatedRot * Quaternion.Euler(ArrayToVector3(toDelta.endRotDelta));
-
-                // Наша стабильная целочисленная интерполяция положения тела на мебели
+                // Интерполируем промежуточную ЛОКАЛЬНУЮ позицию куклы относительно стула
                 Vector3 targetLocalPos = Vector3.Lerp(startLocalPos, endLocalPos, lerpFraction);
                 Quaternion targetLocalRot = Quaternion.Lerp(startLocalRot, endLocalRot, lerpFraction);
 
-                // Финальная проекция в глобальный мир Unity
+                // ФИНАЛЬНЫЙ СВЕРХВКОЛ: Переводим локальные координаты мебели в глобальный мир Unity
+                // Благодаря этому, если bugerry положил стул на бок, персонаж ляжет на бок вслед за ним автоматически!
                 _character.transform.position = _targetFurniture.transform.TransformPoint(targetLocalPos);
                 _character.transform.rotation = _targetFurniture.transform.rotation * targetLocalRot;
 
-                // =========================================================================
-                // ИНТЕРПОЛЯЦИЯ ВНУТРЕННИХ КОСТЕЙ СКЕЛЕТА (РАЗБЛОКИРОВКА HIP) 🦴✨
-                // =========================================================================
-                if (toDelta.boneDatas != null)
+                // 3. ИНТЕРПОЛЯЦИЯ ВНУТРЕННИХ КОСТЕЙ СКЕЛЕТА (По канонам aedenthorn)
+                if (currentTransitionData.boneDatas != null)
                 {
-                    foreach (var kp in toDelta.boneDatas)
+                    foreach (var kp in currentTransitionData.boneDatas)
                     {
                         if (_boneCache.TryGetValue(kp.Key, out Transform boneTransform) && boneTransform != null)
                         {
@@ -264,20 +265,17 @@ namespace FurnitureAnimationsMod
                             Quaternion boneStartRot = Quaternion.Euler(ArrayToVector3(kp.Value.startRot));
                             Quaternion boneEndRot = Quaternion.Euler(ArrayToVector3(kp.Value.endRot));
 
-                            // ПОЛНАЯ СВОБОДА ДЛЯ HIP И ОСТАЛЬНЫХ КОСТЕЙ:
-                            // Больше никакого принудительного зануления Vector3(0f, boneStartPos.y, 0f)!
-                            // Таз теперь честно ходит по осям X и Z, как задумал художник во Free Pose Mode.
                             boneTransform.localPosition = Vector3.Lerp(boneStartPos, boneEndPos, lerpFraction);
                             boneTransform.localRotation = Quaternion.Lerp(boneStartRot, boneEndRot, lerpFraction);
                         }
                     }
                 }
+
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogError($"[SubframePlayer] Критическая ошибка интерполяции: {ex.Message}");
+                Plugin.Log.LogError($"[SubframePlayer] Критическая ошибка наклона пивота: {ex.Message}");
             }
-
 
             // 4. АВТОМАТ СМЕНЫ ДЕЛЬТ И ЗАЦИКЛИВАНИЯ (С фиксом уплывания)
             if (_gameFrameCounter >= _totalTargetFrames)
