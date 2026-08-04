@@ -120,10 +120,10 @@ namespace FurnitureAnimationsMod
 
             AbsoluteSkeletalReset(firstFrameDatas);
 
-            // Мягкая инициализация целочисленных состояний
-            _currentTransitionIndex = 1;
+            // Мягкая инициализация целочисленных состояний под нулевую базу
+            _currentTransitionIndex = 0; // ИСПРАВЛЕНО НА 0
             _gameFrameCounter = 0;
-            _totalTargetFrames = 0; // Спровоцирует перерасчет плотности на первом тике
+            _totalTargetFrames = 0;
             _reversing = false;
         }
 
@@ -149,10 +149,11 @@ namespace FurnitureAnimationsMod
         {
             if (_character == null || _animData == null || _animData.deltas == null || _targetFurniture == null) return;
 
-            // 1. Общее количество дельта-переходов в JSON
+            // 1. СТРОГАЯ СИСТЕМНАЯ НУЛЕВАЯ БАЗА
             int totalTransitions = _animData.deltas.Count;
             if (totalTransitions < 1) return;
 
+            // Защита от выхода за границы индексов (строго от 0 до totalTransitions - 1)
             if (_currentTransitionIndex >= totalTransitions) _currentTransitionIndex = totalTransitions - 1;
             if (_currentTransitionIndex < 0) _currentTransitionIndex = 0;
 
@@ -172,7 +173,7 @@ namespace FurnitureAnimationsMod
             float localFraction = Mathf.Clamp01((float)_gameFrameCounter / _totalTargetFrames);
             float actualFraction = _reversing ? (1f - localFraction) : localFraction;
 
-            // Обработка режимов сглаживания (модификация фракции)
+            // Сглаживание фракции (EaseMode)
             float lerpFraction = actualFraction;
             switch (_currentEaseMode)
             {
@@ -201,85 +202,67 @@ namespace FurnitureAnimationsMod
             }
 
             // =========================================================================
-            // МАТЕМАТИЧЕСКИЙ РЕНДЕР МОДЕЛИ (ИСПРАВЛЕН ПО КАНОНАМ AEDENTHORN) 🪑🌀
+            // 2. МАТЕМАТИЧЕСКИЙ РЕНДЕР ТЕЛА (ПРИВЯЗКА К НУЛЮ ДЕЛЬТЫ) 🪑🌀
             // =========================================================================
             try
             {
-                int fromFrameIndex = _currentTransitionIndex - 1; // Стартовый кадр (0 для первого шага)
-                int toFrameIndex = _currentTransitionIndex;       // Целевой кадр (1 для первого шага)
-
-                PoseAnimationDelta fromDelta = _animData.deltas[fromFrameIndex];
-                PoseAnimationDelta toDelta = _animData.deltas[toFrameIndex];
-
-                // Начинаем накопление строго с локальной базовой точки мебели
+                // Начинаем накопление строго с локальной базовой точки посадки на мебель
                 Vector3 accumulatedLocalPos = _localBasePos;
                 Quaternion authorAccumulatedRot = Quaternion.identity;
 
-                // ИСПРАВЛЕННЫЙ ЦИКЛ НАКОПЛЕНИЯ: Нанизываем дельты всех реально ПРОЙДЕННЫХ шагов.
-                // Если мы идем из 1 в 2 (fromFrameIndex = 1), мы должны прибавить смещение первого шага (deltas[1])!
-                for (int i = 1; i <= fromFrameIndex; i++)
+                // Накапливаем путь только РЕАЛЬНО пройденных дельт (строго до текущего индекса)
+                for (int i = 0; i < _currentTransitionIndex; i++)
                 {
                     var prevDelta = _animData.deltas[i];
                     accumulatedLocalPos += _recordToFurnitureRotModifier * ArrayToVector3(prevDelta.endPosDelta);
                     authorAccumulatedRot *= Quaternion.Euler(ArrayToVector3(prevDelta.endRotDelta));
                 }
 
-                // Вычисляем старт и финиш для ТЕКУЩЕГО активного перехода
+                // Вычисляем старт и финиш для ТЕКУЩЕГО перехода
                 Vector3 startLocalPos = accumulatedLocalPos;
                 Quaternion startLocalRot = _localBaseRot * authorAccumulatedRot;
 
-                // Смещение текущего шага — берем дельту целевого кадра движения
-                Vector3 furnitureCurrentLocalPosDelta = _recordToFurnitureRotModifier * ArrayToVector3(toDelta.endPosDelta);
+                // Смещение текущего шага берем из текущей дельты
+                Vector3 furnitureCurrentLocalPosDelta = _recordToFurnitureRotModifier * ArrayToVector3(currentTransitionData.endPosDelta);
                 Vector3 endLocalPos = startLocalPos + furnitureCurrentLocalPosDelta;
-                Quaternion endLocalRot = _localBaseRot * authorAccumulatedRot * Quaternion.Euler(ArrayToVector3(toDelta.endRotDelta));
+                Quaternion endLocalRot = _localBaseRot * authorAccumulatedRot * Quaternion.Euler(ArrayToVector3(currentTransitionData.endRotDelta));
 
-                // Наша стабильная целочисленная интерполяция положения тела на мебели
+                // Интерполяция рута персонажа
                 Vector3 targetLocalPos = Vector3.Lerp(startLocalPos, endLocalPos, lerpFraction);
                 Quaternion targetLocalRot = Quaternion.Lerp(startLocalRot, endLocalRot, lerpFraction);
 
-                // Финальная проекция в глобальный мир Unity
                 _character.transform.position = _targetFurniture.transform.TransformPoint(targetLocalPos);
                 _character.transform.rotation = _targetFurniture.transform.rotation * targetLocalRot;
 
-                // ======================================================================
-                // 3. ИНТЕРПОЛЯЦИЯ ВНУТРЕННИХ КОСТЕЙ СКЕЛЕТА (МЕЖКАДРОВЫЙ LERP) 🦴✨
-                // ======================================================================
-                // Нам нужны данные ОБОИХ кадров, чтобы плавно перетекать из позы From в позу To
-                if (fromDelta.boneDatas != null && toDelta.boneDatas != null)
+                // =========================================================================
+                // 3. ЧИСТАЯ АНИМАЦИЯ КОСТЕЙ ВНУТРИ ТЕКУЩЕЙ ДЕЛЬТЫ (КАНОН AEDENTHORN)  Bones
+                // =========================================================================
+                if (currentTransitionData.boneDatas != null)
                 {
-                    foreach (var kp in toDelta.boneDatas)
+                    foreach (var kp in currentTransitionData.boneDatas)
                     {
-                        string boneName = kp.Key;
-                        if (_boneCache.TryGetValue(boneName, out Transform boneTransform) && boneTransform != null)
+                        if (_boneCache.TryGetValue(kp.Key, out Transform boneTransform) && boneTransform != null)
                         {
-                            // Точка Финиша (целевая поза текущего перехода)
+                            // Читаем старт и финиш кости строго внутри текущего шага от start к end
+                            Vector3 boneStartPos = ArrayToVector3(kp.Value.startPos);
                             Vector3 boneEndPos = ArrayToVector3(kp.Value.endPos);
+                            Quaternion boneStartRot = Quaternion.Euler(ArrayToVector3(kp.Value.startRot));
                             Quaternion boneEndRot = Quaternion.Euler(ArrayToVector3(kp.Value.endRot));
 
-                            // Точка Старта (берём из конечной позы предыдущей дельты 'fromDelta')
-                            Vector3 boneStartPos = boneEndPos;
-                            Quaternion boneStartRot = boneEndRot;
-
-                            if (fromDelta.boneDatas.TryGetValue(boneName, out BoneDelta prevBoneData))
-                            {
-                                boneStartPos = ArrayToVector3(prevBoneData.endPos);
-                                boneStartRot = Quaternion.Euler(ArrayToVector3(prevBoneData.endRot));
-                            }
-
-                            // Честная плавная интерполяция костей скелета МЕЖДУ кадрами автора
                             boneTransform.localPosition = Vector3.Lerp(boneStartPos, boneEndPos, lerpFraction);
                             boneTransform.localRotation = Quaternion.Lerp(boneStartRot, boneEndRot, lerpFraction);
                         }
                     }
                 }
-
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogError($"[SubframePlayer] Критическая ошибка интерполяции: {ex.Message}");
+                Plugin.Log.LogError($"[SubframePlayer] Критическая ошибка рендера: {ex.Message}");
             }
 
-            // 4. АВТОМАТ СМЕНЫ ДЕЛЬТ И ЗАЦИКЛИВАНИЯ (С фиксом уплывания)
+            // =========================================================================
+            // 4. АВТОМАТ СМЕНЫ ДЕЛЬТ (НА БАЗЕ ИНДЕКСА 0) 🎛🔄
+            // =========================================================================
             if (_gameFrameCounter >= _totalTargetFrames)
             {
                 _gameFrameCounter = 0;
@@ -293,11 +276,16 @@ namespace FurnitureAnimationsMod
                     }
                     else
                     {
-                        if (_animData.reverse) { _reversing = true; }
+                        if (_animData.reverse)
+                        {
+                            _reversing = true;
+                        }
                         else if (_animData.loop)
                         {
-                            _currentTransitionIndex = 0;
-                            Plugin.Log.LogInfo($"[Engine] Бесшовный перезапуск цикла. Координаты удерживаются в базисе мебели.");
+                            _currentTransitionIndex = 0; // На чистый ноль!
+
+                            _character.transform.position = _targetFurniture.transform.TransformPoint(_localBasePos);
+                            _character.transform.rotation = _targetFurniture.transform.rotation * _localBaseRot;
                         }
                         else { Destroy(this); return; }
                     }
@@ -310,7 +298,11 @@ namespace FurnitureAnimationsMod
                     }
                     else
                     {
-                        if (_animData.loop) { _reversing = false; _currentTransitionIndex = 0; }
+                        if (_animData.loop)
+                        {
+                            _reversing = false;
+                            _currentTransitionIndex = 0;
+                        }
                         else { Destroy(this); return; }
                     }
                 }
