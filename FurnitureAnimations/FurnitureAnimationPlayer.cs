@@ -376,6 +376,13 @@ namespace FurnitureAnimationsMod
         {
             if (Instance == this) Instance = null;
 
+            // --- УНИЧТОЖАЕМ РАДАР ВМЕСТЕ С ПЛЕЕРОМ ---
+            var oldRadar = gameObject.GetComponent<AnimationRadar>();
+            if (oldRadar != null)
+            {
+                Destroy(oldRadar);
+            }
+
             if (_character != null && _character.anim != null)
             {
                 _character.anim.enabled = true;
@@ -383,5 +390,6 @@ namespace FurnitureAnimationsMod
             }
             Plugin.Log.LogWarning("[LocalPlayer] Встроенный движок выключен, управление возвращено Юнити.");
         }
+
     }
 }
