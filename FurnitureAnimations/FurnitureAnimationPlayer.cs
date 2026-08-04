@@ -175,11 +175,11 @@ namespace FurnitureAnimationsMod
         {
             if (_character == null || _animData == null || _animData.deltas == null) return;
 
-            // 1. Общее количество переходов (фаз), заложенных автором в JSON
+            // 1. Общее количество дельта-переходов, заложенных автором в JSON
             int totalTransitions = _animData.deltas.Count;
             if (totalTransitions < 1) return;
 
-            // Защита от выхода за границы массива (индексация строго от 0 до totalTransitions - 1)
+            // Строгая рантайм-защита от вылета за границы массива дельт
             if (_currentTransitionIndex >= totalTransitions) _currentTransitionIndex = totalTransitions - 1;
             if (_currentTransitionIndex < 0) _currentTransitionIndex = 0;
 
@@ -207,17 +207,15 @@ namespace FurnitureAnimationsMod
             // =========================================================================
             // МАТЕМАТИЧЕСКИЕ РЕЖИМЫ ИНТЕРПОЛЯЦИИ (EASEMODE)
             // =========================================================================
-            float lerpFraction = actualFraction; // По умолчанию используем линейный шаг
+            float lerpFraction = actualFraction;
 
             switch (_currentEaseMode)
             {
                 case EaseMode.PerFrame:
-                    // Накатываем классическое сглаживание S-образной кривой на текущий шаг
                     lerpFraction = Mathf.SmoothStep(0f, 1f, actualFraction);
                     break;
 
                 case EaseMode.Global:
-                    // Рассчитываем глобальный прогресс по всей цепочке кадров автора
                     float totalAnimationFrames = 0f;
                     for (int i = 0; i < totalTransitions; i++)
                     {
@@ -230,14 +228,11 @@ namespace FurnitureAnimationsMod
                         passedAuthorFrames += _animData.deltas[i].frames;
                     }
 
-                    // Переводим текущий локальный шаг в масштаб всей анимации
                     float currentGlobalAuthorFrame = passedAuthorFrames + (actualFraction * _animData.deltas[_currentTransitionIndex].frames);
                     float globalFraction = Mathf.Clamp01(currentGlobalAuthorFrame / totalAnimationFrames);
 
-                    // Сглаживаем глобальную временную шкалу
                     float smoothedGlobal = Mathf.SmoothStep(0f, 1f, globalFraction);
 
-                    // Проецируем глобальное сглаживание обратно на локальный отрез текущей дельты
                     float currentDeltaStartGlobal = passedAuthorFrames / totalAnimationFrames;
                     float currentDeltaEndGlobal = (passedAuthorFrames + _animData.deltas[_currentTransitionIndex].frames) / totalAnimationFrames;
                     float globalDeltaDuration = currentDeltaEndGlobal - currentDeltaStartGlobal;
@@ -252,38 +247,36 @@ namespace FurnitureAnimationsMod
                     break;
             }
 
-            // 3. МАТЕМАТИЧЕСКИЙ РЕНДЕР И ИНЪЕКЦИЯ КОСТЕЙ
+            // 3. МАТЕМАТИЧЕСКИЙ РЕНДЕР ТЕЛА И КОСТЕЙ
             try
             {
-                // Для самого тела (рута) персонажа интерполируем базовое смещение плашки
+                // Вычисляем стартовую мирового пространства для ТЕЛА рута персонажа
                 Vector3 startFramePos = _baseWorldPos;
                 Quaternion startFrameRot = _baseWorldRot;
 
-                // Если это не первый переход, накапливаем трансформации предыдущих фаз
-                if (_currentTransitionIndex > 0)
+                // Накапливаем смещения ВСЕХ предыдущих дельт, которые персонаж уже физически прошел
+                for (int i = 0; i < _currentTransitionIndex; i++)
                 {
-                    for (int i = 0; i < _currentTransitionIndex; i++)
-                    {
-                        var prevDelta = _animData.deltas[i];
-                        startFrameRot *= Quaternion.Euler(ArrayToVector3(prevDelta.endRotDelta));
-                        startFramePos += _modelRotationModifier * ArrayToVector3(prevDelta.endPosDelta);
-                    }
+                    var prevDelta = _animData.deltas[i];
+                    startFrameRot *= Quaternion.Euler(ArrayToVector3(prevDelta.endRotDelta));
+                    startFramePos += _modelRotationModifier * ArrayToVector3(prevDelta.endPosDelta);
                 }
 
+                // Конечная точка текущей дельты — это накопленный старт плюс дельта смещения текущего шага
                 Quaternion endFrameRot = startFrameRot * Quaternion.Euler(ArrayToVector3(currentTransitionData.endRotDelta));
                 Vector3 endFramePos = startFramePos + _modelRotationModifier * ArrayToVector3(currentTransitionData.endPosDelta);
 
+                // Плавно двигаем рут персонажа в пространстве мебели
                 _character.transform.position = Vector3.Lerp(startFramePos, endFramePos, lerpFraction);
                 _character.transform.rotation = Quaternion.Lerp(startFrameRot, endFrameRot, lerpFraction);
 
-                // ИНТЕРПОЛЯЦИЯ КОСТЕЙ: строго внутри ОДНОЙ дельты от start к end!
+                // ИНТЕРПОЛЯЦИЯ КОСТЕЙ: строго внутри текущей дельты от startPos к endPos
                 if (currentTransitionData.boneDatas != null)
                 {
                     foreach (var kp in currentTransitionData.boneDatas)
                     {
                         if (_boneCache.TryGetValue(kp.Key, out Transform boneTransform) && boneTransform != null)
                         {
-                            // Извлекаем start и end прямо из текущей дельты
                             Vector3 boneStartPos = ArrayToVector3(kp.Value.startPos);
                             Vector3 boneEndPos = ArrayToVector3(kp.Value.endPos);
                             Quaternion boneStartRot = Quaternion.Euler(ArrayToVector3(kp.Value.startRot));
@@ -300,11 +293,11 @@ namespace FurnitureAnimationsMod
                 Plugin.Log.LogError($"[SubframePlayer] Ошибка рендера костей: {ex.Message}");
             }
 
-            // 4. АВТОМАТ СМЕНЫ ПЕРЕХОДОВ И РЕВЕРСА
+            // 4. АВТОМАТ СМЕНЫ ДЕЛЬТ И ЗАЦИКЛИВАНИЯ
             if (_gameFrameCounter >= _totalTargetFrames)
             {
                 _gameFrameCounter = 0;
-                _totalTargetFrames = 0; // Сбрасываем для пересчета на следующем шаге
+                _totalTargetFrames = 0; // Сбрасываем для пересчета длительности следующего шага
 
                 if (!_reversing)
                 {
@@ -315,15 +308,15 @@ namespace FurnitureAnimationsMod
                     }
                     else
                     {
-                        // Достигли конца самой последней дельты в JSON
+                        // Мы полностью завершили самую последнюю дельту в JSON!
                         if (_animData.reverse)
                         {
                             _reversing = true;
-                            // Остаемся на этом же индексе, чтобы начать проигрывать эту же дельту в обратную сторону!
+                            // Остаемся на максимальном индексе, чтобы начать проигрывать его назад
                         }
                         else if (_animData.loop)
                         {
-                            _currentTransitionIndex = 0;
+                            _currentTransitionIndex = 0; // Для DanceAround01 сбрасываем в 0 и идем на новый круг!
                         }
                         else
                         {
@@ -345,7 +338,7 @@ namespace FurnitureAnimationsMod
                         if (_animData.loop)
                         {
                             _reversing = false;
-                            // Флаг снят, со следующего кадра снова плавно идем вперед от start к end
+                            _currentTransitionIndex = 0;
                         }
                         else
                         {
