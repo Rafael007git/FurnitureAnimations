@@ -44,6 +44,13 @@ namespace FurnitureAnimationsMod
         {
             GUI.DragWindow(new Rect(0, 0, 10000, 20));
 
+            // Если плеер еще не успел прочитать JSON или упал до этого, выводим аварийный статус
+            if (_player == null || _player._animData == null)
+            {
+                GUILayout.Label("CRITICAL ENGINE ERROR: JSON not loaded or Player crashed!", GUI.skin.label);
+                return;
+            }
+
             StringBuilder sb = new StringBuilder();
 
             string animName = _player.GetPlayingAnimationName();

@@ -46,6 +46,12 @@ namespace FurnitureAnimationsMod
 
         public void Play(CharacterCustomization character, string animationName, Furniture furniture, PoseData poseConfig)
         {
+            // --- ХИРУРГИЧЕСКИЙ ВКОЛ: Радар создается в первую наносекунду запуска ---
+            if (gameObject.GetComponent<AnimationRadar>() == null)
+            {
+                gameObject.AddComponent<AnimationRadar>();
+            }
+
             Instance = this;
             _character = character;
 
@@ -82,7 +88,7 @@ namespace FurnitureAnimationsMod
             gameObject.AddComponent<AnimationUiControls>().Initialize(this);
 
             // --- ДОБАВЬТЕ ЭТУ СТРОКУ ДЛЯ ПОДКЛЮЧЕНИЯ РАДАРА ---
-            gameObject.AddComponent<AnimationRadar>();
+            // gameObject.AddComponent<AnimationRadar>();
 
             if (furniture != null && poseConfig != null)
             {
