@@ -44,14 +44,16 @@ namespace FurnitureAnimationsMod
         {
             GUI.DragWindow();
 
-            // СВЕРХТОЧНЫЙ ПЕРЕХВАТ: Берем плеер напрямую из глобального синглтона!
-            // Это на 100% исключает путаницу с GameObject, уровнями иерархии и призрачными null.
-            _player = FurnitureAnimationPlayer.Instance;
+            // Если ссылка пустая или указывает на уничтоженный Unity-объект,
+            // принудительно переключаемся на глобальный живой синглтон!
+            if (_player == null || _player.Equals(null))
+            {
+                _player = FurnitureAnimationPlayer.Instance;
+            }
 
-            // Если анимация выключена, плеер уничтожен или еще загружается — просто пишем статус
             if (_player == null || _player._animData == null || _player._animData.deltas == null)
             {
-                GUILayout.Label("WAITING FOR ENGINE DATA...", GUI.skin.label);
+                GUILayout.Label("LOADING ENGINE DATA...", GUI.skin.label);
                 return;
             }
 

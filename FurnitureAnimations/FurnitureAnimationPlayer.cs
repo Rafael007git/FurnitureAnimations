@@ -55,11 +55,27 @@ namespace FurnitureAnimationsMod
             Instance = this;
             _character = character;
 
-            // Мягкий вкол радара
-            if (_character != null && _character.gameObject.GetComponent<AnimationRadar>() == null)
+            // --- СВЕРХТОЧНЫЙ ПЕРЕХВАТ И ОЖИВЛЕНИЕ РАДАРА ---
+            var existingRadar = _character.gameObject.GetComponent<AnimationRadar>();
+            if (existingRadar == null)
             {
+                // Если радара вообще нет на персонаже — создаем свежий
                 _character.gameObject.AddComponent<AnimationRadar>();
             }
+            else
+            {
+                // Если радар остался от прошлой анимации, мы пробиваем приватное поле '_player'
+                // и принудительно записываем туда ссылку на наш текущий НОВЫЙ живой плеер!
+                var radarType = existingRadar.GetType();
+                var field = radarType.GetField("_player", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                if (field != null)
+                {
+                    field.SetValue(existingRadar, this);
+                }
+
+                Plugin.Log.LogWarning("[Engine] Существующий радар успешно перехвачен и привязан к новой анимации!");
+            }
+            // -------------------------------------------------------------------------
 
             string assetPath = Path.Combine(BepInEx.Paths.PluginPath, "PoseAnimations", $"{animationName}.json");
             if (!File.Exists(assetPath))
