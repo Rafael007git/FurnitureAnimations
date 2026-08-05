@@ -41,16 +41,26 @@ namespace FurnitureAnimationsMod
         private float _speedModifier = 1.0f;
         private EaseMode _currentEaseMode = EaseMode.Linear;
 
+        private void Awake()
+        {
+            // ЖЕЛЕЗНЫЙ РАННИЙ ВКОЛ: Радар создается в самую первую милисекунду
+            // жизни плеера, гарантируя появление OnGUI окна при первом же клике!
+            if (gameObject.GetComponent<AnimationRadar>() == null)
+            {
+                gameObject.AddComponent<AnimationRadar>();
+            }
+        }
+
         public void Play(CharacterCustomization character, string animationName, Furniture furniture, PoseData poseConfig)
         {
             _character = character;
             Instance = this;
 
             // --- РАННИЙ ВКОЛ РАДАРА: вешаем строго на персонажа ---
-            if (_character != null && _character.gameObject.GetComponent<AnimationRadar>() == null)
-            {
-                _character.gameObject.AddComponent<AnimationRadar>();
-            }
+            //if (_character != null && _character.gameObject.GetComponent<AnimationRadar>() == null)
+            //{
+            //    _character.gameObject.AddComponent<AnimationRadar>();
+            //}
 
             string assetPath = Path.Combine(BepInEx.Paths.PluginPath, "PoseAnimations", $"{animationName}.json");
             if (!File.Exists(assetPath))
