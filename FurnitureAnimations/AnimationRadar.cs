@@ -61,6 +61,28 @@ namespace FurnitureAnimationsMod
 
             StringBuilder sb = new StringBuilder();
 
+            // --- ЖЕЛЕЗНЫЙ ПЕРЕНОС НАВЕРХ: Кнопка теперь первая и её никто не заблокирует ---
+            if (GUI.Button(new Rect(10, 25, 330, 30), "DUMP TELEMETRY TO ALL LOGS"))
+            {
+                string logContent = sb.ToString();
+
+                Plugin.Log.LogWarning("\n==================================================\n" +
+                                      "[RADAR TELEMETRY DUMP]:\n" + logContent +
+                                      "==================================================");
+
+                try
+                {
+                    string desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+                    string filePath = Path.Combine(desktopPath, "animation_pivot_debug.txt");
+                    File.WriteAllText(filePath, logContent);
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Log.LogError($"[Radar] Файл не записан: {ex.Message}");
+                }
+            }
+            // -----------------------------------------------------------------------------
+
             string animName = _player.GetPlayingAnimationName();
             float speedMod = _player.GetSpeed();
             string easeMode = _player.GetEaseMode().ToString();
@@ -157,33 +179,10 @@ namespace FurnitureAnimationsMod
             GUIStyle labelStyle = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold };
             labelStyle.normal.textColor = Color.green;
 
-            GUILayout.BeginArea(new Rect(10, 25, 330, 450));
+            GUILayout.BeginArea(new Rect(10, 60, 330, 450));
             GUILayout.Label(sb.ToString(), labelStyle);
             GUILayout.EndArea();
 
-            // КНОПКА ДВОЙНОГО ВЫВОДА (И в файл, и в консоль BepInEx!)
-            if (GUI.Button(new Rect(10, 470, 330, 30), "DUMP TELEMETRY TO ALL LOGS"))
-            {
-                string logContent = sb.ToString();
-
-                // 1. Дублируем лог жирным предупреждением прямо в черную консоль игры!
-                Plugin.Log.LogWarning("\n==================================================\n" +
-                                      "[RADAR TELEMETRY DUMP]:\n" + logContent +
-                                      "==================================================");
-
-                // 2. Пробуем мягко сохранить файл на рабочий стол
-                try
-                {
-                    string desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-                    string filePath = Path.Combine(desktopPath, "animation_pivot_debug.txt");
-                    File.WriteAllText(filePath, logContent);
-                    Plugin.Log.LogWarning($"[Radar] Файл отладки также успешно дублирован на десктоп: {filePath}");
-                }
-                catch (Exception ex)
-                {
-                    Plugin.Log.LogError($"[Radar] Не удалось записать на рабочий стол (папка защищена), используйте консоль BepInEx! Ошибка: {ex.Message}");
-                }
-            }
         }
 
 
