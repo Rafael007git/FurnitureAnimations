@@ -103,103 +103,89 @@ namespace FurnitureAnimationsMod
             sb.AppendLine($"  Progress Frame Counter: {gameFrameCounter} / {totalTargetFrames}");
             sb.AppendLine($"  Total Animation Key-Frames: {totalAnimFrames}");
             // =========================================================================
-            // БЕЗОПАСНЫЙ ИНСТРУМЕНТАЛЬНЫЙ ДЕБАГ ПИВОТОВ И ЯКОРЕЙ 🎛📐
+            // АБСОЛЮТНО БЕЗОПАСНАЯ ТЕЛЕМЕТРИЯ ВСЕХ ПИВОТОВ И ЯКОРЕЙ 📐✨
             // =========================================================================
             sb.AppendLine($"[PIVOTS & ANCHORS]");
 
             if (_player != null)
             {
-                // 1. Безопасное чтение мебели
+                // 1. Координаты мебели в мире
                 var furnitureField = _player.GetType().GetField("_targetFurniture", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                if (furnitureField != null)
-                {
-                    var furniture = furnitureField.GetValue(_player) as Furniture;
-                    if (furniture != null && furniture.transform != null)
-                    {
-                        sb.AppendLine($"  Furniture World Pos : {furniture.transform.position.x:F3}, {furniture.transform.position.y:F3}, {furniture.transform.position.z:F3}");
-                    }
-                }
+                var furniture = furnitureField?.GetValue(_player) as Furniture;
+                sb.AppendLine(furniture != null
+                    ? $"  Furniture World Pos : {furniture.transform.position.x:F3}, {furniture.transform.position.y:F3}, {furniture.transform.position.z:F3}"
+                    : "  Furniture World Pos : NOT FOUND");
 
-                // 2. Локальная базовая точка посадки
+                // 2. Локальный якорь посадки
                 var localBasePosField = _player.GetType().GetField("_localBasePos", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                if (localBasePosField != null)
-                {
-                    var val = localBasePosField.GetValue(_player);
-                    if (val is Vector3 lBase)
-                    {
-                        sb.AppendLine($"  Furniture Local Anchor: {lBase.x:F3}, {lBase.y:F3}, {lBase.z:F3}");
-                    }
-                }
+                var lBaseVal = localBasePosField?.GetValue(_player);
+                sb.AppendLine(lBaseVal is Vector3 lBase
+                    ? $"  Furniture Local Anchor: {lBase.x:F3}, {lBase.y:F3}, {lBase.z:F3}"
+                    : "  Furniture Local Anchor: NOT FOUND");
 
-                // 3. Текущая локальная позиция движения тела (Ищем под обоими возможными именами)
-                var targetLocalPosField = _player.GetType().GetField("targetLocalPos", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                if (targetLocalPosField == null)
-                {
-                    targetLocalPosField = _player.GetType().GetField("_targetLocalPos", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                }
-
-                if (targetLocalPosField != null)
-                {
-                    var val = targetLocalPosField.GetValue(_player);
-                    if (val is Vector3 tLocal)
-                    {
-                        sb.AppendLine($"  Target Motion Root   : {tLocal.x:F3}, {tLocal.y:F3}, {tLocal.z:F3}");
-                    }
-                }
-                else
-                {
-                    // Подстраховка: если поле вообще не найдено в плеере, радар не упадет
-                    sb.AppendLine($"  Target Motion Root   : FIELD NOT FOUND IN PLAYER CLASS");
-                }
+                // 3. Текущая рассчитываемая локальная позиция движения тела (Проверяем оба регистра имени)
+                var targetLocalPosField = _player.GetType().GetField("targetLocalPos", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                                       ?? _player.GetType().GetField("_targetLocalPos", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                var tLocalVal = targetLocalPosField?.GetValue(_player);
+                sb.AppendLine(tLocalVal is Vector3 tLocal
+                    ? $"  Target Motion Root   : {tLocal.x:F3}, {tLocal.y:F3}, {tLocal.z:F3}"
+                    : "  Target Motion Root   : NOT FOUND");
 
                 // 4. Физическая мировая позиция персонажа в Unity
                 var characterField = _player.GetType().GetField("_character", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                if (characterField != null)
-                {
-                    var characterComp = characterField.GetValue(_player) as UnityEngine.Component;
-                    if (characterComp != null && characterComp.transform != null)
-                    {
-                        sb.AppendLine($"  Character World Root : {characterComp.transform.position.x:F3}, {characterComp.transform.position.y:F3}, {characterComp.transform.position.z:F3}");
-                    }
-                }
+                var characterComp = characterField?.GetValue(_player) as UnityEngine.Component;
+                sb.AppendLine(characterComp != null
+                    ? $"  Character World Root : {characterComp.transform.position.x:F3}, {characterComp.transform.position.y:F3}, {characterComp.transform.position.z:F3}"
+                    : "  Character World Root : NOT FOUND");
 
                 // 5. Движение кости таза (hip)
                 var boneCacheField = _player.GetType().GetField("_boneCache", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                if (boneCacheField != null)
+                var cache = boneCacheField?.GetValue(_player) as Dictionary<string, Transform>;
+                if (cache != null && cache.TryGetValue("hip", out Transform hipTrans) && hipTrans != null)
                 {
-                    var cache = boneCacheField.GetValue(_player) as Dictionary<string, Transform>;
-                    if (cache != null && cache.TryGetValue("hip", out Transform hipTrans) && hipTrans != null)
-                    {
-                        sb.AppendLine($"  Anatomy Bone 'hip'   : {hipTrans.localPosition.x:F3}, {hipTrans.localPosition.y:F3}, {hipTrans.localPosition.z:F3}");
-                        sb.AppendLine($"  Hip World Pivot      : {hipTrans.position.x:F3}, {hipTrans.position.y:F3}, {hipTrans.position.z:F3}");
-                    }
+                    sb.AppendLine($"  Anatomy Bone 'hip'   : {hipTrans.localPosition.x:F3}, {hipTrans.localPosition.y:F3}, {hipTrans.localPosition.z:F3}");
+                    sb.AppendLine($"  Hip World Pivot      : {hipTrans.position.x:F3}, {hipTrans.position.y:F3}, {hipTrans.position.z:F3}");
+                }
+                else
+                {
+                    sb.AppendLine("  Anatomy Bone 'hip'   : NOT FOUND IN CACHE");
+                    sb.AppendLine("  Hip World Pivot      : NOT FOUND IN CACHE");
                 }
             }
 
-
-            GUIStyle labelStyle = new GUIStyle(GUI.skin.label);
-            labelStyle.fontStyle = FontStyle.Bold;
+            // Рендерим блок текста на экране
+            GUIStyle labelStyle = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold };
             labelStyle.normal.textColor = Color.green;
 
             GUILayout.BeginArea(new Rect(10, 25, 330, 450));
             GUILayout.Label(sb.ToString(), labelStyle);
             GUILayout.EndArea();
 
-            if (GUI.Button(new Rect(10, 480, 330, 30), "SAVE DEBUG TO DESKTOP"))
+            // КНОПКА ДВОЙНОГО ВЫВОДА (И в файл, и в консоль BepInEx!)
+            if (GUI.Button(new Rect(10, 470, 330, 30), "DUMP TELEMETRY TO ALL LOGS"))
             {
+                string logContent = sb.ToString();
+
+                // 1. Дублируем лог жирным предупреждением прямо в черную консоль игры!
+                Plugin.Log.LogWarning("\n==================================================\n" +
+                                      "[RADAR TELEMETRY DUMP]:\n" + logContent +
+                                      "==================================================");
+
+                // 2. Пробуем мягко сохранить файл на рабочий стол
                 try
                 {
                     string desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-                    string filePath = Path.Combine(desktopPath, "animation_debug.txt");
-                    File.WriteAllText(filePath, sb.ToString());
-                    Plugin.Log.LogWarning($"[Radar] Лог успешно сохранен на рабочий стол!");
+                    string filePath = Path.Combine(desktopPath, "animation_pivot_debug.txt");
+                    File.WriteAllText(filePath, logContent);
+                    Plugin.Log.LogWarning($"[Radar] Файл отладки также успешно дублирован на десктоп: {filePath}");
                 }
                 catch (Exception ex)
                 {
-                    Plugin.Log.LogError($"[Radar] Ошибка записи файла: {ex.Message}");
+                    Plugin.Log.LogError($"[Radar] Не удалось записать на рабочий стол (папка защищена), используйте консоль BepInEx! Ошибка: {ex.Message}");
                 }
             }
         }
+
 
     }
 }
