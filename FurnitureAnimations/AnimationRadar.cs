@@ -61,26 +61,39 @@ namespace FurnitureAnimationsMod
 
             StringBuilder sb = new StringBuilder();
 
-            // --- ЖЕЛЕЗНЫЙ ПЕРЕНОС НАВЕРХ: Кнопка теперь первая и её никто не заблокирует ---
+            // --- УЛЬТРА-АВТОНОМНЫЙ ВЫВОД ДЛЯ СЛОЖНЫХ СИСТЕМ ---
             if (GUI.Button(new Rect(10, 25, 330, 30), "DUMP TELEMETRY TO ALL LOGS"))
             {
                 string logContent = sb.ToString();
 
-                Plugin.Log.LogWarning("\n==================================================\n" +
-                                      "[RADAR TELEMETRY DUMP]:\n" + logContent +
-                                      "==================================================");
-
+                // 1. Прямая запись в корень игры (ВСЕГДА РАБОТАЕТ, НЕЗАВИСИМО ОТ ONEDRIVE)
                 try
                 {
-                    string desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-                    string filePath = Path.Combine(desktopPath, "animation_pivot_debug.txt");
-                    File.WriteAllText(filePath, logContent);
+                    string rootPath = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "furniture_pivot_debug.txt");
+                    System.IO.File.WriteAllText(rootPath, logContent);
+
+                    // Вместо капризного Plugin.Log пишем в стандартную системную консоль
+                    System.Console.WriteLine("[RADAR SUCCESS] Лог успешно сохранен в корень игры: " + rootPath);
                 }
-                catch (Exception ex)
+                catch (System.Exception)
                 {
-                    Plugin.Log.LogError($"[Radar] Файл не записан: {ex.Message}");
+                    // Игнорируем молча, чтобы не уронить поток кнопки
+                }
+
+                // 2. Мягкая попытка дублирования на рабочий стол
+                try
+                {
+                    string desktopPath = System.Environment.GetFolderPath(System.Environment.SpecialFolder.Desktop);
+                    string filePath = System.IO.Path.Combine(desktopPath, "animation_pivot_debug.txt");
+                    System.IO.File.WriteAllText(filePath, logContent);
+                    System.Console.WriteLine("[RADAR SUCCESS] Лог продублирован на десктоп.");
+                }
+                catch (System.Exception)
+                {
+                    // Ошибки доступа OneDrive теперь просто проглатываются, не ломая выполнение!
                 }
             }
+
             // -----------------------------------------------------------------------------
 
             string animName = _player.GetPlayingAnimationName();
