@@ -55,6 +55,12 @@ namespace FurnitureAnimationsMod
             _character = character;
             Instance = this;
 
+            // Мягкий вкол: создаем радар только если игра его полностью стерла
+            if (_character != null && _character.gameObject.GetComponent<AnimationRadar>() == null)
+            {
+                _character.gameObject.AddComponent<AnimationRadar>();
+            }
+
             string assetPath = Path.Combine(BepInEx.Paths.PluginPath, "PoseAnimations", $"{animationName}.json");
             if (!File.Exists(assetPath))
             {

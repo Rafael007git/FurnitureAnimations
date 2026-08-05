@@ -46,7 +46,8 @@ namespace FurnitureAnimationsMod
 
             // ДИНАМИЧЕСКИЙ ПЕРЕХВАТ: Если ссылка на плеер пустая ИЛИ предыдущий плеер был уничтожен,
             // радар автоматически находит на персонаже новый актуальный компонент!
-            if (_player == null)
+            // ИСПРАВЛЕННЫЙ ДИНАМИЧЕСКИЙ ПЕРЕХВАТ: Equals(null) намертво отсекает "призрачные" мертвые плееры!
+            if (_player == null || _player.Equals(null))
             {
                 _player = GetComponent<FurnitureAnimationPlayer>();
             }
