@@ -103,44 +103,61 @@ namespace FurnitureAnimationsMod
             sb.AppendLine($"  Progress Frame Counter: {gameFrameCounter} / {totalTargetFrames}");
             sb.AppendLine($"  Total Animation Key-Frames: {totalAnimFrames}");
             // =========================================================================
-            // ИНСТРУМЕНТАЛЬНЫЙ ДЕБАГ ПИВОТОВ И ЯКОРЕЙ ПО КАНОНАМ КРАШ-ТЕСТА 🎛📐
+            // БЕЗОПАСНЫЙ ИНСТРУМЕНТАЛЬНЫЙ ДЕБАГ ПИВОТОВ И ЯКОРЕЙ 🎛📐
             // =========================================================================
             sb.AppendLine($"[PIVOTS & ANCHORS]");
 
             if (_player != null)
             {
-                // 1. Читаем данные мебели через рефлексию/internal
-                var furniture = _player.GetType().GetField("_targetFurniture", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(_player) as Furniture;
-                if (furniture != null)
+                // 1. Безопасное чтение мебели
+                var furnitureField = _player.GetType().GetField("_targetFurniture", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                if (furnitureField != null)
                 {
-                    sb.AppendLine($"  Furniture World Pos : {furniture.transform.position.x:F3}, {furniture.transform.position.y:F3}, {furniture.transform.position.z:F3}");
+                    var furniture = furnitureField.GetValue(_player) as Furniture;
+                    if (furniture != null && furniture.transform != null)
+                    {
+                        sb.AppendLine($"  Furniture World Pos : {furniture.transform.position.x:F3}, {furniture.transform.position.y:F3}, {furniture.transform.position.z:F3}");
+                    }
                 }
 
                 // 2. Локальная базовая точка посадки
                 var localBasePosField = _player.GetType().GetField("_localBasePos", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
                 if (localBasePosField != null)
                 {
-                    Vector3 lBase = (Vector3)localBasePosField.GetValue(_player);
-                    sb.AppendLine($"  Furniture Local Anchor: {lBase.x:F3}, {lBase.y:F3}, {lBase.z:F3}");
+                    var val = localBasePosField.GetValue(_player);
+                    if (val is Vector3 lBase)
+                    {
+                        sb.AppendLine($"  Furniture Local Anchor: {lBase.x:F3}, {lBase.y:F3}, {lBase.z:F3}");
+                    }
                 }
 
-                // 3. Текущая рассчитываемая локальная позиция движения тела
+                // 3. Текущая локальная позиция движения тела (Ищем под обоими возможными именами)
                 var targetLocalPosField = _player.GetType().GetField("targetLocalPos", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                if (targetLocalPosField == null) // На всякий случай ищем в LateUpdate локальные переменные или аналогичные поля
+                if (targetLocalPosField == null)
+                {
                     targetLocalPosField = _player.GetType().GetField("_targetLocalPos", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                }
 
                 if (targetLocalPosField != null)
                 {
-                    Vector3 tLocal = (Vector3)targetLocalPosField.GetValue(_player);
-                    sb.AppendLine($"  Target Motion Root   : {tLocal.x:F3}, {tLocal.y:F3}, {tLocal.z:F3}");
+                    var val = targetLocalPosField.GetValue(_player);
+                    if (val is Vector3 tLocal)
+                    {
+                        sb.AppendLine($"  Target Motion Root   : {tLocal.x:F3}, {tLocal.y:F3}, {tLocal.z:F3}");
+                    }
+                }
+                else
+                {
+                    // Подстраховка: если поле вообще не найдено в плеере, радар не упадет
+                    sb.AppendLine($"  Target Motion Root   : FIELD NOT FOUND IN PLAYER CLASS");
                 }
 
-                // 4. Физическая мировая позиция персонажа в Unity (исправлено через рефлексию)
+                // 4. Физическая мировая позиция персонажа в Unity
                 var characterField = _player.GetType().GetField("_character", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
                 if (characterField != null)
                 {
                     var characterComp = characterField.GetValue(_player) as UnityEngine.Component;
-                    if (characterComp != null)
+                    if (characterComp != null && characterComp.transform != null)
                     {
                         sb.AppendLine($"  Character World Root : {characterComp.transform.position.x:F3}, {characterComp.transform.position.y:F3}, {characterComp.transform.position.z:F3}");
                     }

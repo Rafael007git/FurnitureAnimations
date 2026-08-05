@@ -19,6 +19,8 @@ namespace FurnitureAnimationsMod
 
         private CharacterCustomization _character;
         internal PoseAnimationData _animData;
+        internal Vector3 targetLocalPos;
+        internal Quaternion targetLocalRot;
 
         private Furniture _targetFurniture;                 // Ссылка на целевой объект мебели
         private Vector3 _localBasePos;                      // Стартовая локальная позиция из конфига
@@ -253,8 +255,8 @@ namespace FurnitureAnimationsMod
                 Quaternion endLocalRot = _localBaseRot * authorAccumulatedRot * Quaternion.Euler(ArrayToVector3(currentTransitionData.endRotDelta));
 
                 // Интерполяция рута персонажа
-                Vector3 targetLocalPos = Vector3.Lerp(startLocalPos, endLocalPos, lerpFraction);
-                Quaternion targetLocalRot = Quaternion.Lerp(startLocalRot, endLocalRot, lerpFraction);
+                targetLocalPos = Vector3.Lerp(startLocalPos, endLocalPos, lerpFraction);
+                targetLocalRot = Quaternion.Lerp(startLocalRot, endLocalRot, lerpFraction);
 
                 _character.transform.position = _targetFurniture.transform.TransformPoint(targetLocalPos);
                 _character.transform.rotation = _targetFurniture.transform.rotation * targetLocalRot;
