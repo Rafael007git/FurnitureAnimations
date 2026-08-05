@@ -168,7 +168,7 @@ namespace FurnitureAnimationsMod
             GUILayout.Label(sb.ToString(), labelStyle);
             GUILayout.EndArea();
 
-            if (GUI.Button(new Rect(10, 280, 330, 30), "SAVE DEBUG TO DESKTOP"))
+            if (GUI.Button(new Rect(10, 480, 330, 30), "SAVE DEBUG TO DESKTOP"))
             {
                 try
                 {
