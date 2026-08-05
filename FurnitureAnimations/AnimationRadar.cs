@@ -42,10 +42,16 @@ namespace FurnitureAnimationsMod
 
         private void DrawRadarWindow(int windowID)
         {
-            GUI.DragWindow(new Rect(0, 0, 10000, 20));
+            GUI.DragWindow();
 
-            // ЖЕСТКИЙ ПЕРЕХВАТ: Если плеер еще инициализируется в методе Play,
-            // просто пишем статус ожидания и выходим, не трогая переменные!
+            // ДИНАМИЧЕСКИЙ ПЕРЕХВАТ: Если ссылка на плеер пустая ИЛИ предыдущий плеер был уничтожен,
+            // радар автоматически находит на персонаже новый актуальный компонент!
+            if (_player == null)
+            {
+                _player = GetComponent<FurnitureAnimationPlayer>();
+            }
+
+            // Если анимация выключена или плеер еще загружается, просто ждем
             if (_player == null || _player._animData == null || _player._animData.deltas == null)
             {
                 GUILayout.Label("LOADING ENGINE DATA...", GUI.skin.label);
