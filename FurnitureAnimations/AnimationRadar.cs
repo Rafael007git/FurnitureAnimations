@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using UnityEngine;
@@ -95,6 +96,63 @@ namespace FurnitureAnimationsMod
             sb.AppendLine($"  Engine Target Frames: {totalTargetFrames} generated frames");
             sb.AppendLine($"  Progress Frame Counter: {gameFrameCounter} / {totalTargetFrames}");
             sb.AppendLine($"  Total Animation Key-Frames: {totalAnimFrames}");
+            // =========================================================================
+            // ИНСТРУМЕНТАЛЬНЫЙ ДЕБАГ ПИВОТОВ И ЯКОРЕЙ ПО КАНОНАМ КРАШ-ТЕСТА 🎛📐
+            // =========================================================================
+            sb.AppendLine($"[PIVOTS & ANCHORS]");
+
+            if (_player != null)
+            {
+                // 1. Читаем данные мебели через рефлексию/internal
+                var furniture = _player.GetType().GetField("_targetFurniture", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(_player) as Furniture;
+                if (furniture != null)
+                {
+                    sb.AppendLine($"  Furniture World Pos : {furniture.transform.position.x:F3}, {furniture.transform.position.y:F3}, {furniture.transform.position.z:F3}");
+                }
+
+                // 2. Локальная базовая точка посадки
+                var localBasePosField = _player.GetType().GetField("_localBasePos", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                if (localBasePosField != null)
+                {
+                    Vector3 lBase = (Vector3)localBasePosField.GetValue(_player);
+                    sb.AppendLine($"  Furniture Local Anchor: {lBase.x:F3}, {lBase.y:F3}, {lBase.z:F3}");
+                }
+
+                // 3. Текущая рассчитываемая локальная позиция движения тела
+                var targetLocalPosField = _player.GetType().GetField("targetLocalPos", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                if (targetLocalPosField == null) // На всякий случай ищем в LateUpdate локальные переменные или аналогичные поля
+                    targetLocalPosField = _player.GetType().GetField("_targetLocalPos", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+                if (targetLocalPosField != null)
+                {
+                    Vector3 tLocal = (Vector3)targetLocalPosField.GetValue(_player);
+                    sb.AppendLine($"  Target Motion Root   : {tLocal.x:F3}, {tLocal.y:F3}, {tLocal.z:F3}");
+                }
+
+                // 4. Физическая мировая позиция персонажа в Unity (исправлено через рефлексию)
+                var characterField = _player.GetType().GetField("_character", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                if (characterField != null)
+                {
+                    var characterComp = characterField.GetValue(_player) as UnityEngine.Component;
+                    if (characterComp != null)
+                    {
+                        sb.AppendLine($"  Character World Root : {characterComp.transform.position.x:F3}, {characterComp.transform.position.y:F3}, {characterComp.transform.position.z:F3}");
+                    }
+                }
+
+                // 5. Движение кости таза (hip)
+                var boneCacheField = _player.GetType().GetField("_boneCache", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                if (boneCacheField != null)
+                {
+                    var cache = boneCacheField.GetValue(_player) as Dictionary<string, Transform>;
+                    if (cache != null && cache.TryGetValue("hip", out Transform hipTrans) && hipTrans != null)
+                    {
+                        sb.AppendLine($"  Anatomy Bone 'hip'   : {hipTrans.localPosition.x:F3}, {hipTrans.localPosition.y:F3}, {hipTrans.localPosition.z:F3}");
+                        sb.AppendLine($"  Hip World Pivot      : {hipTrans.position.x:F3}, {hipTrans.position.y:F3}, {hipTrans.position.z:F3}");
+                    }
+                }
+            }
+
 
             GUIStyle labelStyle = new GUIStyle(GUI.skin.label);
             labelStyle.fontStyle = FontStyle.Bold;
