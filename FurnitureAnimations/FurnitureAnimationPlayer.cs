@@ -336,6 +336,16 @@ namespace FurnitureAnimationsMod
 
         private void AbsoluteSkeletalReset(Dictionary<string, BoneDelta> firstFrameBoneDatas)
         {
+            // --- ДИАГНОСТИЧЕСКИЙ ТУМБЛЕР ИЗ МЕНЮ F1 ---
+            // Если галочка в конфиге снята, мы полностью отключаем принудительный сброс,
+            // возвращаясь к оригинальному аддитивному алгоритму Aedenthorn-а!
+            if (Plugin.ForceAbsoluteSkeletalReset != null && !Plugin.ForceAbsoluteSkeletalReset.Value)
+            {
+                Plugin.Log.LogWarning("[Engine] Принудительный сброс скелета ОТКЛЮЧЕН в конфиге. Включен оригинальный аддитивный режим.");
+                return;
+            }
+            // ------------------------------------------
+
             if (_character == null) return;
 
             foreach (string boneName in DioramaConstants.AnatomyBoneRegistry)

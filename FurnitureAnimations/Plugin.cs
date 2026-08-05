@@ -1,4 +1,5 @@
 ﻿using BepInEx;
+using BepInEx.Configuration;
 using BepInEx.Logging;
 using FurnitureAnimations;
 using HarmonyLib;
@@ -20,6 +21,8 @@ namespace FurnitureAnimationsMod
 
         public static bool IsAnyPoseSelected = false;
         public static bool IsCustomPoseActive = false;
+
+        public static ConfigEntry<bool> ForceAbsoluteSkeletalReset;
 
         // BepInEx ищет именно метод Awake без параметров
         private void Awake()
@@ -45,6 +48,12 @@ namespace FurnitureAnimationsMod
                 Log.LogError($"[FurnitureMod] Сбой при загрузке плагина: {ex.Message}");
             }
 
+            ForceAbsoluteSkeletalReset = Config.Bind(
+                "A_DebugSettings",                             // Название вкладки в меню F1
+                "ForceAbsoluteSkeletalReset",                 // Название параметра
+                true,                                         // Значение по умолчанию (пусть пока будет true)
+                "Если включено (true) — все незадействованные кости жестко сбрасываются в ноль. Если выключено (false) — используется оригинальный аддитивный алгоритм Aedenthorn."
+            );
         }
 
         private void OnDestroy()

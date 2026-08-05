@@ -13,11 +13,6 @@ namespace FurnitureAnimationsMod
         private float _fpsTimer = 0f;
         private int _fpsDisplay = 0;
 
-        private void Awake()
-        {
-            _player = GetComponent<FurnitureAnimationPlayer>();
-        }
-
         private void Update()
         {
             // Простой расчет FPS
