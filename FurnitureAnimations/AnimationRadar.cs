@@ -9,7 +9,7 @@ namespace FurnitureAnimationsMod
     public class AnimationRadar : MonoBehaviour
     {
         private FurnitureAnimationPlayer _player;
-        private Rect _windowRect = new Rect(Screen.width - 360f, 10f, 350f, 320f);
+        private Rect _windowRect = new Rect(Screen.width - 360f, 10f, 350f, 520f);
         private float _fpsCounter = 0f;
         private float _fpsTimer = 0f;
         private int _fpsDisplay = 0;
@@ -158,7 +158,7 @@ namespace FurnitureAnimationsMod
             labelStyle.fontStyle = FontStyle.Bold;
             labelStyle.normal.textColor = Color.green;
 
-            GUILayout.BeginArea(new Rect(10, 25, 330, 250));
+            GUILayout.BeginArea(new Rect(10, 25, 330, 450));
             GUILayout.Label(sb.ToString(), labelStyle);
             GUILayout.EndArea();
 
