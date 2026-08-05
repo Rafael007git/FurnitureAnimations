@@ -52,10 +52,10 @@ namespace FurnitureAnimationsMod
 
         public void Play(CharacterCustomization character, string animationName, Furniture furniture, PoseData poseConfig)
         {
-            _character = character;
             Instance = this;
+            _character = character;
 
-            // Мягкий вкол: создаем радар только если игра его полностью стерла
+            // Мягкий вкол радара
             if (_character != null && _character.gameObject.GetComponent<AnimationRadar>() == null)
             {
                 _character.gameObject.AddComponent<AnimationRadar>();

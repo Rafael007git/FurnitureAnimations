@@ -44,18 +44,14 @@ namespace FurnitureAnimationsMod
         {
             GUI.DragWindow();
 
-            // ДИНАМИЧЕСКИЙ ПЕРЕХВАТ: Если ссылка на плеер пустая ИЛИ предыдущий плеер был уничтожен,
-            // радар автоматически находит на персонаже новый актуальный компонент!
-            // ИСПРАВЛЕННЫЙ ДИНАМИЧЕСКИЙ ПЕРЕХВАТ: Equals(null) намертво отсекает "призрачные" мертвые плееры!
-            if (_player == null || _player.Equals(null))
-            {
-                _player = GetComponent<FurnitureAnimationPlayer>();
-            }
+            // СВЕРХТОЧНЫЙ ПЕРЕХВАТ: Берем плеер напрямую из глобального синглтона!
+            // Это на 100% исключает путаницу с GameObject, уровнями иерархии и призрачными null.
+            _player = FurnitureAnimationPlayer.Instance;
 
-            // Если анимация выключена или плеер еще загружается, просто ждем
+            // Если анимация выключена, плеер уничтожен или еще загружается — просто пишем статус
             if (_player == null || _player._animData == null || _player._animData.deltas == null)
             {
-                GUILayout.Label("LOADING ENGINE DATA...", GUI.skin.label);
+                GUILayout.Label("WAITING FOR ENGINE DATA...", GUI.skin.label);
                 return;
             }
 
