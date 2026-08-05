@@ -22,6 +22,7 @@ namespace FurnitureAnimationsMod
         public static bool IsAnyPoseSelected = false;
         public static bool IsCustomPoseActive = false;
 
+        public static ConfigEntry<bool> EnableDebugRadar;
         public static ConfigEntry<bool> ForceAbsoluteSkeletalReset;
 
         // BepInEx ищет именно метод Awake без параметров
@@ -48,12 +49,21 @@ namespace FurnitureAnimationsMod
                 Log.LogError($"[FurnitureMod] Сбой при загрузке плагина: {ex.Message}");
             }
 
-            ForceAbsoluteSkeletalReset = Config.Bind(
-                "A_DebugSettings",                             // Название вкладки в меню F1
-                "ForceAbsoluteSkeletalReset",                 // Название параметра
-                true,                                         // Значение по умолчанию (пусть пока будет true)
-                "Если включено (true) — все незадействованные кости жестко сбрасываются в ноль. Если выключено (false) — используется оригинальный аддитивный алгоритм Aedenthorn."
+            EnableDebugRadar = Config.Bind(
+                "Debug Settings",                             // Вкладка та же
+                "Enable Debug Radar",                         // Имя параметра
+                false,                                        // По умолчанию false (спрятан)
+                "Show the green onscreen diagnostic radar window with frame timing and pivot matrix telemetry."
             );
+
+            ForceAbsoluteSkeletalReset = Config.Bind(
+                "Debug Settings",                             // Имя вкладки/секции
+                "Force Absolute Skeletal Reset",               // Имя параметра
+                true,                                         // По умолчанию true
+                "True: Forces all unused bones to reset to zero (prevents pose dependency). False: Enables original additive behavior from Aedenthorn."
+            );
+
+
         }
 
         private void OnDestroy()

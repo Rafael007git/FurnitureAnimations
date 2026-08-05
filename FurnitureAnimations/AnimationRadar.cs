@@ -29,6 +29,12 @@ namespace FurnitureAnimationsMod
 
         private void OnGUI()
         {
+            // Если галочка в меню выключена (по умолчанию), радар полностью засыпает и ничего не рисует!
+            if (Plugin.EnableDebugRadar == null || !Plugin.EnableDebugRadar.Value)
+            {
+                return;
+            }
+
             if (_player == null) return;
 
             // Задаем стильный темный полупрозрачный фон для радара
