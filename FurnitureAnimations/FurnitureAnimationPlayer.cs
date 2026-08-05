@@ -229,40 +229,44 @@ namespace FurnitureAnimationsMod
             }
 
             // =========================================================================
-            // 2. МАТЕМАТИЧЕСКИЙ РЕНДЕР ТЕЛА (ПРИВЯЗКА К НУЛЮ ДЕЛЬТЫ) 🪑🌀
+            // ЧИСТЫЙ ДИФФЕРЕНЦИАЛЬНЫЙ РЕНДЕР ТЕЛА (ПО КАНOНАМ AEDENTHORN) 🪑🌀
             // =========================================================================
             try
             {
-                // Начинаем накопление строго с локальной базовой точки посадки на мебель
-                Vector3 accumulatedLocalPos = _localBasePos;
-                Quaternion authorAccumulatedRot = Quaternion.identity;
+                // Базовый кватернион-переводчик осей мебели (наш константный модификатор)
+                Quaternion quaternionOffset = _recordToFurnitureRotModifier;
 
-                // Накапливаем путь только РЕАЛЬНО пройденных дельт (строго до текущего индекса)
-                for (int i = 0; i < _currentTransitionIndex; i++)
+                // 1. ВЫЧИСЛЯЕМ СТАРТОВУЮ ТОЧКУ ТЕКУЩЕГО ПЕРЕХОДА
+                Vector3 startLocalPos = _localBasePos;
+                Quaternion startLocalRot = _localBaseRot;
+
+                // Если это не самый первый переход, старт текущего шага — это финиш предыдущего!
+                if (_currentTransitionIndex > 0)
                 {
-                    var prevDelta = _animData.deltas[i];
-                    accumulatedLocalPos += _recordToFurnitureRotModifier * ArrayToVector3(prevDelta.endPosDelta);
-                    authorAccumulatedRot *= Quaternion.Euler(ArrayToVector3(prevDelta.endRotDelta));
+                    var prevDelta = _animData.deltas[_currentTransitionIndex - 1];
+
+                    // Проекция смещения предыдущей дельты от базового нуля кровати
+                    startLocalPos += quaternionOffset * ArrayToVector3(prevDelta.endPosDelta);
+                    startLocalRot *= Quaternion.Euler(ArrayToVector3(prevDelta.endRotDelta));
                 }
 
-                // Вычисляем старт и финиш для ТЕКУЩЕГО перехода
-                Vector3 startLocalPos = accumulatedLocalPos;
-                Quaternion startLocalRot = _localBaseRot * authorAccumulatedRot;
+                // 2. ВЫЧИСЛЯЕМ КОНЕЧНУЮ ТОЧКУ ТЕКУЩЕГО ПЕРЕХОДА
+                // Финиш всегда рассчитывается как базовый нуль плюс текущая дельта!
+                Vector3 endLocalPos = _localBasePos + quaternionOffset * ArrayToVector3(currentTransitionData.endPosDelta);
+                Quaternion endLocalRot = _localBaseRot * Quaternion.Euler(ArrayToVector3(currentTransitionData.endRotDelta));
 
-                // Смещение текущего шага берем из текущей дельты
-                Vector3 furnitureCurrentLocalPosDelta = _recordToFurnitureRotModifier * ArrayToVector3(currentTransitionData.endPosDelta);
-                Vector3 endLocalPos = startLocalPos + furnitureCurrentLocalPosDelta;
-                Quaternion endLocalRot = _localBaseRot * authorAccumulatedRot * Quaternion.Euler(ArrayToVector3(currentTransitionData.endRotDelta));
-
-                // Интерполяция рута персонажа
-                targetLocalPos = Vector3.Lerp(startLocalPos, endLocalPos, lerpFraction);
-                targetLocalRot = Quaternion.Lerp(startLocalRot, endLocalRot, lerpFraction);
+                // 3. ИНТЕРПОЛЯЦИЯ И ФИНАЛЬНАЯ ПРОЕКЦИЯ В МИР UNITY
+                Vector3 targetLocalPos = Vector3.Lerp(startLocalPos, endLocalPos, lerpFraction);
+                Quaternion targetLocalRot = Quaternion.Lerp(startLocalRot, endLocalRot, lerpFraction);
 
                 _character.transform.position = _targetFurniture.transform.TransformPoint(targetLocalPos);
                 _character.transform.rotation = _targetFurniture.transform.rotation * targetLocalRot;
 
+                // Сохраняем в кэш для радара
+                this.targetLocalPos = targetLocalPos;
+
                 // =========================================================================
-                // 3. ЧИСТАЯ АНИМАЦИЯ КОСТЕЙ ВНУТРИ ТЕКУЩЕЙ ДЕЛЬТЫ (КАНОН AEDENTHORN)  Bones
+                // 4. ИНТЕРПОЛЯЦИЯ КОСТЕЙ (Остается без изменений)
                 // =========================================================================
                 if (currentTransitionData.boneDatas != null)
                 {
@@ -270,7 +274,6 @@ namespace FurnitureAnimationsMod
                     {
                         if (_boneCache.TryGetValue(kp.Key, out Transform boneTransform) && boneTransform != null)
                         {
-                            // Читаем старт и финиш кости строго внутри текущего шага от start к end
                             Vector3 boneStartPos = ArrayToVector3(kp.Value.startPos);
                             Vector3 boneEndPos = ArrayToVector3(kp.Value.endPos);
                             Quaternion boneStartRot = Quaternion.Euler(ArrayToVector3(kp.Value.startRot));
@@ -284,7 +287,7 @@ namespace FurnitureAnimationsMod
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogError($"[SubframePlayer] Критическая ошибка рендера: {ex.Message}");
+                Plugin.Log.LogError($"[SubframePlayer] Ошибка каноничного рендера: {ex.Message}");
             }
 
             // =========================================================================
