@@ -458,7 +458,7 @@ namespace FurnitureAnimationsMod
                 // Для этого временно воспользуемся RenderTexture или стандартным методом, но проще сделать попиксельно:
                 // Чтобы не усложнять, если иконка в ресурсах изначально маленькая (например, 32x32 или 64x64), можно брать её оригинальный размер:
                 int targetWmWidth = Mathf.Min(watermark.width, baseWidth / 4);
-                int targetWmHeight = Mathf.Min(watermark.height, baseHeight / 2);
+                int targetWmHeight = Mathf.Min(watermark.height, baseHeight / 3);
 
                 // Отступ от левого нижнего угла (в пикселях)
                 int paddingX = 4;
