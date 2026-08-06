@@ -53,24 +53,36 @@ namespace FurnitureAnimationsMod
                     buttonText = "Link Animated Pose for Furniture";
                     typeText = "External Mod Animation (AnimatedPose)";
 
-                    Plugin.Log.LogWarning($"[PoseExporter] Детектор: Поймали JSON-анимацию '{controllerName}'! Ищем её легальную иконку...");
+                    Plugin.Log.LogWarning($"[PoseExporter] Детектор: Поймали JSON-анимацию '{controllerName}'! Делаем скриншот с наложением иконки.");
 
-                    // Извлекаем иконку танца из каталога RM по точному совпадению имени объекта
-                    if (RM.code != null && RM.code.allFreePoses != null)
+                    // 1. Делаем базовый скisting скриншот куклы в движении
+                    Texture2D rawScreenshot = null;
+                    var photoCompAnim = uiInstance.GetComponent<TakePhotos>();
+                    if (photoCompAnim != null && Global.code != null && Global.code.freeCamera != null)
                     {
-                        foreach (Transform t in RM.code.allFreePoses.items)
+                        Camera cam = Global.code.freeCamera.GetComponent<Camera>();
+                        rawScreenshot = photoCompAnim.CameraCapture(cam, new Rect(0f, 0f, 300f, 300f), "");
+                    }
+
+                    if (rawScreenshot != null)
+                    {
+                        // 2. Достаем нашу иконку icon_animation из ресурсов проекта
+                        Texture2D watermarkIcon = LoadWatermarkFromResources();
+
+                        if (watermarkIcon != null)
                         {
-                            if (t == null) continue;
-                            if (t.name == controllerName)
-                            {
-                                var p = t.GetComponent<global::Pose>();
-                                if (p != null && p.icon != null)
-                                {
-                                    _lastCapturedIcon = p.icon;
-                                    Plugin.Log.LogInfo($"[PoseExporter] Легальная 🎉 иконка мода для '{controllerName}' успешно извлечена из каталога!");
-                                }
-                                break;
-                            }
+                            // 3. Запекаем её в левый нижний угол скриншота
+                            _lastCapturedIcon = ApplyWatermarkToBottomLeft(rawScreenshot, watermarkIcon);
+
+                            // Очищаем временную текстуру водяного знака из памяти, чтобы не плодить утечки
+                            UnityEngine.Object.Destroy(watermarkIcon);
+
+                            Plugin.Log.LogInfo("[PoseExporter] Водяной знак 'icon_animation' успешно внедрен на скриншот анимации.");
+                        }
+                        else
+                        {
+                            // Фаллбэк: если ресурс не прочитался, оставляем чистый скриншот
+                            _lastCapturedIcon = rawScreenshot;
                         }
                     }
                     break;
@@ -298,9 +310,7 @@ namespace FurnitureAnimationsMod
                 Plugin.Log.LogError($"[PoseExporter] Критическая ошибка записи: {ex.Message}");
             }
         }
-
-
-        // Обновленный метод поиска: теперь принимает максимальную дистанцию (радиус)
+                
         public static Furniture FindClosestFurniture(Vector3 playerPosition, float maxDistance = 5f)
         {
             Furniture closestFurniture = null;
@@ -388,5 +398,108 @@ namespace FurnitureAnimationsMod
                 return "{}";
             }
         }
+
+        private static Texture2D LoadWatermarkFromResources()
+        {
+            try
+            {
+                var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+                // Полное имя ресурса: ПространствоИмен.Папка.ИмяФайла
+                using (var stream = assembly.GetManifestResourceStream("FurnitureAnimations.Resources.icon_animation.png"))
+                {
+                    if (stream == null)
+                    {
+                        Plugin.Log.LogError("[PoseExporter] Встроенный ресурс icon_animation.png не найден!");
+                        return null;
+                    }
+
+                    byte[] buffer = new byte[stream.Length];
+                    stream.Read(buffer, 0, buffer.Length);
+
+                    // Создаем временную текстуру, LoadImage сама изменит её размер под формат PNG
+                    Texture2D texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                    if (texture.LoadImage(buffer))
+                    {
+                        return texture;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"[PoseExporter] Ошибка загрузки водяного знака из ресурсов: {ex.Message}");
+            }
+            return null;
+        }
+
+        private static Texture2D ApplyWatermarkToBottomLeft(Texture2D baseTexture, Texture2D watermark)
+        {
+            if (baseTexture == null) return null;
+            if (watermark == null) return baseTexture;
+
+            try
+            {
+                // Создаем новую незащищенную текстуру для чтения/записи, чтобы избежать ошибок RenderTextures
+                Texture2D readableBase = new Texture2D(baseTexture.width, baseTexture.height, TextureFormat.RGBA32, false);
+
+                // Переносим пиксели из скриншота (через GetPixels/SetPixels или Graphics.CopyTexture)
+                // Так как скриншот из CameraCapture обычно доступен для чтения, берем пиксели напрямую:
+                Color[] basePixels = baseTexture.GetPixels();
+                readableBase.SetPixels(basePixels);
+
+                int baseWidth = readableBase.width;
+                int baseHeight = readableBase.height;
+
+                // Определяем размер водяного знака. Сделаем его, например, 20% от размера скриншота (или фиксированно 48x48)
+                // Давай сделаем пропорциональный размер, например 1/5 от ширины скриншота
+                int wmWidth = baseWidth / 5;
+                int wmHeight = (watermark.height * wmWidth) / watermark.width; // Сохраняем пропорции
+
+                // Ресэмплим водяной знак под нужный размер (простейший Bilinear / Point рескейл)
+                // Для этого временно воспользуемся RenderTexture или стандартным методом, но проще сделать попиксельно:
+                // Чтобы не усложнять, если иконка в ресурсах изначально маленькая (например, 32x32 или 64x64), можно брать её оригинальный размер:
+                int targetWmWidth = Mathf.Min(watermark.width, baseWidth / 6);
+                int targetWmHeight = Mathf.Min(watermark.height, baseHeight / 6);
+
+                // Отступ от левого нижнего угла (в пикселях)
+                int paddingX = 0;
+                int paddingY = 0;
+
+                // Попиксельное наложение с учетом альфа-канала (Alpha Blending)
+                for (int y = 0; y < targetWmHeight; y++)
+                {
+                    for (int x = 0; x < targetWmWidth; x++)
+                    {
+                        int targetX = paddingX + x;
+                        int targetY = paddingY + y;
+
+                        if (targetX >= baseWidth || targetY >= baseHeight) continue;
+
+                        // Вычисляем интерполяцию для масштабирования оригинальной иконки
+                        float u = (float)x / targetWmWidth;
+                        float v = (float)y / targetWmHeight;
+                        Color wmPixel = watermark.GetPixelBilinear(u, v);
+
+                        if (wmPixel.a > 0.01f) // Если пиксель не прозрачный
+                        {
+                            Color bgPixel = readableBase.GetPixel(targetX, targetY);
+                            // Классическая формула линейного смешивания цветов по альфе
+                            Color blendedPixel = Color.Lerp(bgPixel, wmPixel, wmPixel.a);
+                            blendedPixel.a = bgPixel.a; // сохраняем альфу фона
+
+                            readableBase.SetPixel(targetX, targetY, blendedPixel);
+                        }
+                    }
+                }
+
+                readableBase.Apply();
+                return readableBase;
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"[PoseExporter] Ошибка запекания водяного знака: {ex.Message}");
+                return baseTexture;
+            }
+        }
+
     }
 }
