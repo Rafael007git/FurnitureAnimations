@@ -457,12 +457,12 @@ namespace FurnitureAnimationsMod
                 // Ресэмплим водяной знак под нужный размер (простейший Bilinear / Point рескейл)
                 // Для этого временно воспользуемся RenderTexture или стандартным методом, но проще сделать попиксельно:
                 // Чтобы не усложнять, если иконка в ресурсах изначально маленькая (например, 32x32 или 64x64), можно брать её оригинальный размер:
-                int targetWmWidth = Mathf.Min(watermark.width, baseWidth / 6);
-                int targetWmHeight = Mathf.Min(watermark.height, baseHeight / 6);
+                int targetWmWidth = Mathf.Min(watermark.width, baseWidth / 4);
+                int targetWmHeight = Mathf.Min(watermark.height, baseHeight / 2);
 
                 // Отступ от левого нижнего угла (в пикселях)
-                int paddingX = 0;
-                int paddingY = 0;
+                int paddingX = 4;
+                int paddingY = 4;
 
                 // Попиксельное наложение с учетом альфа-канала (Alpha Blending)
                 for (int y = 0; y < targetWmHeight; y++)
