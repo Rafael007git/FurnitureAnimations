@@ -72,6 +72,24 @@ namespace FurnitureAnimationsMod
                                 virtualCamObj.SetActive(false);
                                 targetCamTrans = virtualCamObj.transform;
                                 isNewCamera = true;
+
+                                // --- НАШ ХИРУРГИЧЕСКИЙ ФИКС ДЛЯ МГНОВЕННОГО ПЕРЕКЛЮЧЕНИЯ РАКУРСА ---
+                                // Добавляем нативный игровой компонент, чтобы FreeLookCam игры распознала нашу камеру!
+                                try
+                                {
+                                    PoseCamera poseCamComponent = virtualCamObj.AddComponent<PoseCamera>();
+                                    if (poseCamComponent != null)
+                                    {
+                                        poseCamComponent.notshown = false;
+                                        // Если у компонента PoseCamera в этой игре есть параметры типа fov или distance,
+                                        // можно задать дефолтные значения (например, fov = 60f), но обычно игре достаточно самого наличия скрипта.
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    Plugin.Log.LogError($"[SDK_Camera_Fix] Не удалось повесить компонент PoseCamera: {ex.Message}");
+                                }
+                                // ------------------------------------------------------------------
                             }
 
                             // Обновляем исключительно позицию и поворот ракурса на лету
