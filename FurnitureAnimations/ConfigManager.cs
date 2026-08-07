@@ -63,6 +63,13 @@ namespace FurnitureAnimationsMod
 
                     if (config != null && !string.IsNullOrEmpty(config.FurniturePrefabName))
                     {
+                        // --- НАШ ХИРУРГИЧЕСКИЙ ПРЕДОХРАНИТЕЛЬ ДЛЯ СТАРЫХ JSON ---
+                        if (config.CustomCameras == null)
+                        {
+                            config.CustomCameras = new List<CameraData>();
+                        }
+                        // --------------------------------------------------------
+
                         LoadedConfigs[config.FurniturePrefabName] = config;
                         Plugin.Log.LogInfo($"[ConfigManager] Загружен конфиг мебели: {config.FurniturePrefabName} ({config.InteractionPoses?.Count ?? 0} поз)");
                     }

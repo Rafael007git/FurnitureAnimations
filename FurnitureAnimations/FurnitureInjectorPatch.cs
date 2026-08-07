@@ -38,6 +38,68 @@ namespace FurnitureAnimationsMod
                 if (__instance.poses == null) __instance.poses = new CommonArray();
                 if (__instance.cameras == null) __instance.cameras = new CommonArray();
 
+                // =========================================================================
+                // ХИРУРГИЧЕСКАЯ ИНЖЕКЦИЯ КАМЕР (Мягкое слияние: ваниль не страдает, координаты обновляются!)
+                // =========================================================================
+                if (config.CustomCameras != null && config.CustomCameras.Count > 0)
+                {
+                    try
+                    {
+                        // Находим или создаем стандартную "Cameras Group" на мебели
+                        Transform camGroupTrans = __instance.camerasGroup;
+                        if (camGroupTrans == null)
+                        {
+                            GameObject camGroupObj = new GameObject("Cameras Group");
+                            camGroupObj.transform.SetParent(__instance.transform, false);
+                            __instance.camerasGroup = camGroupObj.transform;
+                            camGroupTrans = camGroupObj.transform;
+                        }
+
+                        // Бежим по списку кастомных камер из верхнего уровня JSON мебели
+                        foreach (var camData in config.CustomCameras)
+                        {
+                            if (string.IsNullOrEmpty(camData.Name)) continue;
+
+                            // Ищем, существует ли уже объект камеры с таким именем в иерархии мебели
+                            Transform targetCamTrans = camGroupTrans.Find(camData.Name);
+                            bool isNewCamera = false;
+
+                            if (targetCamTrans == null)
+                            {
+                                // Если камеры нет — создаем чистую пустышку (не ломая остальные родные камеры игры)
+                                GameObject virtualCamObj = new GameObject(camData.Name);
+                                virtualCamObj.transform.SetParent(camGroupTrans, false);
+                                virtualCamObj.SetActive(false);
+                                targetCamTrans = virtualCamObj.transform;
+                                isNewCamera = true;
+                            }
+
+                            // Обновляем исключительно позицию и поворот ракурса на лету
+                            if (camData.pos != null)
+                                targetCamTrans.localPosition = new Vector3(camData.pos.x, camData.pos.y, camData.pos.z);
+
+                            if (camData.rot != null)
+                                targetCamTrans.localRotation = Quaternion.Euler(camData.rot.x, camData.rot.y, camData.rot.z);
+
+                            // Если это совершенно новая камера — аккуратно добавляем её в нативный список игры
+                            if (isNewCamera)
+                            {
+                                __instance.cameras.AddItem(targetCamTrans);
+                                Plugin.Log.LogInfo($"[SDK_Camera_Merge] Успешно добавлена новая камера: '{camData.Name}'");
+                            }
+                            else
+                            {
+                                Plugin.Log.LogInfo($"[SDK_Camera_Merge] Рантайм-координаты для существующей камеры '{camData.Name}' обновлены.");
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Plugin.Log.LogError($"[SDK_Camera_Merge] Ошибка мягкого слияния камер: {ex.Message}");
+                    }
+                }
+                // =========================================================================
+
                 // Находим или создаем кастомную подпапку для НАШИХ поз внутри мебели, чтобы не захламлять оригинальный posesGroup
                 Transform modPosesGroup = __instance.transform.Find("Mod_CustomPosesGroup");
                 if (modPosesGroup == null)
@@ -127,7 +189,7 @@ namespace FurnitureAnimationsMod
                         {
                             try
                             {
-                                // --- ГЛУБОКОЕ КОПИРОВАНИЕ ТЕКСТУРЫ ДЛЯ ЗАЩИТЫ ОТ UNLOAD 🌟 ---
+                                // --- ГЛУБОКОЕ КОПИРОВАНИЕ ТЕКСТУРЫ ДЛЯ ЗАЩИТЫ ОТ UNLOAD --- 🌟
                                 Texture2D sourceTex = exactVanillaPose.icon;
 
                                 // Создаем чистую рантайм-текстуру точно такого же размера и формата
@@ -140,7 +202,7 @@ namespace FurnitureAnimationsMod
                             }
                             catch (Exception ex)
                             {
-                                // Фаллбэк на случай, если текстура защищена от чтения/записи (Read/Write Disabled)
+                                // Фаллбэк на случай, если texture защищена от чтения/записи (Read/Write Disabled)
                                 newPose.icon = UnityEngine.Object.Instantiate(exactVanillaPose.icon);
                                 Plugin.Log.LogInfo($"[Injector] Использован Instantiate-клон для иконки {poseConfig.DisplayName}: {ex.Message}");
                             }

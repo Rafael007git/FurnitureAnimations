@@ -36,6 +36,10 @@ namespace FurnitureAnimationsMod
     {
         public string FurniturePrefabName;
         public List<PoseData> InteractionPoses;
+
+        // --- НАШЕ ТОЧНОЕ ДОПОЛНЕНИЕ ДЛЯ КАМЕР МЕБЕЛИ ---
+        // Инициализируем список сразу, чтобы избежать ошибок NullReferenceException
+        public List<CameraData> CustomCameras = new List<CameraData>();
     }
 
     // Модель для распаковки бинарного слепка кости/света из CustomAnimations
