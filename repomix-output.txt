@@ -1555,220 +1555,6 @@ namespace FurnitureAnimationsMod
 }
 
 ================
-File: FurnitureAnimations/AnimationAudioManager.cs
-================
-using System;
-using System.IO;
-using System.Collections.Generic;
-using UnityEngine;
-using UnityEngine.Networking;
-
-namespace FurnitureAnimationsMod
-{
-    public class AnimationAudioManager : MonoBehaviour
-    {
-        public static AnimationAudioManager Instance { get; private set; }
-
-        // --- КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: Статическая переменная сохраняет состояние глобально ---
-        private static bool _isGlobalMuted = false;
-
-        private AudioSource _audioSource;
-        private bool _loopAudio = false;
-        private string _lastInitializedAnimation = "";
-
-        // Поля для поддержки списков воспроизведения и переключения
-        private List<string> _currentPlaylist = new List<string>();
-        private int _currentTrackIndex = -1;
-        private Coroutine _currentLoadCoroutine;
-
-        private void Awake()
-        {
-            // Синглтон инициализируем строго один раз при создании компонента
-            if (Instance == null)
-            {
-                Instance = this;
-            }
-
-            _audioSource = gameObject.GetComponent<AudioSource>() ?? gameObject.AddComponent<AudioSource>();
-        }
-
-
-        public void Initialize(string animationName, bool loopAudio)
-        {
-            _loopAudio = loopAudio;
-            _lastInitializedAnimation = animationName; // Запоминаем имя для возможного UnMute позже
-
-            if (_currentLoadCoroutine != null) StopCoroutine(_currentLoadCoroutine);
-            if (_audioSource != null && _audioSource.isPlaying) _audioSource.Stop();
-
-            _currentPlaylist.Clear();
-            _currentTrackIndex = -1;
-
-            // --- ЕСЛИ СТОИТ РЕЖИМ ТИШИНЫ, НЕ ЗАПУСКАЕМ ТРЕК ---
-            if (_isGlobalMuted)
-            {
-                Plugin.Log.LogInfo("[AudioEngine] Старт анимации без звука (активен глобальный Mute).");
-                return;
-            }
-
-            ScanAndPlay(animationName);
-        }
-
-        /// <summary>
-        /// Внутренний метод сканирования папки и запуска (вынесен для переиспользования при UnMute)
-        /// </summary>
-        private void ScanAndPlay(string animationName)
-        {
-            string audioFolder = Path.Combine(BepInEx.Paths.PluginPath, "FurnitureAnimations", "Audio");
-            if (!Directory.Exists(audioFolder)) Directory.CreateDirectory(audioFolder);
-
-            string[] files = Directory.GetFiles(audioFolder, animationName + "*.*");
-            foreach (string file in files)
-            {
-                string ext = Path.GetExtension(file).ToLower();
-                if (ext == ".wav" || ext == ".mp3" || ext == ".ogg")
-                {
-                    _currentPlaylist.Add(file);
-                }
-            }
-
-            if (_currentPlaylist.Count > 0)
-            {
-                _currentTrackIndex = UnityEngine.Random.Range(0, _currentPlaylist.Count);
-                string selectedTrack = _currentPlaylist[_currentTrackIndex];
-
-                _currentLoadCoroutine = StartCoroutine(LoadAndPlayAudio(selectedTrack, GetAudioType(selectedTrack)));
-                Plugin.Log.LogInfo($"[AudioEngine] Запущено воспроизведение: {Path.GetFileName(selectedTrack)}");
-            }
-        }
-
-        public void PlayNextTrack()
-        {
-            // ПРАВКА СЛУЧАЯ 2: Если стоял Mute, принудительно выключаем его
-            if (_isGlobalMuted)
-            {
-                _isGlobalMuted = false;
-                Plugin.Log.LogInfo("[AudioEngine] Нажата кнопка Next Track: глобальный Mute автоматически снят.");
-
-                // Переинициализируем плейлист для текущей анимации, если он был пуст из-за Mute
-                if (_currentPlaylist.Count == 0 && !string.IsNullOrEmpty(_lastInitializedAnimation))
-                {
-                    ScanAndPlay(_lastInitializedAnimation);
-                    return;
-                }
-            }
-
-            if (_currentPlaylist == null || _currentPlaylist.Count <= 1)
-            {
-                Plugin.Log.LogInfo("[AudioEngine] Переключение невозможно: в текущем плейлисте недостаточно треков.");
-                return;
-            }
-
-            if (_currentLoadCoroutine != null) StopCoroutine(_currentLoadCoroutine);
-            if (_audioSource != null) _audioSource.Stop();
-
-            _currentTrackIndex = (_currentTrackIndex + 1) % _currentPlaylist.Count;
-            string nextTrackPath = _currentPlaylist[_currentTrackIndex];
-
-            _currentLoadCoroutine = StartCoroutine(LoadAndPlayAudio(nextTrackPath, GetAudioType(nextTrackPath)));
-            Plugin.Log.LogInfo($"[AudioEngine] Переключено на {Path.GetFileName(nextTrackPath)} ({_currentTrackIndex + 1}/{_currentPlaylist.Count})");
-        }
-
-        private System.Collections.IEnumerator LoadAndPlayAudio(string filePath, AudioType type)
-        {
-            string fileUri = "file://" + filePath.Replace("\\", "/");
-            using (UnityWebRequest multimediaRequest = UnityWebRequestMultimedia.GetAudioClip(fileUri, type))
-            {
-                yield return multimediaRequest.SendWebRequest();
-
-                if (multimediaRequest.result == UnityWebRequest.Result.ConnectionError || multimediaRequest.result == UnityWebRequest.Result.ProtocolError)
-                {
-                    Plugin.Log.LogError($"[AudioEngine] Ошибка UnityWebRequest: {multimediaRequest.error}");
-                }
-                else
-                {
-                    AudioClip clip = DownloadHandlerAudioClip.GetContent(multimediaRequest);
-                    if (clip != null && _audioSource != null)
-                    {
-                        _audioSource.clip = clip;
-                        _audioSource.loop = _loopAudio;
-                        _audioSource.bypassEffects = true;
-                        _audioSource.bypassListenerEffects = true;
-                        _audioSource.priority = 0;
-                        _audioSource.spatialBlend = 0f;
-                        _audioSource.volume = 1.0f;
-                        _audioSource.mute = _isGlobalMuted;
-                        _audioSource.Play();
-                        Plugin.Log.LogWarning($"[AudioEngine] Звуковой файл '{clip.name}' запущен!");
-                    }
-                }
-            }
-            _currentLoadCoroutine = null;
-        }
-
-        private AudioType GetAudioType(string path)
-        {
-            string ext = Path.GetExtension(path).ToLower();
-            if (ext == ".wav") return AudioType.WAV;
-            if (ext == ".ogg") return AudioType.OGGVORBIS;
-            if (ext == ".mp3") return AudioType.MPEG;
-            return AudioType.UNKNOWN;
-        }
-
-        public void ToggleMute()
-        {
-            _isGlobalMuted = !_isGlobalMuted;
-
-            if (_audioSource != null)
-            {
-                if (_isGlobalMuted)
-                {
-                    _audioSource.Stop();
-                    if (_currentLoadCoroutine != null) StopCoroutine(_currentLoadCoroutine);
-                }
-                else
-                {
-                    // ПРАВКА СЛУЧАЯ 1: Если Mute сняли, а плейлист пуст — сканируем и запускаем
-                    if (_currentPlaylist.Count == 0 && !string.IsNullOrEmpty(_lastInitializedAnimation))
-                    {
-                        ScanAndPlay(_lastInitializedAnimation);
-                    }
-                    // Если плейлист уже был готов, просто перезапускаем текущий трек
-                    else if (_currentTrackIndex >= 0 && _currentTrackIndex < _currentPlaylist.Count)
-                    {
-                        string currentTrack = _currentPlaylist[_currentTrackIndex];
-                        _currentLoadCoroutine = StartCoroutine(LoadAndPlayAudio(currentTrack, GetAudioType(currentTrack)));
-                    }
-                }
-            }
-            Plugin.Log.LogInfo($"[AudioEngine] Глобальный режим тишины: {(_isGlobalMuted ? "ВКЛ" : "ВЫКЛ")}");
-        }
-
-
-        public bool IsMuted() => _isGlobalMuted;
-
-        public void StopAudio()
-        {
-            if (_currentLoadCoroutine != null) StopCoroutine(_currentLoadCoroutine);
-            if (_audioSource != null && _audioSource.isPlaying)
-            {
-                _audioSource.Stop();
-            }
-        }
-
-        private void OnDestroy()
-        {
-            if (Instance == this) Instance = null;
-            if (_audioSource != null && _audioSource.isPlaying)
-            {
-                _audioSource.Stop();
-                Plugin.Log.LogInfo("[AudioEngine] Музыка интерактива успешно остановлена.");
-            }
-        }
-    }
-}
-
-================
 File: FurnitureAnimations/FurnitureSdkButtonController.cs
 ================
 using System;
@@ -1995,6 +1781,345 @@ namespace FurnitureAnimationsMod
 }
 
 ================
+File: FurnitureAnimations/AnimationAudioManager.cs
+================
+using System;
+using System.IO;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.Networking;
+
+namespace FurnitureAnimationsMod
+{
+    public class AnimationAudioManager : MonoBehaviour
+    {
+        public static AnimationAudioManager Instance { get; private set; }
+
+        // --- КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: Статическая переменная сохраняет состояние глобально ---
+        private static bool _isGlobalMuted = false;
+
+        private AudioSource _audioSource;
+        private bool _loopAudio = false;
+        private string _lastInitializedAnimation = "";
+
+        // Поля для поддержки списков воспроизведения и переключения
+        private List<string> _currentPlaylist = new List<string>();
+        private int _currentTrackIndex = -1;
+        private Coroutine _currentLoadCoroutine;
+
+        private void Awake()
+        {
+            // Синглтон инициализируем строго один раз при создании компонента
+            if (Instance == null)
+            {
+                Instance = this;
+            }
+
+            _audioSource = gameObject.GetComponent<AudioSource>() ?? gameObject.AddComponent<AudioSource>();
+        }
+
+
+        public void Initialize(string animationName, bool loopAudio)
+        {
+            _loopAudio = loopAudio;
+            _lastInitializedAnimation = animationName; // Запоминаем имя для возможного UnMute позже
+
+            if (_currentLoadCoroutine != null) StopCoroutine(_currentLoadCoroutine);
+            if (_audioSource != null && _audioSource.isPlaying) _audioSource.Stop();
+
+            _currentPlaylist.Clear();
+            _currentTrackIndex = -1;
+
+            // --- ЕСЛИ СТОИТ РЕЖИМ ТИШИНЫ, НЕ ЗАПУСКАЕМ ТРЕК ---
+            if (_isGlobalMuted)
+            {
+                Plugin.Log.LogInfo("[AudioEngine] Старт анимации без звука (активен глобальный Mute).");
+                return;
+            }
+
+            ScanAndPlay(animationName);
+        }
+
+        /// <summary>
+        /// Внутренний метод сканирования папки и запуска (вынесен для переиспользования при UnMute)
+        /// </summary>
+        private void ScanAndPlay(string animationName)
+        {
+            string audioFolder = Path.Combine(BepInEx.Paths.PluginPath, "FurnitureAnimations", "Audio");
+            if (!Directory.Exists(audioFolder)) Directory.CreateDirectory(audioFolder);
+
+            string[] files = Directory.GetFiles(audioFolder, animationName + "*.*");
+            foreach (string file in files)
+            {
+                string ext = Path.GetExtension(file).ToLower();
+                if (ext == ".wav" || ext == ".mp3" || ext == ".ogg")
+                {
+                    _currentPlaylist.Add(file);
+                }
+            }
+
+            if (_currentPlaylist.Count > 0)
+            {
+                _currentTrackIndex = UnityEngine.Random.Range(0, _currentPlaylist.Count);
+                string selectedTrack = _currentPlaylist[_currentTrackIndex];
+
+                _currentLoadCoroutine = StartCoroutine(LoadAndPlayAudio(selectedTrack, GetAudioType(selectedTrack)));
+                Plugin.Log.LogInfo($"[AudioEngine] Запущено воспроизведение: {Path.GetFileName(selectedTrack)}");
+            }
+        }
+
+        public void PlayNextTrack()
+        {
+            // ПРАВКА СЛУЧАЯ 2: Если стоял Mute, принудительно выключаем его
+            if (_isGlobalMuted)
+            {
+                _isGlobalMuted = false;
+                Plugin.Log.LogInfo("[AudioEngine] Нажата кнопка Next Track: глобальный Mute автоматически снят.");
+
+                // Переинициализируем плейлист для текущей анимации, если он был пуст из-за Mute
+                if (_currentPlaylist.Count == 0 && !string.IsNullOrEmpty(_lastInitializedAnimation))
+                {
+                    ScanAndPlay(_lastInitializedAnimation);
+                    return;
+                }
+            }
+
+            if (_currentPlaylist == null || _currentPlaylist.Count <= 1)
+            {
+                Plugin.Log.LogInfo("[AudioEngine] Переключение невозможно: в текущем плейлисте недостаточно треков.");
+                return;
+            }
+
+            if (_currentLoadCoroutine != null) StopCoroutine(_currentLoadCoroutine);
+            if (_audioSource != null) _audioSource.Stop();
+
+            _currentTrackIndex = (_currentTrackIndex + 1) % _currentPlaylist.Count;
+            string nextTrackPath = _currentPlaylist[_currentTrackIndex];
+
+            _currentLoadCoroutine = StartCoroutine(LoadAndPlayAudio(nextTrackPath, GetAudioType(nextTrackPath)));
+            Plugin.Log.LogInfo($"[AudioEngine] Переключено на {Path.GetFileName(nextTrackPath)} ({_currentTrackIndex + 1}/{_currentPlaylist.Count})");
+        }
+
+        private System.Collections.IEnumerator LoadAndPlayAudio(string filePath, AudioType type)
+        {
+            string fileUri = "file://" + filePath.Replace("\\", "/");
+            using (UnityWebRequest multimediaRequest = UnityWebRequestMultimedia.GetAudioClip(fileUri, type))
+            {
+                yield return multimediaRequest.SendWebRequest();
+
+                if (multimediaRequest.result == UnityWebRequest.Result.ConnectionError || multimediaRequest.result == UnityWebRequest.Result.ProtocolError)
+                {
+                    Plugin.Log.LogError($"[AudioEngine] Ошибка UnityWebRequest: {multimediaRequest.error}");
+                }
+                else
+                {
+                    AudioClip clip = DownloadHandlerAudioClip.GetContent(multimediaRequest);
+                    if (clip != null && _audioSource != null)
+                    {
+                        _audioSource.clip = clip;
+                        _audioSource.loop = _loopAudio;
+                        _audioSource.bypassEffects = true;
+                        _audioSource.bypassListenerEffects = true;
+                        _audioSource.priority = 0;
+                        _audioSource.spatialBlend = 0f;
+                        _audioSource.volume = 1.0f;
+                        _audioSource.mute = _isGlobalMuted;
+                        _audioSource.Play();
+                        Plugin.Log.LogWarning($"[AudioEngine] Звуковой файл '{clip.name}' запущен!");
+                    }
+                }
+            }
+            _currentLoadCoroutine = null;
+        }
+
+        private AudioType GetAudioType(string path)
+        {
+            string ext = Path.GetExtension(path).ToLower();
+            if (ext == ".wav") return AudioType.WAV;
+            if (ext == ".ogg") return AudioType.OGGVORBIS;
+            if (ext == ".mp3") return AudioType.MPEG;
+            return AudioType.UNKNOWN;
+        }
+
+        public void ToggleMute()
+        {
+            _isGlobalMuted = !_isGlobalMuted;
+
+            if (_audioSource != null)
+            {
+                if (_isGlobalMuted)
+                {
+                    _audioSource.Stop();
+                    if (_currentLoadCoroutine != null) StopCoroutine(_currentLoadCoroutine);
+                }
+                else
+                {
+                    // ПРАВКА СЛУЧАЯ 1: Если Mute сняли, а плейлист пуст — сканируем и запускаем
+                    if (_currentPlaylist.Count == 0 && !string.IsNullOrEmpty(_lastInitializedAnimation))
+                    {
+                        ScanAndPlay(_lastInitializedAnimation);
+                    }
+                    // Если плейлист уже был готов, просто перезапускаем текущий трек
+                    else if (_currentTrackIndex >= 0 && _currentTrackIndex < _currentPlaylist.Count)
+                    {
+                        string currentTrack = _currentPlaylist[_currentTrackIndex];
+                        _currentLoadCoroutine = StartCoroutine(LoadAndPlayAudio(currentTrack, GetAudioType(currentTrack)));
+                    }
+                }
+            }
+            Plugin.Log.LogInfo($"[AudioEngine] Глобальный режим тишины: {(_isGlobalMuted ? "ВКЛ" : "ВЫКЛ")}");
+        }
+
+
+        public bool IsMuted() => _isGlobalMuted;
+
+        public void StopAudio()
+        {
+            if (_currentLoadCoroutine != null) StopCoroutine(_currentLoadCoroutine);
+            if (_audioSource != null && _audioSource.isPlaying)
+            {
+                _audioSource.Stop();
+            }
+        }
+
+        private void OnDestroy()
+        {
+            if (Instance == this) Instance = null;
+            if (_audioSource != null && _audioSource.isPlaying)
+            {
+                _audioSource.Stop();
+                Plugin.Log.LogInfo("[AudioEngine] Музыка интерактива успешно остановлена.");
+            }
+        }
+    }
+}
+
+================
+File: FurnitureAnimations/FurnitureAnimations.csproj
+================
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{A4CC8495-9ABB-49F7-9FB8-1DF40AF0C220}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>FurnitureAnimations</RootNamespace>
+    <AssemblyName>FurnitureAnimations</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="0Harmony">
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\BepInEx\core\0Harmony.dll</HintPath>
+    </Reference>
+    <Reference Include="Assembly-CSharp">
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\Assembly-CSharp.dll</HintPath>
+    </Reference>
+    <Reference Include="BepInEx">
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\BepInEx\core\BepInEx.dll</HintPath>
+    </Reference>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\Newtonsoft.Json.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="PoseAnimations">
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\BepInEx\plugins\PoseAnimations.dll</HintPath>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Xml" />
+    <Reference Include="UnityEngine">
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\UnityEngine.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.AnimationModule">
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\UnityEngine.AnimationModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.AudioModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\UnityEngine.AudioModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.ImageConversionModule">
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\UnityEngine.ImageConversionModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\UnityEngine.IMGUIModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.TextRenderingModule">
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\UnityEngine.TextRenderingModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.UI">
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\UnityEngine.UI.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.UnityWebRequestAudioModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\UnityEngine.UnityWebRequestAudioModule.dll</HintPath>
+    </Reference>
+    <Reference Include="UnityEngine.UnityWebRequestModule">
+      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\UnityEngine.UnityWebRequestModule.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="AnimatedPosePatch.cs" />
+    <Compile Include="AnimationAudioManager.cs" />
+    <Compile Include="AnimationRadar.cs" />
+    <Compile Include="AnimationUiControls.cs" />
+    <Compile Include="CharacterStateHelper.cs" />
+    <Compile Include="ConfigManager.cs" />
+    <Compile Include="DioramaConstants.cs" />
+    <Compile Include="EditorUiManager.cs" />
+    <Compile Include="FurnitureAnimationPlayer.cs" />
+    <Compile Include="FurnitureInjectorPatch.cs" />
+    <Compile Include="FurnitureSdkButtonController.cs" />
+    <Compile Include="Models.cs" />
+    <Compile Include="Plugin.cs" />
+    <Compile Include="PoseAnimationData.cs" />
+    <Compile Include="PoseExporter.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\icon_animation.png" />
+    <EmbeddedResource Include="Resources\icon_easeInOutEach.png" />
+    <EmbeddedResource Include="Resources\icon_easeInOutWhole.png" />
+    <EmbeddedResource Include="Resources\icon_fasterPlayback.png" />
+    <EmbeddedResource Include="Resources\icon_flowEven.png" />
+    <EmbeddedResource Include="Resources\icon_nextAudio.png" />
+    <EmbeddedResource Include="Resources\icon_slowerPlayback.png" />
+    <EmbeddedResource Include="Resources\icon_soundOff.png" />
+    <EmbeddedResource Include="Resources\icon_soundOn.png" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>
+
+================
 File: FurnitureAnimations/PoseExporter.cs
 ================
 using System;
@@ -2052,24 +2177,36 @@ namespace FurnitureAnimationsMod
                     buttonText = "Link Animated Pose for Furniture";
                     typeText = "External Mod Animation (AnimatedPose)";
 
-                    Plugin.Log.LogWarning($"[PoseExporter] Детектор: Поймали JSON-анимацию '{controllerName}'! Ищем её легальную иконку...");
+                    Plugin.Log.LogWarning($"[PoseExporter] Детектор: Поймали JSON-анимацию '{controllerName}'! Делаем скриншот с наложением иконки.");
 
-                    // Извлекаем иконку танца из каталога RM по точному совпадению имени объекта
-                    if (RM.code != null && RM.code.allFreePoses != null)
+                    // 1. Делаем базовый скisting скриншот куклы в движении
+                    Texture2D rawScreenshot = null;
+                    var photoCompAnim = uiInstance.GetComponent<TakePhotos>();
+                    if (photoCompAnim != null && Global.code != null && Global.code.freeCamera != null)
                     {
-                        foreach (Transform t in RM.code.allFreePoses.items)
+                        Camera cam = Global.code.freeCamera.GetComponent<Camera>();
+                        rawScreenshot = photoCompAnim.CameraCapture(cam, new Rect(0f, 0f, 300f, 300f), "");
+                    }
+
+                    if (rawScreenshot != null)
+                    {
+                        // 2. Достаем нашу иконку icon_animation из ресурсов проекта
+                        Texture2D watermarkIcon = LoadWatermarkFromResources();
+
+                        if (watermarkIcon != null)
                         {
-                            if (t == null) continue;
-                            if (t.name == controllerName)
-                            {
-                                var p = t.GetComponent<global::Pose>();
-                                if (p != null && p.icon != null)
-                                {
-                                    _lastCapturedIcon = p.icon;
-                                    Plugin.Log.LogInfo($"[PoseExporter] Легальная 🎉 иконка мода для '{controllerName}' успешно извлечена из каталога!");
-                                }
-                                break;
-                            }
+                            // 3. Запекаем её в левый нижний угол скриншота
+                            _lastCapturedIcon = ApplyWatermarkToBottomLeft(rawScreenshot, watermarkIcon);
+
+                            // Очищаем временную текстуру водяного знака из памяти, чтобы не плодить утечки
+                            UnityEngine.Object.Destroy(watermarkIcon);
+
+                            Plugin.Log.LogInfo("[PoseExporter] Водяной знак 'icon_animation' успешно внедрен на скриншот анимации.");
+                        }
+                        else
+                        {
+                            // Фаллбэк: если ресурс не прочитался, оставляем чистый скриншот
+                            _lastCapturedIcon = rawScreenshot;
                         }
                     }
                     break;
@@ -2297,9 +2434,7 @@ namespace FurnitureAnimationsMod
                 Plugin.Log.LogError($"[PoseExporter] Критическая ошибка записи: {ex.Message}");
             }
         }
-
-
-        // Обновленный метод поиска: теперь принимает максимальную дистанцию (радиус)
+                
         public static Furniture FindClosestFurniture(Vector3 playerPosition, float maxDistance = 5f)
         {
             Furniture closestFurniture = null;
@@ -2387,133 +2522,111 @@ namespace FurnitureAnimationsMod
                 return "{}";
             }
         }
+
+        private static Texture2D LoadWatermarkFromResources()
+        {
+            try
+            {
+                var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+                // Полное имя ресурса: ПространствоИмен.Папка.ИмяФайла
+                using (var stream = assembly.GetManifestResourceStream("FurnitureAnimations.Resources.icon_animation.png"))
+                {
+                    if (stream == null)
+                    {
+                        Plugin.Log.LogError("[PoseExporter] Встроенный ресурс icon_animation.png не найден!");
+                        return null;
+                    }
+
+                    byte[] buffer = new byte[stream.Length];
+                    stream.Read(buffer, 0, buffer.Length);
+
+                    // Создаем временную текстуру, LoadImage сама изменит её размер под формат PNG
+                    Texture2D texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                    if (texture.LoadImage(buffer))
+                    {
+                        return texture;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"[PoseExporter] Ошибка загрузки водяного знака из ресурсов: {ex.Message}");
+            }
+            return null;
+        }
+
+        private static Texture2D ApplyWatermarkToBottomLeft(Texture2D baseTexture, Texture2D watermark)
+        {
+            if (baseTexture == null) return null;
+            if (watermark == null) return baseTexture;
+
+            try
+            {
+                // Создаем новую незащищенную текстуру для чтения/записи, чтобы избежать ошибок RenderTextures
+                Texture2D readableBase = new Texture2D(baseTexture.width, baseTexture.height, TextureFormat.RGBA32, false);
+
+                // Переносим пиксели из скриншота (через GetPixels/SetPixels или Graphics.CopyTexture)
+                // Так как скриншот из CameraCapture обычно доступен для чтения, берем пиксели напрямую:
+                Color[] basePixels = baseTexture.GetPixels();
+                readableBase.SetPixels(basePixels);
+
+                int baseWidth = readableBase.width;
+                int baseHeight = readableBase.height;
+
+                // Определяем размер водяного знака. Сделаем его, например, 20% от размера скриншота (или фиксированно 48x48)
+                // Давай сделаем пропорциональный размер, например 1/5 от ширины скриншота
+                int wmWidth = baseWidth / 5;
+                int wmHeight = (watermark.height * wmWidth) / watermark.width; // Сохраняем пропорции
+
+                // Ресэмплим водяной знак под нужный размер (простейший Bilinear / Point рескейл)
+                // Для этого временно воспользуемся RenderTexture или стандартным методом, но проще сделать попиксельно:
+                // Чтобы не усложнять, если иконка в ресурсах изначально маленькая (например, 32x32 или 64x64), можно брать её оригинальный размер:
+                int targetWmWidth = Mathf.Min(watermark.width, baseWidth / 4);
+                int targetWmHeight = Mathf.Min(watermark.height, baseHeight / 3);
+
+                // Отступ от левого нижнего угла (в пикселях)
+                int paddingX = 4;
+                int paddingY = 4;
+
+                // Попиксельное наложение с учетом альфа-канала (Alpha Blending)
+                for (int y = 0; y < targetWmHeight; y++)
+                {
+                    for (int x = 0; x < targetWmWidth; x++)
+                    {
+                        int targetX = paddingX + x;
+                        int targetY = paddingY + y;
+
+                        if (targetX >= baseWidth || targetY >= baseHeight) continue;
+
+                        // Вычисляем интерполяцию для масштабирования оригинальной иконки
+                        float u = (float)x / targetWmWidth;
+                        float v = (float)y / targetWmHeight;
+                        Color wmPixel = watermark.GetPixelBilinear(u, v);
+
+                        if (wmPixel.a > 0.01f) // Если пиксель не прозрачный
+                        {
+                            Color bgPixel = readableBase.GetPixel(targetX, targetY);
+                            // Классическая формула линейного смешивания цветов по альфе
+                            Color blendedPixel = Color.Lerp(bgPixel, wmPixel, wmPixel.a);
+                            blendedPixel.a = bgPixel.a; // сохраняем альфу фона
+
+                            readableBase.SetPixel(targetX, targetY, blendedPixel);
+                        }
+                    }
+                }
+
+                readableBase.Apply();
+                return readableBase;
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"[PoseExporter] Ошибка запекания водяного знака: {ex.Message}");
+                return baseTexture;
+            }
+        }
+
     }
 }
-
-================
-File: FurnitureAnimations/FurnitureAnimations.csproj
-================
-<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
-  <PropertyGroup>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{A4CC8495-9ABB-49F7-9FB8-1DF40AF0C220}</ProjectGuid>
-    <OutputType>Library</OutputType>
-    <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>FurnitureAnimations</RootNamespace>
-    <AssemblyName>FurnitureAnimations</AssemblyName>
-    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
-    <FileAlignment>512</FileAlignment>
-    <Deterministic>true</Deterministic>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>full</DebugType>
-    <Optimize>false</Optimize>
-    <OutputPath>bin\Debug\</OutputPath>
-    <DefineConstants>DEBUG;TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <DebugType>pdbonly</DebugType>
-    <Optimize>true</Optimize>
-    <OutputPath>bin\Release\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-  </PropertyGroup>
-  <ItemGroup>
-    <Reference Include="0Harmony">
-      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\BepInEx\core\0Harmony.dll</HintPath>
-    </Reference>
-    <Reference Include="Assembly-CSharp">
-      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\Assembly-CSharp.dll</HintPath>
-    </Reference>
-    <Reference Include="BepInEx">
-      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\BepInEx\core\BepInEx.dll</HintPath>
-    </Reference>
-    <Reference Include="Newtonsoft.Json">
-      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\Newtonsoft.Json.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="PoseAnimations">
-      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\BepInEx\plugins\PoseAnimations.dll</HintPath>
-    </Reference>
-    <Reference Include="System" />
-    <Reference Include="System.Core" />
-    <Reference Include="System.Xml.Linq" />
-    <Reference Include="System.Data.DataSetExtensions" />
-    <Reference Include="Microsoft.CSharp" />
-    <Reference Include="System.Data" />
-    <Reference Include="System.Net.Http" />
-    <Reference Include="System.Xml" />
-    <Reference Include="UnityEngine">
-      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\UnityEngine.dll</HintPath>
-    </Reference>
-    <Reference Include="UnityEngine.AnimationModule">
-      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\UnityEngine.AnimationModule.dll</HintPath>
-    </Reference>
-    <Reference Include="UnityEngine.AudioModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\UnityEngine.AudioModule.dll</HintPath>
-    </Reference>
-    <Reference Include="UnityEngine.CoreModule">
-      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
-    </Reference>
-    <Reference Include="UnityEngine.ImageConversionModule">
-      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\UnityEngine.ImageConversionModule.dll</HintPath>
-    </Reference>
-    <Reference Include="UnityEngine.IMGUIModule">
-      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\UnityEngine.IMGUIModule.dll</HintPath>
-    </Reference>
-    <Reference Include="UnityEngine.TextRenderingModule">
-      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\UnityEngine.TextRenderingModule.dll</HintPath>
-    </Reference>
-    <Reference Include="UnityEngine.UI">
-      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\UnityEngine.UI.dll</HintPath>
-    </Reference>
-    <Reference Include="UnityEngine.UnityWebRequestAudioModule, Version=0.0.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <SpecificVersion>False</SpecificVersion>
-      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\UnityEngine.UnityWebRequestAudioModule.dll</HintPath>
-    </Reference>
-    <Reference Include="UnityEngine.UnityWebRequestModule">
-      <HintPath>..\..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\She Will Punish Them\She Will Punish Them_Data\Managed\UnityEngine.UnityWebRequestModule.dll</HintPath>
-    </Reference>
-  </ItemGroup>
-  <ItemGroup>
-    <Compile Include="AnimatedPosePatch.cs" />
-    <Compile Include="AnimationAudioManager.cs" />
-    <Compile Include="AnimationRadar.cs" />
-    <Compile Include="AnimationUiControls.cs" />
-    <Compile Include="CharacterStateHelper.cs" />
-    <Compile Include="ConfigManager.cs" />
-    <Compile Include="DioramaConstants.cs" />
-    <Compile Include="EditorUiManager.cs" />
-    <Compile Include="FurnitureAnimationPlayer.cs" />
-    <Compile Include="FurnitureInjectorPatch.cs" />
-    <Compile Include="FurnitureSdkButtonController.cs" />
-    <Compile Include="Models.cs" />
-    <Compile Include="Plugin.cs" />
-    <Compile Include="PoseAnimationData.cs" />
-    <Compile Include="PoseExporter.cs" />
-    <Compile Include="Properties\AssemblyInfo.cs" />
-  </ItemGroup>
-  <ItemGroup>
-    <EmbeddedResource Include="Resources\icon_animation.png" />
-    <EmbeddedResource Include="Resources\icon_easeInOutEach.png" />
-    <EmbeddedResource Include="Resources\icon_easeInOutWhole.png" />
-    <EmbeddedResource Include="Resources\icon_fasterPlayback.png" />
-    <EmbeddedResource Include="Resources\icon_flowEven.png" />
-    <EmbeddedResource Include="Resources\icon_nextAudio.png" />
-    <EmbeddedResource Include="Resources\icon_slowerPlayback.png" />
-    <EmbeddedResource Include="Resources\icon_soundOff.png" />
-    <EmbeddedResource Include="Resources\icon_soundOn.png" />
-  </ItemGroup>
-  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
-</Project>
 
 ================
 File: FurnitureAnimations/FurnitureInjectorPatch.cs
@@ -3135,6 +3248,84 @@ namespace FurnitureAnimationsMod
 }
 
 ================
+File: FurnitureAnimations/Plugin.cs
+================
+using BepInEx;
+using BepInEx.Configuration;
+using BepInEx.Logging;
+using FurnitureAnimations;
+using HarmonyLib;
+
+namespace FurnitureAnimationsMod
+{
+    // Проверь, чтобы имя исполняемого файла игры было написано без ошибок
+    [BepInPlugin(PluginGuid, PluginName, PluginVersion)]
+    [BepInDependency("aedenthorn.PoseAnimations", BepInDependency.DependencyFlags.SoftDependency)]
+    [BepInProcess("She Will Punish Them.exe")]
+    public class Plugin : BaseUnityPlugin // <-- КРИТИЧНО: Класс ОБЯЗАТЕЛЬНО должен быть public и наследоваться от BaseUnityPlugin
+    {
+        public const string PluginGuid = "com.lorifel007.furnitureanimations";
+        public const string PluginName = "Furniture Animations Mod";
+        public const string PluginVersion = "1.4.1";
+
+        public static ManualLogSource Log;
+        private Harmony harmony;
+
+        public static bool IsAnyPoseSelected = false;
+        public static bool IsCustomPoseActive = false;
+
+        public static ConfigEntry<bool> EnableDebugRadar;
+        public static ConfigEntry<bool> ForceAbsoluteSkeletalReset;
+
+        // BepInEx ищет именно метод Awake без параметров
+        private void Awake()
+        {
+            Log = Logger;
+            Log.LogWarning("[FurnitureMod] Старт инициализации плагина...");
+
+            EditorUiManager.Initialize();
+
+            try
+            {
+                // Запускаем наш менеджер конфигураций
+                ConfigManager.Initialize();
+
+                // Применяем Harmony патчи
+                harmony = new Harmony(PluginGuid);
+                harmony.PatchAll();
+
+                Log.LogWarning("[FurnitureMod] Плагин успешно загружен и применил патчи!");
+            }
+            catch (System.Exception ex)
+            {
+                Log.LogError($"[FurnitureMod] Сбой при загрузке плагина: {ex.Message}");
+            }
+
+            EnableDebugRadar = Config.Bind(
+                "Debug Settings",                             // Вкладка та же
+                "Enable Debug Radar",                         // Имя параметра
+                false,                                        // По умолчанию false (спрятан)
+                "Show the green onscreen diagnostic radar window with frame timing and pivot matrix telemetry."
+            );
+
+            ForceAbsoluteSkeletalReset = Config.Bind(
+                "Debug Settings",                             // Имя вкладки/секции
+                "Force Absolute Skeletal Reset",               // Имя параметра
+                true,                                         // По умолчанию true
+                "True: Forces all unused bones to reset to zero (prevents pose dependency). False: Enables original additive behavior from Aedenthorn."
+            );
+
+
+        }
+
+        private void OnDestroy()
+        {
+            harmony?.UnpatchSelf();
+        }
+    }
+}
+
+================
 File: FurnitureAnimations/AnimationUiControls.cs
 ================
 using System;
@@ -3531,84 +3722,6 @@ namespace FurnitureAnimationsMod
             }
         }
 
-    }
-}
-
-================
-File: FurnitureAnimations/Plugin.cs
-================
-using BepInEx;
-using BepInEx.Configuration;
-using BepInEx.Logging;
-using FurnitureAnimations;
-using HarmonyLib;
-
-namespace FurnitureAnimationsMod
-{
-    // Проверь, чтобы имя исполняемого файла игры было написано без ошибок
-    [BepInPlugin(PluginGuid, PluginName, PluginVersion)]
-    [BepInDependency("aedenthorn.PoseAnimations", BepInDependency.DependencyFlags.SoftDependency)]
-    [BepInProcess("She Will Punish Them.exe")]
-    public class Plugin : BaseUnityPlugin // <-- КРИТИЧНО: Класс ОБЯЗАТЕЛЬНО должен быть public и наследоваться от BaseUnityPlugin
-    {
-        public const string PluginGuid = "com.lorifel007.furnitureanimations";
-        public const string PluginName = "Furniture Animations Mod";
-        public const string PluginVersion = "1.4.0";
-
-        public static ManualLogSource Log;
-        private Harmony harmony;
-
-        public static bool IsAnyPoseSelected = false;
-        public static bool IsCustomPoseActive = false;
-
-        public static ConfigEntry<bool> EnableDebugRadar;
-        public static ConfigEntry<bool> ForceAbsoluteSkeletalReset;
-
-        // BepInEx ищет именно метод Awake без параметров
-        private void Awake()
-        {
-            Log = Logger;
-            Log.LogWarning("[FurnitureMod] Старт инициализации плагина...");
-
-            EditorUiManager.Initialize();
-
-            try
-            {
-                // Запускаем наш менеджер конфигураций
-                ConfigManager.Initialize();
-
-                // Применяем Harmony патчи
-                harmony = new Harmony(PluginGuid);
-                harmony.PatchAll();
-
-                Log.LogWarning("[FurnitureMod] Плагин успешно загружен и применил патчи!");
-            }
-            catch (System.Exception ex)
-            {
-                Log.LogError($"[FurnitureMod] Сбой при загрузке плагина: {ex.Message}");
-            }
-
-            EnableDebugRadar = Config.Bind(
-                "Debug Settings",                             // Вкладка та же
-                "Enable Debug Radar",                         // Имя параметра
-                false,                                        // По умолчанию false (спрятан)
-                "Show the green onscreen diagnostic radar window with frame timing and pivot matrix telemetry."
-            );
-
-            ForceAbsoluteSkeletalReset = Config.Bind(
-                "Debug Settings",                             // Имя вкладки/секции
-                "Force Absolute Skeletal Reset",               // Имя параметра
-                true,                                         // По умолчанию true
-                "True: Forces all unused bones to reset to zero (prevents pose dependency). False: Enables original additive behavior from Aedenthorn."
-            );
-
-
-        }
-
-        private void OnDestroy()
-        {
-            harmony?.UnpatchSelf();
-        }
     }
 }
 

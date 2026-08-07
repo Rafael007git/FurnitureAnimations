@@ -139,13 +139,10 @@ namespace FurnitureAnimationsMod
             _boneCache.Clear();
             CacheSkeletonRecursive(_character.transform);
 
-            Dictionary<string, BoneDelta> firstFrameDatas = null;
-            if (_animData.deltas.Count > 0)
-            {
-                firstFrameDatas = _animData.deltas[0].boneDatas;
-            }
-
-            AbsoluteSkeletalReset(firstFrameDatas);
+            // --- НАШ ХИРУРГИЧЕСКИЙ ФИКС СТАРТОВОЙ ПОЗЫ ---
+            // Передаем в метод сброса скелета не дельты первого кадра, а полноценный стартовый реестр костей из boneStartDict!
+            AbsoluteSkeletalReset(_animData.boneStartDict);
+            // ---------------------------------------------
 
             // Мягкая инициализация целочисленных состояний под нулевую базу
             _currentTransitionIndex = 0; // ИСПРАВЛЕНО НА 0
@@ -339,11 +336,9 @@ namespace FurnitureAnimationsMod
             }
         }
 
-        private void AbsoluteSkeletalReset(Dictionary<string, BoneDelta> firstFrameBoneDatas)
+        private void AbsoluteSkeletalReset(Dictionary<string, BoneDelta> boneStartDict)
         {
-            // --- ДИАГНОСТИЧЕСКИЙ ТУМБЛЕР ИЗ МЕНЮ F1 ---
-            // Если галочка в конфиге снята, мы полностью отключаем принудительный сброс,
-            // возвращаясь к оригинальному аддитивному алгоритму Aedenthorn-а!
+            // --- ДИАГНОСТИЧЕСКИЙ ТУМБЛЕР ИЗ МЕНЮ F1 (Полностью сохранен) ---
             if (Plugin.ForceAbsoluteSkeletalReset != null && !Plugin.ForceAbsoluteSkeletalReset.Value)
             {
                 Plugin.Log.LogWarning("[Engine] Принудительный сброс скелета ОТКЛЮЧЕН в конфиге. Включен оригинальный аддитивный режим.");
@@ -353,31 +348,46 @@ namespace FurnitureAnimationsMod
 
             if (_character == null) return;
 
+            // Бежим строго по нашему реестру разрешенных костей
             foreach (string boneName in DioramaConstants.AnatomyBoneRegistry)
             {
                 if (!_boneCache.TryGetValue(boneName, out Transform boneTrans))
                     continue;
 
-                boneTrans.localRotation = Quaternion.identity;
-
-                if (firstFrameBoneDatas != null && firstFrameBoneDatas.TryGetValue(boneName, out BoneDelta delta))
+                // ВАЖНО: Больше никакого хардкодного сброса в Quaternion.identity для всех подряд!
+                // Ищем кость строго в словаре СТАРТОВОЙ позы анимации (boneStartDict)
+                if (boneStartDict != null && boneStartDict.TryGetValue(boneName, out BoneDelta startDelta))
                 {
-                    if (delta.endRot != null && delta.endRot.Length >= 4)
+                    // Применяем стартовое вращение из boneStartDict
+                    if (startDelta.endRot != null && startDelta.endRot.Length >= 4)
                     {
-                        boneTrans.localRotation = new Quaternion(delta.endRot[0], delta.endRot[1], delta.endRot[2], delta.endRot[3]);
+                        boneTrans.localRotation = new Quaternion(startDelta.endRot[0], startDelta.endRot[1], startDelta.endRot[2], startDelta.endRot[3]);
                     }
-                    else if (delta.endRot != null && delta.endRot.Length == 3)
+                    else if (startDelta.endRot != null && startDelta.endRot.Length == 3)
                     {
-                        boneTrans.localRotation = Quaternion.Euler(delta.endRot[0], delta.endRot[1], delta.endRot[2]);
+                        boneTrans.localRotation = Quaternion.Euler(startDelta.endRot[0], startDelta.endRot[1], startDelta.endRot[2]);
+                    }
+                    else
+                    {
+                        // Если для кости в стартовой позе нет вращения, возвращаем в локальную нейтраль
+                        boneTrans.localRotation = Quaternion.identity;
                     }
 
-                    if (delta.endPos != null && delta.endPos.Length >= 3)
+                    // Применяем стартовую позицию (например, высоту Y для таза 'hip')
+                    if (startDelta.endPos != null && startDelta.endPos.Length >= 3)
                     {
-                        boneTrans.localPosition = new Vector3(delta.endPos[0], delta.endPos[1], delta.endPos[2]);
+                        boneTrans.localPosition = new Vector3(startDelta.endPos[0], startDelta.endPos[1], startDelta.endPos[2]);
                     }
                 }
+                else
+                {
+                    // Фаллбэк для старых статичных поз: если кости нет в словаре стартовых данных,
+                    // бережно сбрасываем её в нейтраль, чтобы сохранить обратную совместимость.
+                    boneTrans.localRotation = Quaternion.identity;
+                }
             }
-            Plugin.Log.LogInfo($"[FurnitureAnimations] Скелет {_character.name} очищен. Якорь 'hip' выставлен.");
+
+            Plugin.Log.LogInfo($"[FurnitureAnimations] Скелет {_character.name} успешно инициализирован из boneStartDict. Стартовый якорь выставлен.");
         }
 
         private void CacheSkeletonRecursive(Transform parent)
