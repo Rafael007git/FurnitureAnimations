@@ -39,13 +39,13 @@ namespace FurnitureAnimationsMod
                 if (__instance.cameras == null) __instance.cameras = new CommonArray();
 
                 // =========================================================================
-                // ХИРУРГИЧЕСКАЯ ИНЖЕКЦИЯ КАМЕР (Мягкое слияние: ваниль не страдает, координаты обновляются!)
+                // ФИНАЛЬНЫЙ ТРОЯНСКИЙ КОНЬ: Автоматическое клонирование HDRP-донора с защитой от дублей! 🛡📸
                 // =========================================================================
-                if (config.CustomCameras != null && config.CustomCameras.Count > 0)
+                if (__instance.cameras != null && config.CustomCameras != null && config.CustomCameras.Count > 0)
                 {
                     try
                     {
-                        // Находим или создаем стандартную "Cameras Group" на мебели
+                        // 1. Ищем или создаем корневой объект группы камер
                         Transform camGroupTrans = __instance.camerasGroup;
                         if (camGroupTrans == null)
                         {
@@ -55,68 +55,118 @@ namespace FurnitureAnimationsMod
                             camGroupTrans = camGroupObj.transform;
                         }
 
-                        // Бежим по списку кастомных камер из верхнего уровня JSON мебели
+                        // 2. ИЩЕМ СВЕРХТЯЖЕЛОГО ВАНИЛЬНОГО ДОНОРА (Считываем эталон из памяти игры ровно 1 раз)
+                        GameObject cameraDonor = null;
+                        Furniture[] allSceneFurnitures = UnityEngine.Object.FindObjectsOfType<Furniture>();
+                        foreach (var f in allSceneFurnitures)
+                        {
+                            // Берем мебель, которая есть в ванильной игре (у нее гарантированно правильный HDRP обвес из 8 скриптов)
+                            if (f != null && f.camerasGroup != null && f.cameras?.items != null && f.cameras.items.Count > 0)
+                            {
+                                // Вытаскиваем самый первый Transform оригинальной камеры игры
+                                Transform vanillaCamTrans = f.cameras.items[0] as Transform;
+                                if (vanillaCamTrans != null && !vanillaCamTrans.name.StartsWith("[SDK]"))
+                                {
+                                    cameraDonor = vanillaCamTrans.gameObject;
+                                    break;
+                                }
+                            }
+                        }
+
+                        // 3. СИНХРОНИЗИРУЕМ КАМЕРЫ ИЗ JSON С ЗАЩИТОЙ ОТ ГЕОМЕТРИЧЕСКОГО РАЗМНОЖЕНИЯ
                         foreach (var camData in config.CustomCameras)
                         {
                             if (string.IsNullOrEmpty(camData.Name)) continue;
 
-                            // Ищем, существует ли уже объект камеры с таким именем в иерархии мебели
+                            // Ищем, не создавали ли мы этот тяжелый клон в прошлый раз?
                             Transform targetCamTrans = camGroupTrans.Find(camData.Name);
                             bool isNewCamera = false;
 
                             if (targetCamTrans == null)
                             {
-                                // Если камеры нет — создаем чистую пустышку (не ломая остальные родные камеры игры)
-                                GameObject virtualCamObj = new GameObject(camData.Name);
+                                GameObject virtualCamObj;
+                                if (cameraDonor != null)
+                                {
+                                    // Клонируем эталон со всеми 8 нативными компонентами игры! 🎯
+                                    virtualCamObj = UnityEngine.Object.Instantiate(cameraDonor);
+                                    virtualCamObj.name = camData.Name;
+
+                                    // --- ЮВЕЛИРНАЯ НАСТРОЙКА ОБЪЕКТИВА (Лечим ультра-крупный план!) --- 🎯📸
+                                    try
+                                    {
+                                        Camera unityCamComponent = virtualCamObj.GetComponent<Camera>();
+                                        if (unityCamComponent != null)
+                                        {
+                                            // Выставляем стандартный угол обзора (60 градусов — классический общий вид в Unity).
+                                            // Если захочется сделать план еще более общим, можно поставить 70 или 75!
+                                            unityCamComponent.fieldOfView = 60f;
+
+                                            // На всякий случай сбрасываем параметры ортографии и физической линзы, 
+                                            // если китайские разработчики накрутили их в префабе донора
+                                            unityCamComponent.orthographic = false;
+
+                                            Plugin.Log.LogInfo($"[SDK_Camera_Lens] Объектив камеры '{camData.Name}' успешно переведен на стандартный FOV (60).");
+                                        }
+
+                                        // Мягко гасим HDRP-оффсеты, если они заставляли камеру косить в сторону
+                                        var hdData = virtualCamObj.GetComponent("HDAdditionalCameraData");
+                                        if (hdData != null)
+                                        {
+                                            // Если в вашей версии HDRP у HDAdditionalCameraData есть открытые поля для FOV/Апертуры,
+                                            // их можно сбросить здесь, но обычно изменения базового unityCamComponent.fieldOfView более чем достаточно!
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Plugin.Log.LogError($"[SDK_Camera_Lens] Сбой настройки линзы объектива: {ex.Message}");
+                                    }
+                                    // ------------------------------------------------------------------
+                                }
+                                else
+                                {
+                                    // Фаллбэк, если сцена абсолютно пустая
+                                    virtualCamObj = new GameObject(camData.Name);
+                                }
+
                                 virtualCamObj.transform.SetParent(camGroupTrans, false);
                                 virtualCamObj.SetActive(false);
                                 targetCamTrans = virtualCamObj.transform;
                                 isNewCamera = true;
-
-                                // --- НАШ ХИРУРГИЧЕСКИЙ ФИКС ДЛЯ МГНОВЕННОГО ПЕРЕКЛЮЧЕНИЯ РАКУРСА ---
-                                // Добавляем нативный игровой компонент, чтобы FreeLookCam игры распознала нашу камеру!
-                                try
-                                {
-                                    PoseCamera poseCamComponent = virtualCamObj.AddComponent<PoseCamera>();
-                                    if (poseCamComponent != null)
-                                    {
-                                        poseCamComponent.notshown = false;
-                                        // Если у компонента PoseCamera в этой игре есть параметры типа fov или distance,
-                                        // можно задать дефолтные значения (например, fov = 60f), но обычно игре достаточно самого наличия скрипта.
-                                    }
-                                }
-                                catch (Exception ex)
-                                {
-                                    Plugin.Log.LogError($"[SDK_Camera_Fix] Не удалось повесить компонент PoseCamera: {ex.Message}");
-                                }
-                                // ------------------------------------------------------------------
                             }
 
-                            // Обновляем исключительно позицию и поворот ракурса на лету
+                            // 4. ПЕРЕВОДИМ ИЗ ЛОКАЛЬНОГО В ЖЕСТКОЕ МИРОВОЕ ПРОСТРАНСТВО КОМНАТЫ
+                            // Теперь точка парит на высоте 1.5м ровно у дивана, а не на полу у портала спавна!
                             if (camData.pos != null)
-                                targetCamTrans.localPosition = new Vector3(camData.pos.x, camData.pos.y, camData.pos.z);
+                            {
+                                Vector3 localPos = new Vector3(camData.pos.x, camData.pos.y, camData.pos.z);
+                                targetCamTrans.position = __instance.transform.TransformPoint(localPos);
+                            }
 
                             if (camData.rot != null)
-                                targetCamTrans.localRotation = Quaternion.Euler(camData.rot.x, camData.rot.y, camData.rot.z);
+                            {
+                                Quaternion localRot = Quaternion.Euler(camData.rot.x, camData.rot.y, camData.rot.z);
+                                targetCamTrans.rotation = __instance.transform.rotation * localRot;
+                            }
 
-                            // Если это совершенно новая камера — аккуратно добавляем её в нативный список игры
+                            // Регистрируем в нативный массив игры ТОЛЬКО если это действительно новый объект!
                             if (isNewCamera)
                             {
                                 __instance.cameras.AddItem(targetCamTrans);
-                                Plugin.Log.LogInfo($"[SDK_Camera_Merge] Успешно добавлена новая камера: '{camData.Name}'");
+                                Plugin.Log.LogInfo($"[SDK_Camera_Core] Успешно инжектирован тяжелый HDRP-клон для: '{camData.Name}'");
                             }
                             else
                             {
-                                Plugin.Log.LogInfo($"[SDK_Camera_Merge] Рантайм-координаты для существующей камеры '{camData.Name}' обновлены.");
+                                Plugin.Log.LogInfo($"[SDK_Camera_Core] Координаты существующего клона '{camData.Name}' обновлены на лету без дублирования сущностей.");
                             }
                         }
                     }
                     catch (Exception ex)
                     {
-                        Plugin.Log.LogError($"[SDK_Camera_Merge] Ошибка мягкого слияния камер: {ex.Message}");
+                        Plugin.Log.LogError($"[SDK_Camera_Core] Критический краш инжектора камер: {ex.Message}");
                     }
                 }
                 // =========================================================================
+
 
                 // Находим или создаем кастомную подпапку для НАШИХ поз внутри мебели, чтобы не захламлять оригинальный posesGroup
                 Transform modPosesGroup = __instance.transform.Find("Mod_CustomPosesGroup");
