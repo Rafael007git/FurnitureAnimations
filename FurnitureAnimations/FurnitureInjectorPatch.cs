@@ -326,18 +326,6 @@ namespace FurnitureAnimationsMod
             {
                 Plugin.Log.LogWarning($"[AutoInteract] Настройка бесшовного входа для: {furnitureName}");
 
-                if (FreeLookCam.code != null && Global.code != null)
-                {
-                    GameObject freeCamObj = Global.code.freeCamera;
-                    if (freeCamObj != null)
-                    {
-                        freeCamObj.SetActive(true);
-                        freeCamObj.transform.position = FreeLookCam.code.transform.position;
-                        freeCamObj.transform.rotation = FreeLookCam.code.transform.rotation;
-                        Plugin.Log.LogInfo("[AutoInteract] Free Camera успешно зафиксирована в ракурсе игрока!");
-                    }
-                }
-
                 if (__instance.poses != null && __instance.poses.items.Count > 0)
                 {
                     Transform firstPoseTransform = __instance.poses.items[0];
