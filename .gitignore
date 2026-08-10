@@ -361,3 +361,8 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+/repomix-output.txt
+/.gitignore
+/.gitignore
+/repomix-output.txt
+/.gitignore
