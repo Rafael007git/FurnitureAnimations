@@ -125,5 +125,60 @@ namespace FurnitureAnimationsMod
             }
         }
 
+        public static int GetNextVacantCameraNumber(Furniture furniture, FurnitureConfig config)
+        {
+            if (furniture == null || config == null) return -1;
+
+            // 1. ОПРЕДЕЛЯЕМ ЛИМИТ (Пункт 1 ТЗ)
+            // Очищаем имя от рантайм-суффиксов игры
+            string furnitureName = furniture.name.Replace("(Clone)", "").Trim();
+
+            // Мягкий и надежный способ определить ваниль: если имя совпадает со стандартными префабами игры 
+            // (например, "Chair", "Bed", "Sofa") или в названии конфига нет тегов кастома.
+            // Вы можете дополнить это условие под ваш Code Style проекта.
+            bool isVanilla = furnitureName.Equals("Chair", StringComparison.OrdinalIgnoreCase) ||
+                             furnitureName.Equals("Bed", StringComparison.OrdinalIgnoreCase) ||
+                             furnitureName.Equals("Sofa", StringComparison.OrdinalIgnoreCase) ||
+                             !furnitureName.Contains(" "); // Ванильные префабы обычно идут одним словом
+
+            int maxLimit = isVanilla ? 2 : 5;
+
+            // Страховка от NullReferenceException
+            if (config.CustomCameras == null) config.CustomCameras = new List<CameraData>();
+
+            // Если текущее количество камер уже уперлось в потолок лимита — вакантных мест нет
+            if (config.CustomCameras.Count >= maxLimit)
+            {
+                Plugin.Log.LogInfo($"[SDK_Camera] Мебель '{furnitureName}' достигла лимита камер ({maxLimit}). Добавление заблокировано.");
+                return -1;
+            }
+
+            // 2. ИЩЕМ НАИМЕНЬШИЙ ВАКАНТНЫЙ НОМЕР (Пункт 1 ТЗ)
+            // Идем циклом от 1 до максимального лимита
+            for (int i = 1; i <= maxLimit; i++)
+            {
+                string expectedName = $"Custom camera {i}";
+                bool isNameTaken = false;
+
+                // Проверяем, не занято ли это имя кем-то в списке
+                foreach (var cam in config.CustomCameras)
+                {
+                    if (cam != null && cam.Name == expectedName)
+                    {
+                        isNameTaken = true;
+                        break;
+                    }
+                }
+
+                // Если имя свободно — это и есть наш наименьший свободный индекс!
+                if (!isNameTaken)
+                {
+                    return i;
+                }
+            }
+
+            return -1; // На всякий случай, если что-то пошло не так
+        }
+
     }
 }

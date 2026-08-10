@@ -224,82 +224,77 @@ namespace FurnitureAnimationsMod
                 if (configToSave.InteractionPoses == null) configToSave.InteractionPoses = new List<PoseData>();
 
                 // =========================================================================
-                // ХИРУРГИЧЕСКОЕ ЗАПЕКАНИЕ КАМЕР НА ВЕРХНИЙ УРОВЕНЬ КОНФИГА МЕБЕЛИ 📸🎯
+                // ОБНОВЛЕННОЕ ЗАПЕКАНИЕ КАМЕРЫ ПРИ ЭКСПОРТЕ ПОЗЫ (Пункт 2 ТЗ) 📸🎯
                 // =========================================================================
                 if (configToSave.CustomCameras == null)
                 {
                     configToSave.CustomCameras = new List<CameraData>();
                 }
 
-                // Если камер у мебели вообще еще нет в JSON — генерируем наши 2 идеальные точки
-                if (configToSave.CustomCameras.Count == 0)
-                {
-                    Plugin.Log.LogWarning($"[SDK_Camera_Bake] Конфиг {fileName} не имеет камер. Генерируем адаптивный набор ракурсов...");
+                // Находим текущую кастомную или ванильную мебель на сцене рядом с персонажем
+                Furniture currentSceneFurniture = FindClosestFurniture(character.transform.position, 5f);
 
-                    // 1. КАМЕРА №1: ТОЧНЫЙ РАКУРС ПРЕВЬЮ (Взгляд автора в момент сохранения)
-                    if (Global.code != null && Global.code.freeCamera != null)
+                if (currentSceneFurniture != null)
+                {
+                    // Передаем мебель и конфиг в наш новый калькулятор вакантных мест
+                    int vacantNumber = ConfigManager.GetNextVacantCameraNumber(currentSceneFurniture, configToSave);
+
+                    // Если свободный слот найден (не уперлись в лимит 2 для ванили / 5 для модов)
+                    if (vacantNumber != -1 && Global.code != null && Global.code.freeCamera != null)
                     {
                         try
                         {
                             Transform freeCamTrans = Global.code.freeCamera.transform;
-                            Furniture closestFurn = FindClosestFurniture(character.transform.position, 5f);
 
-                            if (closestFurn != null)
+                            // Переводим мировые координаты свободной камеры в локальный базис мебели
+                            Vector3 camLocalPos = currentSceneFurniture.transform.InverseTransformPoint(freeCamTrans.position);
+                            Quaternion camLocalRot = Quaternion.Inverse(currentSceneFurniture.transform.rotation) * freeCamTrans.rotation;
+                            Vector3 camLocalEuler = camLocalRot.eulerAngles;
+
+                            // Создаем запись строго по формату из ТЗ
+                            CameraData newExportedCamera = new CameraData
                             {
-                                // Переводим мировые координаты свободной камеры игры в локальные координаты нашей мебели
-                                Vector3 camLocalPos = closestFurn.transform.InverseTransformPoint(freeCamTrans.position);
-                                Quaternion camLocalRot = Quaternion.Inverse(closestFurn.transform.rotation) * freeCamTrans.rotation;
-                                Vector3 camLocalEuler = camLocalRot.eulerAngles;
-
-                                configToSave.CustomCameras.Add(new CameraData
+                                Name = $"Custom camera {vacantNumber}", // Имя с наименьшим вакантным номером!
+                                pos = new Vector3Data
                                 {
-                                    Name = "[SDK] Camera 1 (Preview)",
-                                    pos = new Vector3Data
-                                    {
-                                        x = (float)Math.Round(camLocalPos.x, 4),
-                                        y = (float)Math.Round(camLocalPos.y, 4),
-                                        z = (float)Math.Round(camLocalPos.z, 4)
-                                    },
-                                    rot = new Vector3Data
-                                    {
-                                        x = (float)Math.Round(camLocalEuler.x, 4),
-                                        y = (float)Math.Round(camLocalEuler.y, 4),
-                                        z = (float)Math.Round(camLocalEuler.z, 4)
-                                    }
-                                });
-                                Plugin.Log.LogInfo("[SDK_Camera_Bake] Камера ракурса превью успешно рассчитана относительно стула.");
+                                    x = (float)Math.Round(camLocalPos.x, 4),
+                                    y = (float)Math.Round(camLocalPos.y, 4),
+                                    z = (float)Math.Round(camLocalPos.z, 4)
+                                },
+                                rot = new Vector3Data
+                                {
+                                    x = (float)Math.Round(camLocalEuler.x, 4),
+                                    y = (float)Math.Round(camLocalEuler.y, 4),
+                                    z = (float)Math.Round(camLocalEuler.z, 4)
+                                }
+                            };
+
+                            configToSave.CustomCameras.Add(newExportedCamera);
+                            Plugin.Log.LogInfo($"[Exporter_Camera] При сохранении позы автоматически сгенерирована и запечена 'Custom camera {vacantNumber}'");
+
+                            // ВАЖНО: Раз мы сидим в экспортёре, мебель уже стоит на сцене. 
+                            // Сразу вызываем RebuildFurniturePoses, чтобы в текущей игровой сессии 
+                            // на этой мебели мгновенно создался физический HDRP-клон этой камеры!
+                            FurnitureInjectorPatch.RebuildFurniturePoses(currentSceneFurniture);
+
+                            // Обновляем UI, чтобы кнопка камеры загорелась на экране без перезахода в меню
+                            if (Global.code?.uiPose != null && Global.code.uiPose.gameObject.activeInHierarchy)
+                            {
+                                Global.code.uiPose.Refresh();
                             }
                         }
                         catch (Exception ex)
                         {
-                            Plugin.Log.LogError($"[SDK_Camera_Bake] Ошибка расчета локальной матрицы превью-камеры: {ex.Message}");
+                            Plugin.Log.LogError($"[Exporter_Camera] Ошибка расчета матрицы кастомного ракурса: {ex.Message}");
                         }
                     }
-
-                    // Фаллбэк на случай, если свободная камера была недоступна (чтобы список не остался пустым)
-                    if (configToSave.CustomCameras.Count == 0)
+                    else if (vacantNumber == -1)
                     {
-                        configToSave.CustomCameras.Add(new CameraData
-                        {
-                            Name = "[SDK] Camera 1 (Preview)",
-                            pos = new Vector3Data { x = 0.8f, y = 1.4f, z = 1.8f },
-                            rot = new Vector3Data { x = 12f, y = 200f, z = 0f }
-                        });
+                        // Если слотов больше нет, мы не крашим экспорт, а просто сохраняем позу и мягко предупреждаем в лог
+                        Plugin.Log.LogWarning($"[Exporter_Camera] Поза сохранена, но лимит Custom-камер для этой мебели уже исчерпан. Запись пропущена.");
                     }
-
-                    // 2. КАМЕРА №2: ЭТАЛОННЫЙ ФРОНТАЛЬНЫЙ ВИД (Центр мебели, высота 1.5м строго по ТЗ!)
-                    // Ставим по центру (X=0), на высоту 1.5м (Y=1.5), отодвигаем вперед (Z=2.2)
-                    // Поворот на 180 градусов по Y, чтобы смотреть ровно на фасад мебели
-                    configToSave.CustomCameras.Add(new CameraData
-                    {
-                        Name = "[SDK] Camera 2 (Front 1.5m)",
-                        pos = new Vector3Data { x = 0f, y = 1.5f, z = 2.2f },
-                        rot = new Vector3Data { x = 5f, y = 180f, z = 0f } // 5 градусов — легкий наклон вниз для объема
-                    });
-                    Plugin.Log.LogInfo("[SDK_Camera_Bake] Техническая фронтальная камера (1.5м) добавлена в пул.");
                 }
                 // =========================================================================
-
 
                 bool isCustom = (poseState == CharacterPoseState.CustomPoseJSON);
                 // Красивое имя в списке
