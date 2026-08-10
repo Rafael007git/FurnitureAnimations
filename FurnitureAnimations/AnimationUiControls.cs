@@ -5,6 +5,7 @@ using System.Reflection;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using UnityStandardAssets.Cameras;
 
 namespace FurnitureAnimationsMod
 {
@@ -24,11 +25,12 @@ namespace FurnitureAnimationsMod
         private Texture2D _iconSoundOff;
         private Texture2D _iconAddCamera;
         private Texture2D _iconDeleteCamera;
+
         public void Initialize(FurnitureAnimationPlayer player)
         {
             _player = player;
 
-            // 0. Загружаем иконки из ресурсов DLL (если они еще не в кэше)
+            // 0. Загружаем иконки из ресурсов DLL
             LoadEmbeddedResources();
 
             try
@@ -43,56 +45,28 @@ namespace FurnitureAnimationsMod
                     _uiPanelInstance = existingPanel.gameObject;
                     _uiPanelInstance.SetActive(true);
 
-                    // Находим контейнер с кнопками внутри уже созданной ранее панели
                     Transform buttonsContainer = _uiPanelInstance.transform.Find("Mod_AnimationButtonsContainer");
                     if (buttonsContainer != null)
                     {
-                        // Перепривязываем события для каждой кнопки к новому ЖИВОМУ плееру
-                        RebindButtonAction(buttonsContainer, "Mod_BtnSpeedPlus", () => {
-                            _player.ChangeSpeed(0.1f);
-                            UpdateSpeedButtonsText();
-                        });
-
-                        RebindButtonAction(buttonsContainer, "Mod_BtnSpeedMinus", () => {
-                            _player.ChangeSpeed(-0.1f);
-                            UpdateSpeedButtonsText();
-                        });
-
-                        RebindButtonAction(buttonsContainer, "Mod_BtnEaseToggle", () => {
-                            _player.ToggleEaseMode();
-                            UpdateEaseButton();
-                        });
+                        // Перепривязываем события для кнопок анимаций
+                        if (_player != null)
+                        {
+                            RebindButtonAction(buttonsContainer, "Mod_BtnSpeedPlus", () => { _player.ChangeSpeed(0.1f); UpdateSpeedButtonsText(); });
+                            RebindButtonAction(buttonsContainer, "Mod_BtnSpeedMinus", () => { _player.ChangeSpeed(-0.1f); UpdateSpeedButtonsText(); });
+                            RebindButtonAction(buttonsContainer, "Mod_BtnEaseToggle", () => { _player.ToggleEaseMode(); UpdateEaseButton(); });
+                        }
 
                         RebindButtonAction(buttonsContainer, "Mod_BtnMuteToggle", () => {
-                            if (AnimationAudioManager.Instance != null)
-                            {
-                                AnimationAudioManager.Instance.ToggleMute();
-                                UpdateSoundButton();
-                            }
+                            if (AnimationAudioManager.Instance != null) { AnimationAudioManager.Instance.ToggleMute(); UpdateSoundButton(); }
                         });
 
                         RebindButtonAction(buttonsContainer, "Mod_BtnNextAudio", () => {
-                            var activeAudio = GameObject.FindObjectOfType<AnimationAudioManager>();
-                            if (activeAudio != null)
-                            {
-                                activeAudio.PlayNextTrack();
-
-                                // Обновляем кнопку звука через безопасный вызов
-                                Transform btnMute = buttonsContainer.Find("Mod_BtnMuteToggle");
-                                if (btnMute != null)
-                                {
-                                    var rawImg = btnMute.GetComponent<RawImage>();
-                                    if (rawImg != null)
-                                    {
-                                        rawImg.texture = activeAudio.IsMuted() ? _iconSoundOff : _iconSoundOn;
-                                    }
-                                }
-                            }
-                            else
-                            {
-                                Plugin.Log.LogWarning("[UI] Кнопка NextAudio нажата, но активный AnimationAudioManager в сцене не найден!");
-                            }
+                            if (AnimationAudioManager.Instance != null) { AnimationAudioManager.Instance.PlayNextTrack(); UpdateSoundButton(); }
                         });
+
+                        // Перепривязываем наши новые кастомные кнопки управления камерами! 🎯📸
+                        RebindButtonAction(buttonsContainer, "Mod_BtnAddCamera", () => { ExecuteAddCamera(); });
+                        RebindButtonAction(buttonsContainer, "Mod_BtnDeleteCamera", () => { ExecuteDeleteCamera(); });
                     }
 
                     UpdateInterfaceStates();
@@ -111,7 +85,6 @@ namespace FurnitureAnimationsMod
                     return;
                 }
 
-                // Клонируем оригинальный фон целиком
                 _uiPanelInstance = GameObject.Instantiate(vanillaBgTransform.gameObject, uiPose.transform, false);
                 _uiPanelInstance.name = "Mod_FurnitureAnimationControls_BG";
                 _uiPanelInstance.SetActive(true);
@@ -123,17 +96,14 @@ namespace FurnitureAnimationsMod
                 modRect.anchorMax = vanRect.anchorMax;
                 modRect.pivot = vanRect.pivot;
 
-                // Архитектурное увеличение высоты плашки фона в 1.5 раза
+                // Увеличиваем высоту плашки, чтобы влезли новые кнопки камер
                 Vector2 originalSize = vanRect.sizeDelta;
-                modRect.sizeDelta = new Vector2(originalSize.x, originalSize.y * 1.5f);
-
+                modRect.sizeDelta = new Vector2(originalSize.x, originalSize.y * 1.8f); // Приподняли до 1.8, под 7 кнопок
                 _uiPanelInstance.transform.localScale = vanRect.localScale;
 
-                // Смещаем плашку ниже с учетом увеличенной высоты
                 Vector3 vanLocalPos = vanRect.localPosition;
-                modRect.localPosition = new Vector3(vanLocalPos.x, vanLocalPos.y - 210f, vanLocalPos.z);
+                modRect.localPosition = new Vector3(vanLocalPos.x, vanLocalPos.y - 250f, vanLocalPos.z);
 
-                // ИСПРАВЛЕНО: Даем переменной уникальное имя buttonsContainerNew, чтобы не было ошибки CS0136
                 Transform buttonsContainerNew = _uiPanelInstance.transform.Find(vanillaButtonsContainerGo.name);
                 if (buttonsContainerNew == null && _uiPanelInstance.transform.childCount > 0)
                 {
@@ -142,74 +112,67 @@ namespace FurnitureAnimationsMod
 
                 if (buttonsContainerNew == null)
                 {
-                    Plugin.Log.LogError("[UI] Критическая ошибка: Внутри нового фона не найден контейнер для кнопок!");
+                    Plugin.Log.LogError("[UI] Критическая ошибка: Внутри нового фонда не найден контейнер для кнопок!");
                     return;
                 }
                 buttonsContainerNew.name = "Mod_AnimationButtonsContainer";
 
-                // Полная очистка ванильных кнопок раздевания на панели-клоне
+                // Очищаем оригинальный мусор
                 Button[] oldButtons = _uiPanelInstance.GetComponentsInChildren<Button>(true);
-                foreach (Button oldBtn in oldButtons)
-                {
-                    GameObject.DestroyImmediate(oldBtn.gameObject);
-                }
+                foreach (Button oldBtn in oldButtons) { GameObject.DestroyImmediate(oldBtn.gameObject); }
 
                 Transform btnPrefab = vanillaButtonsContainerGo.transform.GetComponentInChildren<Button>()?.transform;
-
                 if (btnPrefab != null)
                 {
                     Vector3 btnPos = Vector3.zero;
-                    float spacing = -45f; // Интервалы между кнопок оставляем прежними
+                    float spacing = -45f; // Шаг разметки вниз по оси Y
 
                     // 1. Кнопка Скорость +
-                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnSpeedPlus",
-                        $"Speed: {Mathf.RoundToInt(_player.GetSpeed() * 100)}% (+10)", btnPos, _iconSpeedPlus, () => {
-                            _player.ChangeSpeed(0.1f);
-                            UpdateSpeedButtonsText();
-                        });
+                    string speedPlusTxt = _player != null ? $"Speed: {Mathf.RoundToInt(_player.GetSpeed() * 100)}% (+10)" : "Speed: ---";
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnSpeedPlus", speedPlusTxt, btnPos, _iconSpeedPlus, () => {
+                        _player?.ChangeSpeed(0.1f); UpdateSpeedButtonsText();
+                    });
                     btnPos.y += spacing;
 
                     // 2. Кнопка Скорость -
-                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnSpeedMinus",
-                        $"Speed: {Mathf.RoundToInt(_player.GetSpeed() * 100)}% (-10)", btnPos, _iconSpeedMinus, () => {
-                            _player.ChangeSpeed(-0.1f);
-                            UpdateSpeedButtonsText();
-                        });
+                    string speedMinusTxt = _player != null ? $"Speed: {Mathf.RoundToInt(_player.GetSpeed() * 100)}% (-10)" : "Speed: ---";
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnSpeedMinus", speedMinusTxt, btnPos, _iconSpeedMinus, () => {
+                        _player?.ChangeSpeed(-0.1f); UpdateSpeedButtonsText();
+                    });
                     btnPos.y += spacing;
 
-                    // 3. Кнопка Сглаживания (Интерполяции)
-                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnEaseToggle",
-                        $"Interpolation: {_player.GetEaseMode()}", btnPos, GetCurrentEaseSprite(), () => {
-                            _player.ToggleEaseMode();
-                            UpdateEaseButton();
-                        });
+                    // 3. Кнопка Сглаживания
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnEaseToggle", $"Interpolation: ", btnPos, GetCurrentEaseSprite(), () => {
+                        _player?.ToggleEaseMode(); UpdateEaseButton();
+                    });
                     btnPos.y += spacing;
 
-                    // 4. НОВАЯ КНОПКА: СЛЕДУЮЩИЙ ТРЕК
-                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnNextAudio",
-                        "Next Audio", btnPos, _iconNextAudio, () => {
-                            if (AnimationAudioManager.Instance != null)
-                            {
-                                AnimationAudioManager.Instance.PlayNextTrack();
-                                UpdateSoundButton();
-                            }
-                        });
+                    // 4. Кнопка: Следующий трек
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnNextAudio", "Next Audio", btnPos, _iconNextAudio, () => {
+                        if (AnimationAudioManager.Instance != null) { AnimationAudioManager.Instance.PlayNextTrack(); UpdateSoundButton(); }
+                    });
                     btnPos.y += spacing;
 
-                    // 5. Кнопка звука Mute/Unmute
+                    // 5. Кнопка звука
                     Texture2D currentSoundIcon = (AnimationAudioManager.Instance != null && AnimationAudioManager.Instance.IsMuted()) ? _iconSoundOff : _iconSoundOn;
-                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnMuteToggle",
-                        "Sound: ON", btnPos, currentSoundIcon, () => {
-                            if (AnimationAudioManager.Instance != null)
-                            {
-                                AnimationAudioManager.Instance.ToggleMute();
-                                UpdateSoundButton();
-                            }
-                        });
-                }
-                else
-                {
-                    Plugin.Log.LogError("[UI] Сбой: Не удалось обнаружить префаб ванильной кнопки для копирования стилей.");
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnMuteToggle", "Sound: ON", btnPos, currentSoundIcon, () => {
+                        if (AnimationAudioManager.Instance != null) { AnimationAudioManager.Instance.ToggleMute(); UpdateSoundButton(); }
+                    });
+                    btnPos.y += spacing;
+
+                    // =========================================================================
+                    // ГАРАНТИРОВАННОЕ СОЗДАНИЕ КНОПОК КАМЕР НА ФИКСИРОВАННЫХ МЕСТАХ (Пункт 5) 📸🌟
+                    // =========================================================================
+                    // 6. Кнопка Добавить камеру
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnAddCamera", "Add custom cam", btnPos, _iconAddCamera, () => {
+                        ExecuteAddCamera();
+                    });
+
+                    // 7. Кнопка Удалить камеру — встает ТОЧНО на те же координаты (btnPos), что и кнопка ADD!
+                    // Благодаря этому они идеально заменяют друг друга без сдвига сетки интерфейса!
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnDeleteCamera", "Delete custom cam", btnPos, _iconDeleteCamera, () => {
+                        ExecuteDeleteCamera();
+                    });
                 }
 
                 UpdateInterfaceStates();
@@ -220,7 +183,186 @@ namespace FurnitureAnimationsMod
             }
         }
 
-        #region Исправленная работа с текстурами (RawImage)
+        private void Update()
+        {
+            // Каждый кадр динамически контролируем, какие кнопки сейчас должны быть видны на панели!
+            UpdateInterfaceStates();
+        }
+
+        // --- ЦЕНТРАЛЬНЫЙ КОНТРОЛЛЕР ИНДИВИДУАЛЬНОЙ ВИДИМОСТИ КНОПОК (Пункты 3, 4, 5, 6) ---
+        private void UpdateInterfaceStates()
+        {
+            if (_uiPanelInstance == null) return;
+
+            Transform container = _uiPanelInstance.transform.Find("Mod_AnimationButtonsContainer");
+            if (container == null) return;
+
+            // А) Управление кнопками анимации: видны только если плеер живой и анимация выбрана
+            bool hasActiveAnimation = (_player != null && _player.isActiveAndEnabled);
+            container.Find("Mod_BtnSpeedPlus")?.gameObject.SetActive(hasActiveAnimation);
+            container.Find("Mod_BtnSpeedMinus")?.gameObject.SetActive(hasActiveAnimation);
+            container.Find("Mod_BtnEaseToggle")?.gameObject.SetActive(hasActiveAnimation);
+
+            // Б) Диагностика состояний камер игры
+            bool isFreeCamActive = (FreeLookCam.code != null && FreeLookCam.code.enabled);
+            bool isCustomCamSelected = false;
+            string currentSelectedCamName = "";
+
+            UIPose uiPose = GameObject.FindObjectOfType<UIPose>();
+            Furniture currentFurniture = uiPose != null ? uiPose.curFurniture : null;
+
+            if (currentFurniture != null && currentFurniture.cameras?.items != null)
+            {
+                foreach (object obj in currentFurniture.cameras.items)
+                {
+                    Transform t = obj as Transform;
+                    if (t != null && t.gameObject.activeInHierarchy)
+                    {
+                        currentSelectedCamName = t.name;
+                        if (t.name.StartsWith("Custom camera")) isCustomCamSelected = true;
+                        break;
+                    }
+                }
+            }
+
+            // Вытаскиваем лимиты
+            FurnitureConfig currentConfig = null;
+            if (currentFurniture != null)
+            {
+                string cleanName = currentFurniture.name.Replace("(Clone)", "").Trim();
+                ConfigManager.LoadedConfigs.TryGetValue(cleanName, out currentConfig);
+            }
+
+            int nextVacantNum = (currentFurniture != null && currentConfig != null) ? ConfigManager.GetNextVacantCameraNumber(currentFurniture, currentConfig) : -1;
+            bool hasVacantSlots = (nextVacantNum != -1);
+
+            // В) ЖЕСТКАЯ УСТАНОВКА АКТИВНОСТИ КНОПОК КАМЕР (Пункты 3, 4, 5) 🔥🎯
+            GameObject btnAddGo = container.Find("Mod_BtnAddCamera")?.gameObject;
+            GameObject btnDeleteGo = container.Find("Mod_BtnDeleteCamera")?.gameObject;
+
+            if (btnAddGo != null && btnDeleteGo != null)
+            {
+                if (isCustomCamSelected)
+                {
+                    btnAddGo.SetActive(false);
+                    btnDeleteGo.SetActive(true); // Показываем кнопку DELETE
+                    UpdateText("Mod_BtnDeleteCamera", $"Delete: {currentSelectedCamName}");
+                }
+                else if (isFreeCamActive && hasVacantSlots)
+                {
+                    btnAddGo.SetActive(true); // Показываем кнопку ADD
+                    btnDeleteGo.SetActive(false);
+                    UpdateText("Mod_BtnAddCamera", $"Add camera {nextVacantNum}");
+                }
+                else
+                {
+                    // Место пустует, обе кнопки выключены, но сетка остальных элементов не сдвигается!
+                    btnAddGo.SetActive(false);
+                    btnDeleteGo.SetActive(false);
+                }
+            }
+
+            // Обновляем текстовые статусы звуков и интерполяций
+            UpdateSpeedButtonsText();
+            UpdateEaseButton();
+            UpdateSoundButton();
+        }
+
+        // --- ИСПОЛНИТЕЛЬНАЯ КНОПКА: ДОБАВИТЬ КАМЕРУ (Пункт 3) ---
+        private void ExecuteAddCamera()
+        {
+            UIPose uiPose = GameObject.FindObjectOfType<UIPose>();
+            Furniture furniture = uiPose?.curFurniture;
+            if (furniture == null || Global.code?.freeCamera == null) return;
+
+            string cleanName = furniture.name.Replace("(Clone)", "").Trim();
+            if (ConfigManager.LoadedConfigs.TryGetValue(cleanName, out FurnitureConfig config))
+            {
+                int vacantNumber = ConfigManager.GetNextVacantCameraNumber(furniture, config);
+                if (vacantNumber == -1) return;
+
+                try
+                {
+                    Transform freeCamTrans = Global.code.freeCamera.transform;
+                    Vector3 camLocalPos = furniture.transform.InverseTransformPoint(freeCamTrans.position);
+                    Quaternion camLocalRot = Quaternion.Inverse(furniture.transform.rotation) * freeCamTrans.rotation;
+                    Vector3 camLocalEuler = camLocalRot.eulerAngles;
+
+                    config.CustomCameras.Add(new CameraData
+                    {
+                        Name = $"Custom camera {vacantNumber}",
+                        pos = new Vector3Data { x = (float)Math.Round(camLocalPos.x, 4), y = (float)Math.Round(camLocalPos.y, 4), z = (float)Math.Round(camLocalPos.z, 4) },
+                        rot = new Vector3Data { x = (float)Math.Round(camLocalEuler.x, 4), y = (float)Math.Round(camLocalEuler.y, 4), z = (float)Math.Round(camLocalEuler.z, 4) }
+                    });
+
+                    string fullPath = Path.Combine(ConfigManager.PrefabsConfigPath, $"{cleanName}_Config.json");
+                    string finalJson = Newtonsoft.Json.JsonConvert.SerializeObject(config, Newtonsoft.Json.Formatting.Indented);
+                    File.WriteAllText(fullPath, finalJson);
+
+                    FurnitureInjectorPatch.RebuildFurniturePoses(furniture);
+                    uiPose.Refresh();
+
+                    Plugin.Log.LogInfo($"[UI_SDK] Камера 'Custom camera {vacantNumber}' успешно создана!");
+                }
+                catch (Exception ex) { Plugin.Log.LogError($"[UI_SDK] Ошибка добавления камеры: {ex.Message}"); }
+            }
+        }
+
+        // --- ИСПОЛНИТЕЛЬНАЯ КНОПКА: УДАЛИТЬ КАМЕРУ (Пункт 4) ---
+        private void ExecuteDeleteCamera()
+        {
+            UIPose uiPose = GameObject.FindObjectOfType<UIPose>();
+            Furniture furniture = uiPose?.curFurniture;
+            if (furniture == null) return;
+
+            // Вычисляем, какая именно кастомная камера сейчас выбрана на сцене
+            string targetCamName = "";
+            if (furniture.cameras?.items != null)
+            {
+                foreach (object obj in furniture.cameras.items)
+                {
+                    Transform t = obj as Transform;
+                    if (t != null && t.gameObject.activeInHierarchy && t.name.StartsWith("Custom camera"))
+                    {
+                        targetCamName = t.name; break;
+                    }
+                }
+            }
+
+            if (string.IsNullOrEmpty(targetCamName)) return;
+
+            string cleanName = furniture.name.Replace("(Clone)", "").Trim();
+            if (ConfigManager.LoadedConfigs.TryGetValue(cleanName, out FurnitureConfig config))
+            {
+                try
+                {
+                    config.CustomCameras.RemoveAll(c => c.Name == targetCamName);
+
+                    string fullPath = Path.Combine(ConfigManager.PrefabsConfigPath, $"{cleanName}_Config.json");
+                    string finalJson = Newtonsoft.Json.JsonConvert.SerializeObject(config, Newtonsoft.Json.Formatting.Indented);
+                    File.WriteAllText(fullPath, finalJson);
+
+                    Transform camGroupTrans = furniture.camerasGroup;
+                    if (camGroupTrans != null)
+                    {
+                        Transform targetCamObj = camGroupTrans.Find(targetCamName);
+                        if (targetCamObj != null)
+                        {
+                            if (furniture.cameras != null) furniture.cameras.RemoveItem(targetCamObj);
+                            GameObject.Destroy(targetCamObj.gameObject);
+                        }
+                    }
+
+                    if (FreeLookCam.code != null) FreeLookCam.code.Reset();
+                    uiPose.Refresh();
+
+                    Plugin.Log.LogInfo($"[UI_SDK] Камера '{targetCamName}' успешно удалена!");
+                }
+                catch (Exception ex) { Plugin.Log.LogError($"[UI_SDK] Ошибка удаления камеры: {ex.Message}"); }
+            }
+        }
+
+        #region Ванильная обвязка текстур и иконок префаба
 
         private void LoadEmbeddedResources()
         {
@@ -229,11 +371,9 @@ namespace FurnitureAnimationsMod
             _iconLinear = LoadTextureFromDll("FurnitureAnimations.Resources.icon_flowEven.png");
             _iconEaseWhole = LoadTextureFromDll("FurnitureAnimations.Resources.icon_easeInOutWhole.png");
             _iconEaseEach = LoadTextureFromDll("FurnitureAnimations.Resources.icon_easeInOutEach.png");
-
             _iconNextAudio = LoadTextureFromDll("FurnitureAnimations.Resources.icon_nextAudio.png");
             _iconSoundOn = LoadTextureFromDll("FurnitureAnimations.Resources.icon_soundOn.png");
             _iconSoundOff = LoadTextureFromDll("FurnitureAnimations.Resources.icon_soundOff.png");
-
             _iconAddCamera = LoadTextureFromDll("FurnitureAnimations.Resources.icon_addCamera.png");
             _iconDeleteCamera = LoadTextureFromDll("FurnitureAnimations.Resources.icon_deleteCamera.png");
         }
@@ -245,32 +385,17 @@ namespace FurnitureAnimationsMod
                 Assembly assembly = Assembly.GetExecutingAssembly();
                 using (Stream stream = assembly.GetManifestResourceStream(resourcePath))
                 {
-                    if (stream == null)
-                    {
-                        Plugin.Log.LogError($"[UI_Resources] Не найден встроенный ресурс: {resourcePath}");
-                        return null;
-                    }
-
+                    if (stream == null) return null;
                     byte[] buffer = new byte[stream.Length];
                     stream.Read(buffer, 0, buffer.Length);
-
-                    Texture2D texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-                    if (texture.LoadImage(buffer))
-                    {
-                        return texture; // Возвращаем чистую текстуру для RawImage
-                    }
+                                        Texture2D texture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                    if (texture.LoadImage(buffer)) return texture;
                 }
             }
-            catch (Exception ex)
-            {
-                Plugin.Log.LogError($"[UI_Resources] Ошибка загрузки иконки {resourcePath}: {ex.Message}");
-            }
+            catch (Exception) { }
             return null;
         }
 
-        #endregion
-
-        // Изменен тип аргумента с Sprite на Texture2D
         private void CreateUiButton(Transform parent, Transform prefab, string objName, string label, Vector3 localPos, Texture2D iconTexture, System.Action onClick)
         {
             GameObject btnGo = GameObject.Instantiate(prefab.gameObject, parent);
@@ -285,31 +410,19 @@ namespace FurnitureAnimationsMod
             b = btnGo.AddComponent<Button>();
             b.onClick.AddListener(() => onClick?.Invoke());
 
-            // --- ЖЕСТКОЕ ПЕРЕОПРЕДЕЛЕНИЕ RAWIMAGE ---
             RawImage rawImg = btnGo.GetComponent<RawImage>();
-            if (rawImg != null && iconTexture != null)
-            {
-                rawImg.texture = iconTexture; // Меняем текстуру лифчика на нашу иконку!
-            }
-            else if (rawImg == null && iconTexture != null)
-            {
-                // На случай если там обычный Image, подстрахуемся
-                Image img = btnGo.GetComponent<Image>();
-                if (img != null)
-                {
-                    img.sprite = Sprite.Create(iconTexture, new Rect(0, 0, iconTexture.width, iconTexture.height), new Vector2(0.5f, 0.5f));
-                }
-            }
+            if (rawImg != null && iconTexture != null) rawImg.texture = iconTexture;
 
             Text t = btnGo.GetComponentInChildren<Text>();
             if (t != null)
             {
                 t.text = label;
-                t.fontSize = 11;
+                t.fontSize = 10;
                 t.color = Color.white;
             }
             btnGo.SetActive(true);
         }
+
         private void UpdateText(string objName, string newText)
         {
             if (_uiPanelInstance == null) return;
@@ -318,18 +431,12 @@ namespace FurnitureAnimationsMod
             if (t != null) t.text = newText;
         }
 
-        public void HidePanel()
-        {
-            if (_uiPanelInstance != null) _uiPanelInstance.SetActive(false);
-        }
-
-        private void OnDestroy()
-        {
-            HidePanel();
-        }
+        public void HidePanel() { if (_uiPanelInstance != null) _uiPanelInstance.SetActive(false); }
+        private void OnDestroy() { HidePanel(); }
 
         private void UpdateSpeedButtonsText()
         {
+            if (_player == null) return;
             int percent = Mathf.RoundToInt(_player.GetSpeed() * 100);
             UpdateText("Mod_BtnSpeedMinus", $"Speed: {percent}% (-10)");
             UpdateText("Mod_BtnSpeedPlus", $"Speed: {percent}% (+10)");
@@ -349,6 +456,7 @@ namespace FurnitureAnimationsMod
 
         private void UpdateEaseButton()
         {
+            if (_player == null) return;
             UpdateText("Mod_BtnEaseToggle", $"Interpolation: {_player.GetEaseMode()}");
             UpdateImageSprite("Mod_BtnEaseToggle", GetCurrentEaseSprite());
         }
@@ -360,30 +468,14 @@ namespace FurnitureAnimationsMod
             UpdateImageSprite("Mod_BtnMuteToggle", isMuted ? _iconSoundOff : _iconSoundOn);
         }
 
-        private void UpdateInterfaceStates()
-        {
-            UpdateSpeedButtonsText();
-            UpdateEaseButton();
-            UpdateSoundButton();
-        }
-
         private void UpdateImageSprite(string objName, Texture2D newTexture)
         {
             if (_uiPanelInstance == null || newTexture == null) return;
             Transform btn = _uiPanelInstance.transform.Find($"Mod_AnimationButtonsContainer/{objName}");
-
             RawImage rawImg = btn?.GetComponent<RawImage>();
-            if (rawImg != null)
-            {
-                rawImg.texture = newTexture;
-                return;
-            }
-
+            if (rawImg != null) { rawImg.texture = newTexture; return; }
             Image img = btn?.GetComponent<Image>();
-            if (img != null)
-            {
-                img.sprite = Sprite.Create(newTexture, new Rect(0, 0, newTexture.width, newTexture.height), new Vector2(0.5f, 0.5f));
-            }
+            if (img != null) img.sprite = Sprite.Create(newTexture, new Rect(0, 0, newTexture.width, newTexture.height), new Vector2(0.5f, 0.5f));
         }
 
         private void RebindButtonAction(Transform container, string buttonName, System.Action onClick)
@@ -392,10 +484,10 @@ namespace FurnitureAnimationsMod
             Button b = btnTransform?.GetComponent<Button>();
             if (b != null)
             {
-                b.onClick.RemoveAllListeners(); // Сносим старую ссылку на уничтоженный плеер
-                b.onClick.AddListener(() => onClick?.Invoke()); // Записываем ссылку на новый плеер
+                b.onClick.RemoveAllListeners();
+                b.onClick.AddListener(() => onClick?.Invoke());
             }
         }
-
+        #endregion
     }
 }
