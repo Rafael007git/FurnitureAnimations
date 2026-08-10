@@ -12,6 +12,7 @@ namespace FurnitureAnimationsMod
     public class AnimationUiControls : MonoBehaviour
     {
         private FurnitureAnimationPlayer _player;
+        private Furniture _activeFurnitureInstance;
         private GameObject _uiPanelInstance;
 
         // Кэш для иконок, чтобы не читать из сборки каждый кадр
@@ -26,9 +27,15 @@ namespace FurnitureAnimationsMod
         private Texture2D _iconAddCamera;
         private Texture2D _iconDeleteCamera;
 
-        public void Initialize(FurnitureAnimationPlayer player)
+        // --- ОБНОВЛЕННЫЙ МЕТОД ИНИЦИАЛИЗАЦИИ ДЛЯ СТАТИЧНЫХ ПОЗ И ДИНАМИЧЕСКИХ АНИМАЦИЙ (Пункт 6 ТЗ) ---
+        public void InitializeGlobal(Furniture furniture)
         {
-            _player = player;
+            // Запекаем нашу public-ссылку на мебель, полученную напрямую из UIPose.Open! 🪑⚡
+            _activeFurnitureInstance = furniture;
+
+            // Пытаемся найти живой плеер анимаций на сцене (если запущена динамическая анимация)
+            // Если его нет (мы в статической позе) — _player будет null, но кнопки камер всё равно будут работать!
+            _player = UnityEngine.Object.FindObjectOfType<FurnitureAnimationPlayer>();
 
             // 0. Загружаем иконки из ресурсов DLL
             LoadEmbeddedResources();

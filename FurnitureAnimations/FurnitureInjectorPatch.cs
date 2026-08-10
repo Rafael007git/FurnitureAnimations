@@ -343,24 +343,33 @@ namespace FurnitureAnimationsMod
         }
     }
 
-    // === ПАТЧ 3: БЕЗОПАСНЫЙ ВЫХОД ИЗ ИНТЕРАКТИВА ===
-    [HarmonyPatch(typeof(Furniture), "DoQuitInteraction")]
-    public class FurnitureQuitSafetyPatch
+    // === ПАТЧ 3: ГЛОБАЛЬНЫЙ ПЕРЕХВАТ ОКНА UIPOSE ДЛЯ АКТИВАЦИИ ПАНЕЛИ КАМЕР (Пункт 6 ТЗ) ===
+    [HarmonyPatch(typeof(UIPose), "Open")]
+    public class UIPoseGlobalUiBinderPatch
     {
-        [HarmonyPrefix]
-        public static bool Prefix(Furniture __instance)
+        [HarmonyPostfix]
+        public static void Postfix(UIPose __instance, Furniture furniture)
         {
-            if (__instance.user == null)
+            if (__instance == null || furniture == null) return;
+
+            try
             {
-                Plugin.Log.LogWarning("[SafetyPatch] Безопасный выход из пустого интерактива.");
-                var playerComp = UnityEngine.Object.FindObjectOfType<CharacterCustomization>();
-                if (playerComp != null)
+                // Находим или вешаем наш контроллер AnimationUiControls прямо на объект самого окна UIPose игры!
+                // Теперь панель родится сразу при клике "Сесть" (в позах или анимациях) и будет жить до закрытия меню.
+                AnimationUiControls uiControls = __instance.gameObject.GetComponent<AnimationUiControls>();
+                if (uiControls == null)
                 {
-                    playerComp.gameObject.SetActive(true);
+                    uiControls = __instance.gameObject.AddComponent<AnimationUiControls>();
                 }
-                return false;
+
+                // Инициализируем наш интерфейс, передавая ему чистую public-ссылку на мебель игры!
+                uiControls.InitializeGlobal(furniture);
+                Plugin.Log.LogInfo($"[SDK_UI] Панель мода успешно внедрена в окно UIPose для мебели '{furniture.name}'");
             }
-            return true;
+            catch (System.Exception ex)
+            {
+                Plugin.Log.LogError($"[SDK_UI] Сбой глобальной инициализации панели в UIPose.Open: {ex.Message}");
+            }
         }
     }
 
@@ -583,7 +592,28 @@ namespace FurnitureAnimationsMod
         }
     }
 
-    // === ПАТЧ 5: РОКИРОВКА КНОПОК И ПОЛНАЯ ЗАЧИСТКА ОКНА СОХРАНЕНИЯ (RELEASE 0.2.0 STABLE) ===
+    // === ПАТЧ 5: БЕЗОПАСНЫЙ ВЫХОД ИЗ ИНТЕРАКТИВА ===
+    [HarmonyPatch(typeof(Furniture), "DoQuitInteraction")]
+    public class FurnitureQuitSafetyPatch
+    {
+        [HarmonyPrefix]
+        public static bool Prefix(Furniture __instance)
+        {
+            if (__instance.user == null)
+            {
+                Plugin.Log.LogWarning("[SafetyPatch] Безопасный выход из пустого интерактива.");
+                var playerComp = UnityEngine.Object.FindObjectOfType<CharacterCustomization>();
+                if (playerComp != null)
+                {
+                    playerComp.gameObject.SetActive(true);
+                }
+                return false;
+            }
+            return true;
+        }
+    }
+
+    // === ПАТЧ 6: РОКИРОВКА КНОПОК И ПОЛНАЯ ЗАЧИСТКА ОКНА СОХРАНЕНИЯ (RELEASE 0.2.0 STABLE) ===
     [HarmonyPatch(typeof(UIFreePose), "Open")]
     public class UIFreePoseButtonPatch
     {

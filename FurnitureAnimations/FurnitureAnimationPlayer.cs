@@ -109,7 +109,8 @@ namespace FurnitureAnimationsMod
 
             // Подключаем разделенные компоненты аудио и UI
             gameObject.AddComponent<AnimationAudioManager>().Initialize(animationName, _animData.loop);
-            gameObject.AddComponent<AnimationUiControls>().Initialize(this);
+            // Интерфейс теперь создается глобально через UIPose.Open, плеер его больше не спавнит! 🛡
+            // gameObject.AddComponent<AnimationUiControls>().Initialize(this); 
 
             if (furniture != null && poseConfig != null)
             {
