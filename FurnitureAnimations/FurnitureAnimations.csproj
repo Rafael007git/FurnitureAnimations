@@ -117,5 +117,9 @@
     <EmbeddedResource Include="Resources\icon_soundOff.png" />
     <EmbeddedResource Include="Resources\icon_soundOn.png" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\icon_addCamera.png" />
+    <EmbeddedResource Include="Resources\icon_deleteCamera.png" />
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

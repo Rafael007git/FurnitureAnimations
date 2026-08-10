@@ -14,14 +14,16 @@ namespace FurnitureAnimationsMod
         private GameObject _uiPanelInstance;
 
         // Кэш для иконок, чтобы не читать из сборки каждый кадр
-        private Texture2D _iconSpeedMinus;
         private Texture2D _iconSpeedPlus;
-        private Texture2D _iconNextAudio;
-        private Texture2D _iconSoundOn;
-        private Texture2D _iconSoundOff;
+        private Texture2D _iconSpeedMinus;
         private Texture2D _iconLinear;
         private Texture2D _iconEaseWhole;
         private Texture2D _iconEaseEach;
+        private Texture2D _iconNextAudio;
+        private Texture2D _iconSoundOn;
+        private Texture2D _iconSoundOff;
+        private Texture2D _iconAddCamera;
+        private Texture2D _iconDeleteCamera;
         public void Initialize(FurnitureAnimationPlayer player)
         {
             _player = player;
@@ -222,15 +224,18 @@ namespace FurnitureAnimationsMod
 
         private void LoadEmbeddedResources()
         {
-            _iconSpeedMinus = LoadTextureFromDll("FurnitureAnimations.Resources.icon_slowerPlayback.png");
             _iconSpeedPlus = LoadTextureFromDll("FurnitureAnimations.Resources.icon_fasterPlayback.png");
+            _iconSpeedMinus = LoadTextureFromDll("FurnitureAnimations.Resources.icon_slowerPlayback.png");
+            _iconLinear = LoadTextureFromDll("FurnitureAnimations.Resources.icon_flowEven.png");
+            _iconEaseWhole = LoadTextureFromDll("FurnitureAnimations.Resources.icon_easeInOutWhole.png");
+            _iconEaseEach = LoadTextureFromDll("FurnitureAnimations.Resources.icon_easeInOutEach.png");
+
             _iconNextAudio = LoadTextureFromDll("FurnitureAnimations.Resources.icon_nextAudio.png");
             _iconSoundOn = LoadTextureFromDll("FurnitureAnimations.Resources.icon_soundOn.png");
             _iconSoundOff = LoadTextureFromDll("FurnitureAnimations.Resources.icon_soundOff.png");
 
-            _iconLinear = LoadTextureFromDll("FurnitureAnimations.Resources.icon_flowEven.png");
-            _iconEaseWhole = LoadTextureFromDll("FurnitureAnimations.Resources.icon_easeInOutWhole.png");
-            _iconEaseEach = LoadTextureFromDll("FurnitureAnimations.Resources.icon_easeInOutEach.png");
+            _iconAddCamera = LoadTextureFromDll("FurnitureAnimations.Resources.icon_addCamera.png");
+            _iconDeleteCamera = LoadTextureFromDll("FurnitureAnimations.Resources.icon_deleteCamera.png");
         }
 
         private Texture2D LoadTextureFromDll(string resourcePath)
