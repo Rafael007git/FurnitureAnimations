@@ -217,20 +217,9 @@ namespace FurnitureAnimationsMod
             }
         }
 
-        private float _updateTimer = 0f;
-        private const float UpdateInterval = 0.2f; // Проверяем состояние 5 раз в секунду
-        private void Update()
-        {
-            _updateTimer += Time.deltaTime;
-            if (_updateTimer >= UpdateInterval)
-            {
-                _updateTimer = 0f;
-                UpdateInterfaceStates(); // Вызываем проверку только по таймеру
-            }
-        }
 
         // --- ЦЕНТРАЛЬНЫЙ КОНТРОЛЛЕР ИНДИВИДУАЛЬНОЙ ВИДИМОСТИ КНОПОК ---
-        private void UpdateInterfaceStates()
+        public void UpdateInterfaceStates()
         {
             if (_uiPanelInstance == null) return;
 

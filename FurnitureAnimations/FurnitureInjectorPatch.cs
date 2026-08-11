@@ -373,7 +373,52 @@ namespace FurnitureAnimationsMod
         }
     }
 
-    // === ПАТЧ 4: УЛЬТИМАТИВНЫЙ ПОСТФИКС-ПЕРЕХВАТ ДЛЯ ОКНА UIPOSE (RELEASE 0.2.0 STABLE) ===
+    // === ПАТЧ 4: ПЕРЕХВАТ ОБНОВЛЕНИЯ ОКНА UIPOSE ДЛЯ УТОЧНЕНИЯ СОСТОЯНИЯ КАМЕР
+    [HarmonyPatch(typeof(UIPose), "Refresh")]
+    public class UIPose_Refresh_Event_Patch
+    {
+        [HarmonyPostfix]
+        public static void Postfix(UIPose __instance)
+        {
+            if (__instance == null || __instance.cameraIconGroup == null) return;
+
+            // Находим наш кастомный интерфейс AnimationUiControls на сцене
+            AnimationUiControls activeControls = UnityEngine.Object.FindObjectOfType<AnimationUiControls>();
+            if (activeControls == null) return;
+
+            // Пробегаемся по всем динамически созданным кнопкам ракурсов игры
+            for (int i = 0; i < __instance.cameraIconGroup.childCount; i++)
+            {
+                Transform buttonTrans = __instance.cameraIconGroup.GetChild(i);
+                Button btnComponent = buttonTrans?.GetComponent<Button>();
+
+                if (btnComponent != null)
+                {
+                    // Привязываемся напрямую к родному клику ванильной кнопки! 📸
+                    btnComponent.onClick.AddListener(() =>
+                    {
+                        // Делаем микро-вызов обновления состояния НАШЕЙ контекстной кнопки.
+                        // Небольшая задержка Mono-корутины (или Invoke) в 0.05 сек нужна, чтобы игра успела переключить SetActive(true) на выбранной камере
+                        activeControls.StartCoroutine(ExecuteDelayedUiUpdate(activeControls));
+                    });
+                }
+            }
+
+            // Сразу принудительно обновляем стейты нашей панели при самом запуске Refresh
+            activeControls.UpdateInterfaceStates();
+        }
+
+        private static System.Collections.IEnumerator ExecuteDelayedUiUpdate(AnimationUiControls controls)
+        {
+            yield return new UnityEngine.WaitForSeconds(0.05f); // Даем игре 1 кадр переключить камеру
+            if (controls != null)
+            {
+                controls.UpdateInterfaceStates(); // Мгновенно пересчитываем хамелеона!
+            }
+        }
+    }
+
+    // === ПАТЧ 5: УЛЬТИМАТИВНЫЙ ПОСТФИКС-ПЕРЕХВАТ ДЛЯ ОКНА UIPOSE (RELEASE 0.2.0 STABLE) ===
     [HarmonyPatch(typeof(PoseIcon), "Click")]
     public class PoseIconClickDioramaPatch
     {
@@ -592,7 +637,7 @@ namespace FurnitureAnimationsMod
         }
     }
 
-    // === ПАТЧ 5: БЕЗОПАСНЫЙ ВЫХОД ИЗ ИНТЕРАКТИВА ===
+    // === ПАТЧ 6: БЕЗОПАСНЫЙ ВЫХОД ИЗ ИНТЕРАКТИВА ===
     [HarmonyPatch(typeof(Furniture), "DoQuitInteraction")]
     public class FurnitureQuitSafetyPatch
     {
@@ -613,7 +658,7 @@ namespace FurnitureAnimationsMod
         }
     }
 
-    // === ПАТЧ 6: РОКИРОВКА КНОПОК И ПОЛНАЯ ЗАЧИСТКА ОКНА СОХРАНЕНИЯ (RELEASE 0.2.0 STABLE) ===
+    // === ПАТЧ 7: РОКИРОВКА КНОПОК И ПОЛНАЯ ЗАЧИСТКА ОКНА СОХРАНЕНИЯ (RELEASE 0.2.0 STABLE) ===
     [HarmonyPatch(typeof(UIFreePose), "Open")]
     public class UIFreePoseButtonPatch
     {
