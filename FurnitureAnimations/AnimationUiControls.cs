@@ -237,6 +237,13 @@ namespace FurnitureAnimationsMod
             Transform container = _uiPanelInstance.transform.Find("Mod_AnimationButtonsContainer");
             if (container == null) return;
 
+            // --- ИСПРАВЛЕНИЕ БАГА АНИМАЦИИ: Динамический перехват плеера --- ⚡
+            // Если плеер еще не был найден (или был уничтожен при смене позы), ищем его на сцене прямо сейчас перед проверкой флагов!
+            if (_player == null)
+            {
+                _player = UnityEngine.Object.FindObjectOfType<FurnitureAnimationPlayer>();
+            }
+
             // А) Управление кнопками анимации И ЗВУКА: видны только если плеер живой и анимация выбрана
             bool hasActiveAnimation = (_player != null && _player.isActiveAndEnabled);
             container.Find("Mod_BtnSpeedPlus")?.gameObject.SetActive(hasActiveAnimation);
@@ -353,6 +360,12 @@ namespace FurnitureAnimationsMod
             UpdateSpeedButtonsText();
             UpdateEaseButton();
             UpdateSoundButton();
+
+            // Если плеер на сцене умер (анимация выключена), очищаем ссылку, чтобы при следующем запуске анимации мод перехватил её заново
+            if (_player != null && !_player.isActiveAndEnabled)
+            {
+                _player = null;
+            }
         }
 
         // --- ИСПОЛНИТЕЛЬНАЯ КНОПКА: ДОБАВИТЬ КАМЕРУ ---
