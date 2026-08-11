@@ -129,7 +129,7 @@ namespace FurnitureAnimationsMod
                 _uiPanelInstance.transform.localScale = vanRect.localScale;
 
                 Vector3 vanLocalPos = vanRect.localPosition;
-                modRect.localPosition = new Vector3(vanLocalPos.x, vanLocalPos.y - 250f, vanLocalPos.z);
+                modRect.localPosition = new Vector3(vanLocalPos.x, vanLocalPos.y - 173f, vanLocalPos.z);
 
                 Transform buttonsContainerNew = _uiPanelInstance.transform.Find(vanillaButtonsContainerGo.name);
                 if (buttonsContainerNew == null && _uiPanelInstance.transform.childCount > 0)
