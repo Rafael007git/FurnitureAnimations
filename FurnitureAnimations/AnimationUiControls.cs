@@ -303,6 +303,7 @@ namespace FurnitureAnimationsMod
             {
                 GameObject btnGo = contextBtnTrans.gameObject;
                 Button b = btnGo.GetComponent<Button>();
+                RawImage ri = btnGo.GetComponent<RawImage>(); // Хватаем компонент нашей текстуры иконки!
 
                 if (isCustomCamSelected)
                 {
@@ -314,6 +315,8 @@ namespace FurnitureAnimationsMod
                         UpdateText("Mod_BtnContextCamera", "Cannot delete last cam");
                         UpdateImageSprite("Mod_BtnContextCamera", _iconDeleteCamera);
                         if (b != null) b.interactable = false;
+                        // ДЕЛАЕМ ТЕКСТУРУ ИКОНКИ ПОЛУПРОЗРАЧНОЙ (30%) 🎨
+                        if (ri != null) ri.color = new Color(1f, 1f, 1f, 0.3f);
                     }
                     else
                     {
@@ -321,6 +324,8 @@ namespace FurnitureAnimationsMod
                         UpdateText("Mod_BtnContextCamera", $"Delete: {currentSelectedCamName}");
                         UpdateImageSprite("Mod_BtnContextCamera", _iconDeleteCamera);
                         if (b != null) b.interactable = true;
+                        // ВОЗВРАЩАЕМ 100% ЯРКОСТЬ
+                        if (ri != null) ri.color = Color.white;
                     }
                 }
                 else if (isFreeCamActive && hasVacantSlots)
@@ -329,6 +334,8 @@ namespace FurnitureAnimationsMod
                     UpdateText("Mod_BtnContextCamera", $"Add camera {nextVacantNum}");
                     UpdateImageSprite("Mod_BtnContextCamera", _iconAddCamera);
                     if (b != null) b.interactable = true;
+                    // ВОЗВРАЩАЕМ 100% ЯРКОСТЬ
+                    if (ri != null) ri.color = Color.white;
                 }
                 else
                 {
@@ -337,6 +344,8 @@ namespace FurnitureAnimationsMod
                     UpdateText("Mod_BtnContextCamera", "Vanilla Camera");
                     UpdateImageSprite("Mod_BtnContextCamera", _iconAddCamera);
                     if (b != null) b.interactable = false;
+                    // ДЕЛАЕМ ТЕКСТУРУ ИКОНКИ ПОЛУПРОЗРАЧНОЙ (30%) 🎨
+                    if (ri != null) ri.color = new Color(1f, 1f, 1f, 0.3f);
                 }
             }
 
