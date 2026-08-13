@@ -180,5 +180,41 @@ namespace FurnitureAnimationsMod
             return -1; // На всякий случай, если что-то пошло не так
         }
 
+        // =========================================================================
+        // ЭТАП 1: LAZY-ИНЪЕКЦИЯ ДЛЯ УПРАВЛЕНИЯ СВЯЗКАМИ АНИМАЦИЯ+АУДИО В ОЗУ 🧠⚡ 
+        // =========================================================================
+        public static void UpdateRuntimePlaybackMemory(string furnitureName, string animationName, string trackName, float speed, EaseMode easeMode)
+        {
+            if (string.IsNullOrEmpty(furnitureName) || string.IsNullOrEmpty(animationName)) return;
+
+            // Находим нужный конфиг мебели в ОЗУ-словаре мода
+            if (LoadedConfigs.TryGetValue(furnitureName, out FurnitureConfig config) && config != null)
+            {
+                // На всякий случай страхуем словарь от NullReferenceException
+                if (config.RuntimePlaybackMemory == null)
+                {
+                    config.RuntimePlaybackMemory = new Dictionary<string, PlaybackSettingsData>(StringComparer.OrdinalIgnoreCase);
+                }
+
+                // Ключ трека по ТЗ: если пусто — кейс "noAudio", иначе — чистое имя файла
+                string trackKey = string.IsNullOrEmpty(trackName) ? "noAudio" : Path.GetFileName(trackName);
+
+                // Собираем наш монолитный составной ключ сессии
+                string sessionKey = $"{animationName}_{trackKey}";
+
+                // Ленивая инициализация: если такой пары в ОЗУ еще нет — создаем её с дефолтами
+                if (!config.RuntimePlaybackMemory.TryGetValue(sessionKey, out PlaybackSettingsData settings) || settings == null)
+                {
+                    settings = new PlaybackSettingsData();
+                    config.RuntimePlaybackMemory[sessionKey] = settings;
+                }
+
+                // Мгновенно перезаписываем параметры в ОЗУ сессии интерактива!
+                settings.Speed = speed;
+                settings.EaseMode = easeMode;
+
+                Plugin.Log.LogInfo($"[ОЗУ_МЕНЕДЖЕР] Зафиксировано в ОЗУ для [{sessionKey}]: Скорость={speed * 100}%, Сглаживание={easeMode}");
+            }
+        }
     }
 }

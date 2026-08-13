@@ -60,7 +60,20 @@ namespace FurnitureAnimationsMod
                         {
                             RebindButtonAction(buttonsContainer, "Mod_BtnSpeedPlus", () => { _player.ChangeSpeed(0.1f); UpdateSpeedButtonsText(); });
                             RebindButtonAction(buttonsContainer, "Mod_BtnSpeedMinus", () => { _player.ChangeSpeed(-0.1f); UpdateSpeedButtonsText(); });
-                            RebindButtonAction(buttonsContainer, "Mod_BtnEaseToggle", () => { _player.ToggleEaseMode(); UpdateEaseButton(); });
+                            RebindButtonAction(buttonsContainer, "Mod_BtnEaseToggle", () =>
+                            {
+                                if (_player != null && _activeFurnitureInstance != null)
+                                {
+                                    _player.ToggleEaseMode();
+                                    UpdateEaseButton();
+
+                                    // Считываем имя трека и пушим стейты в ОЗУ-блокнот мебели
+                                    string cleanFurnName = _activeFurnitureInstance.name.Replace("(Clone)", "").Trim();
+                                    string currentTrackPath = (AnimationAudioManager.Instance != null) ? AnimationAudioManager.Instance.GetCurrentTrackName() : "";
+
+                                    ConfigManager.UpdateRuntimePlaybackMemory(cleanFurnName, _player.GetPlayingAnimationName(), currentTrackPath, _player.GetSpeed(), _player.GetEaseMode());
+                                }
+                            });
                         }
 
                         RebindButtonAction(buttonsContainer, "Mod_BtnMuteToggle", () =>
@@ -196,7 +209,19 @@ namespace FurnitureAnimationsMod
                     btnPos.y += spacing;
 
                     // Кнопка Сглаживания
-                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnEaseToggle", $"Interpolation: ", btnPos, GetCurrentEaseSprite(), () => { _player?.ToggleEaseMode(); UpdateEaseButton(); });
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnEaseToggle", $"Interpolation: ", btnPos, GetCurrentEaseSprite(), () =>
+                    {
+                        if (_player != null && _activeFurnitureInstance != null)
+                        {
+                            _player.ToggleEaseMode();
+                            UpdateEaseButton();
+
+                            string cleanFurnName = _activeFurnitureInstance.name.Replace("(Clone)", "").Trim();
+                            string currentTrackPath = (AnimationAudioManager.Instance != null) ? AnimationAudioManager.Instance.GetCurrentTrackName() : "";
+
+                            ConfigManager.UpdateRuntimePlaybackMemory(cleanFurnName, _player.GetPlayingAnimationName(), currentTrackPath, _player.GetSpeed(), _player.GetEaseMode());
+                        }
+                    });
                     btnPos.y += spacing;
 
                     // Кнопка: Следующий трек
@@ -240,6 +265,14 @@ namespace FurnitureAnimationsMod
             container.Find("Mod_BtnEaseToggle")?.gameObject.SetActive(hasActiveAnimation);
             container.Find("Mod_BtnNextAudio")?.gameObject.SetActive(hasActiveAnimation);
             container.Find("Mod_BtnMuteToggle")?.gameObject.SetActive(hasActiveAnimation);
+
+            // --- ОБНОВЛЕНИЕ uGUI СТЕЙТОВ ПОД ПАРАМЕТРЫ СВЕЖЕГО ПЛЕЕРА ИЗ ОЗУ --- 🧠🌟
+            if (hasActiveAnimation)
+            {
+                UpdateSpeedButtonsText();
+                UpdateEaseButton();
+                UpdateSoundButton();
+            }
 
             // Б) Диагностика состояний камер игры
             bool isFreeCamActive = (FreeLookCam.code != null && FreeLookCam.code.enabled);

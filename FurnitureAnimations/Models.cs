@@ -31,15 +31,26 @@ namespace FurnitureAnimationsMod
         public List<CameraData> Cameras;
     }
 
+    // --- ЭТАП 1: КОМПАКТНЫЙ КЛАСС ХРАНЕНИЯ НАСТРОЕК ТЕМПА И СГЛАЖИВАНИЯ (По ТЗ: 150% и Linear) --- 🎵🔥
+    [Serializable]
+    public class PlaybackSettingsData
+    {
+        public float Speed = 1.5f;                      // По вашему ТЗ по умолчанию speed = 150%
+        public EaseMode EaseMode = EaseMode.Linear;     // По вашему ТЗ по умолчанию сглаживание = linear
+    }
+
     [Serializable]
     public class FurnitureConfig
     {
         public string FurniturePrefabName;
         public List<PoseData> InteractionPoses;
-
-        // --- НАШЕ ТОЧНОЕ ДОПОЛНЕНИЕ ДЛЯ КАМЕР МЕБЕЛИ ---
-        // Инициализируем список сразу, чтобы избежать ошибок NullReferenceException
         public List<CameraData> CustomCameras = new List<CameraData>();
+
+        // --- НАШЕ НОВОЕ ДОПОЛНЕНИЕ ДЛЯ ОЗУ (ЭТАП 1) --- 🧠⚡
+        // Ключ строки будет иметь формат: "ИмяАнимации_ИмяАудио" (например, "danceBachata_danceBachata-01")
+        // [Newtonsoft.Json.JsonIgnore] гарантирует, что на Этапе 1 мы работаем СТРОГО в памяти и диск не трогаем!
+        [Newtonsoft.Json.JsonIgnore]
+        public Dictionary<string, PlaybackSettingsData> RuntimePlaybackMemory = new Dictionary<string, PlaybackSettingsData>(StringComparer.OrdinalIgnoreCase);
     }
 
     // Модель для распаковки бинарного слепка кости/света из CustomAnimations

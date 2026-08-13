@@ -150,12 +150,89 @@ namespace FurnitureAnimationsMod
             _gameFrameCounter = 0;
             _totalTargetFrames = 0;
             _reversing = false;
+
+            // =========================================================================
+            // ЭТАП 1: ЛЕНИВОЕ СЧИТЫВАНИЕ ИЗ ОЗУ ПРИ СТАРТЕ АНИМАЦИИ 🧠⚡ 
+            // =========================================================================
+            if (_targetFurniture != null)
+            {
+                string cleanFurnName = _targetFurniture.name.Replace("(Clone)", "").Trim();
+
+                // Извлекаем актуальную конфигурацию мебели из ОЗУ-менеджера
+                if (ConfigManager.LoadedConfigs.TryGetValue(cleanFurnName, out FurnitureConfig config))
+                {
+                    // Защита: инициализируем пустой словарь в ОЗУ, если его не было
+                    if (config.RuntimePlaybackMemory == null)
+                    {
+                        config.RuntimePlaybackMemory = new Dictionary<string, PlaybackSettingsData>(StringComparer.OrdinalIgnoreCase);
+                    }
+
+                    // Извлекаем имя текущего трека из аудио-менеджера
+                    string currentTrackPath = (AnimationAudioManager.Instance != null) ? AnimationAudioManager.Instance.GetCurrentTrackName() : "";
+                    string trackKey = string.IsNullOrEmpty(currentTrackPath) ? "noAudio" : Path.GetFileName(currentTrackPath);
+
+                    // Собираем наш уникальный составной ключ сессии: "ИмяАнимации_ИмяАудио"
+                    string sessionKey = $"{animationName}_{trackKey}";
+
+                    if (config.RuntimePlaybackMemory.TryGetValue(sessionKey, out PlaybackSettingsData savedSettings) && savedSettings != null)
+                    {
+                        // А) ПАРАМЕТРЫ НАЙДЕНЫ В ОЗУ: Мгновенно применяем их к плееру!
+                        _speedModifier = savedSettings.Speed;
+                        _currentEaseMode = savedSettings.EaseMode;
+                        Plugin.Log.LogInfo($"[ОЗУ_СТАРТ] Найдена рантайм-пара [{sessionKey}]. Скорость: {_speedModifier * 100}%, Сглаживание: {_currentEaseMode}");
+                    }
+                    else
+                    {
+                        // Б) НАБОР ЕЩЕ НЕ СОЗДАН: Инициализируем дефолты строго по ТЗ (150% и Linear)!
+                        _speedModifier = 1.5f;
+                        _currentEaseMode = EaseMode.Linear;
+
+                        // Запекаем дефолты в наш «блокнот» ОЗУ, чтобы при следующем тике они уже существовали
+                        config.RuntimePlaybackMemory[sessionKey] = new PlaybackSettingsData
+                        {
+                            Speed = _speedModifier,
+                            EaseMode = _currentEaseMode
+                        };
+                        Plugin.Log.LogInfo($"[ОЗУ_СТАРТ] Новая пара [{sessionKey}]. Выставлен дефолт по ТЗ: 150% и Linear.");
+                    }
+                }
+            }
         }
 
         public void ChangeSpeed(float delta)
         {
             _speedModifier = Mathf.Clamp(_speedModifier + delta, 0.1f, 3.0f);
             Plugin.Log.LogInfo($"[SpeedManager] Текущая скорость: {_speedModifier * 100:F0}%");
+
+            // --- ЭТАП 1: МГНОВЕННАЯ ПЕРЕЗАПИСЬ ПАРАМЕТРОВ СКОРОСТИ В ОЗУ (Пункт 18 ТЗ) --- 🧠🎵
+            if (_targetFurniture != null && _animData != null)
+            {
+                string cleanFurnName = _targetFurniture.name.Replace("(Clone)", "").Trim();
+
+                if (ConfigManager.LoadedConfigs.TryGetValue(cleanFurnName, out FurnitureConfig config))
+                {
+                    if (config.RuntimePlaybackMemory == null)
+                    {
+                        config.RuntimePlaybackMemory = new Dictionary<string, PlaybackSettingsData>(StringComparer.OrdinalIgnoreCase);
+                    }
+
+                    string currentTrackPath = (AnimationAudioManager.Instance != null) ? AnimationAudioManager.Instance.GetCurrentTrackName() : "";
+                    string trackKey = string.IsNullOrEmpty(currentTrackPath) ? "noAudio" : Path.GetFileName(currentTrackPath);
+
+                    string sessionKey = $"{_animData.name}_{trackKey}";
+
+                    // Ленивая инициализация: если ячейки в ОЗУ еще нет, создаем на лету
+                    if (!config.RuntimePlaybackMemory.TryGetValue(sessionKey, out PlaybackSettingsData currentSettings) || currentSettings == null)
+                    {
+                        currentSettings = new PlaybackSettingsData { EaseMode = _currentEaseMode };
+                        config.RuntimePlaybackMemory[sessionKey] = currentSettings;
+                    }
+
+                    // Перезаписываем скорость в ОЗУ сессии интерактива!
+                    currentSettings.Speed = _speedModifier;
+                    Plugin.Log.LogInfo($"[ОЗУ_КЛИК] Скорость {_speedModifier * 100:F0}% успешно зафиксирована в ОЗУ для пары [{sessionKey}]");
+                }
+            }
         }
 
         public float GetSpeed() => _speedModifier;
