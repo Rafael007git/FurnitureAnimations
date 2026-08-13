@@ -14,6 +14,7 @@ namespace FurnitureAnimationsMod
         private FurnitureAnimationPlayer _player;
         private Furniture _activeFurnitureInstance;
         private GameObject _uiPanelInstance;
+        private bool _lastHadPlayerState = false;
 
         // Кэш для иконок, чтобы не читать из сборки каждый кадр
         private Texture2D _iconSpeedPlus;
@@ -241,7 +242,40 @@ namespace FurnitureAnimationsMod
                 Plugin.Log.LogError($"[UI] Ошибка декомпозиции иерархии плашек: {ex.Message}");
             }
         }
+        
+        private void Update()
+        {
+            // Быстрая проверка живости плеера на сцене движка Unity
+            bool currentHasPlayer = UnityEngine.Object.FindObjectOfType<FurnitureAnimationPlayer>() != null;
 
+            // Интерфейс просыпается и пересчитывает uGUI-кнопки ТОЛЬКО в ту миллисекунду,
+            // когда плеер физически появился на сцене (или исчез при возврате в позу)
+            if (currentHasPlayer != _lastHadPlayerState)
+            {
+                _lastHadPlayerState = currentHasPlayer;
+
+                if (currentHasPlayer)
+                {
+                    // Если плеер родился — запускаем мягкую корутину ожидания конца кадра.
+                    // Это даст ванильной игре UIPose время завершить свой внутренний цикл,
+                    // и мы со 100% гарантией включим кнопки на актуальной плашке Canvas! 🔥
+                    StartCoroutine(DelayedInterfaceRefresh());
+                }
+                else
+                {
+                    // Если плеер уничтожен (вернулись в позу) — мгновенно гасим кнопки скорости
+                    UpdateInterfaceStates();
+                }
+            }
+        }
+
+        private System.Collections.IEnumerator DelayedInterfaceRefresh()
+        {
+            yield return new WaitForEndOfFrame(); // Пропускаем рендер текущего кадра
+            yield return new WaitForEndOfFrame(); // Пропускаем второй кадр для железной гарантии
+
+            UpdateInterfaceStates(); // Пересчитываем хамелеона и зажигаем кнопки анимации! 🎯🚀
+        }
 
         // --- ЦЕНТРАЛЬНЫЙ КОНТРОЛЛЕР ИНДИВИДУАЛЬНОЙ ВИДИМОСТИ КНОПОК ---
         public void UpdateInterfaceStates()
