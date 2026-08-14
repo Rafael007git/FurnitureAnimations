@@ -56,7 +56,7 @@ namespace FurnitureAnimationsMod
         }
 
         // Внутренний метод сканирования папки и запуска (вынесен для переиспользования при UnMute)
-        private void ScanAndPlay(string animationName)
+        public void ScanAndPlay(string animationName)
         {
             string audioFolder = Path.Combine(BepInEx.Paths.PluginPath, "FurnitureAnimations", "Audio");
             if (!Directory.Exists(audioFolder)) Directory.CreateDirectory(audioFolder);

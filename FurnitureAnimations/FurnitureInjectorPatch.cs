@@ -490,11 +490,11 @@ namespace FurnitureAnimationsMod
                 if (currentPoseData == null)
                 {
                     // Это значит, что игрок кликнул по оригинальной ВАНИЛЬНОЙ позе игры!
-                    // Сносим наш кастомный плеер анимаций (используем уникальное имя переменной, чтобы не было конфликта)
+                    // Сносим наш кастомный плеер анимаций мгновенно, чтобы вернуть управление игре
                     var vanillaCleanupPlayer = characterComp.gameObject.GetComponent<FurnitureAnimationPlayer>();
                     if (vanillaCleanupPlayer != null)
                     {
-                        UnityEngine.Object.Destroy(vanillaCleanupPlayer);
+                        UnityEngine.Object.DestroyImmediate(vanillaCleanupPlayer);
                     }
 
                     // Включаем встроенный аниматор игры обратно, чтобы ванильная поза могла запуститься!
@@ -518,7 +518,7 @@ namespace FurnitureAnimationsMod
                 // УМНЫЙ ПЕРЕХВАТ ДЛЯ СМЕНЫ И ОСТАНОВКИ АНИМАЦИЙ 🛑💃
                 // =========================================================================
 
-                // 1. Проверяем, запущен ли наш встроенный плеер на персонаже прямо сейчас
+                // Проверяем, запущен ли наш встроенный плеер на персонаже прямо сейчас
                 var activePlayer = characterComp.gameObject.GetComponent<FurnitureAnimationPlayer>();
 
                 if (activePlayer != null)
@@ -531,19 +531,30 @@ namespace FurnitureAnimationsMod
                         currentPoseData.ControllerName == currentlyPlayingAnim)
                     {
                         Plugin.Log.LogWarning($"[SDK_Icon] Клик по той же анимации '{currentlyPlayingAnim}'. Останавливаем плеер.");
-                        UnityEngine.Object.Destroy(activePlayer as UnityEngine.Component);
+                        UnityEngine.Object.DestroyImmediate(activePlayer);
+
+                        if (AnimationAudioManager.Instance != null)
+                        {
+                            AnimationAudioManager.Instance.StopAudio();
+                        }
                         return; // Мгновенный выход, ничего нового не запускаем
                     }
 
-                    // ЕСЛИ КЛИКНУЛИ ПО ЛЮБОЙ ДРУГОЙ ИКОНКЕ -> Сносим старый плеер и даем коду идти дальше
+                    // ЕСЛИ КЛИКНУЛИ ПО ЛЮБОЙ ДРУГОЙ ИКОНКЕ -> Сносим старый плеер МГНОВЕННО и тушим звук
                     Plugin.Log.LogWarning($"[SDK_Icon] Переключение! Удаляем старую анимацию '{currentlyPlayingAnim}' перед запуском нового режима.");
-                    UnityEngine.Object.Destroy(activePlayer as UnityEngine.Component);
+
+                    // Фикс Бага 3: Используем DestroyImmediate, чтобы старый плеер полностью стерся до генерации нового
+                    UnityEngine.Object.DestroyImmediate(activePlayer);
+
                     if (AnimationAudioManager.Instance != null)
                     {
+                        // Обязательно тушим старый трек, переводя аудио-менеджер в состояние "noAudio"
                         AnimationAudioManager.Instance.StopAudio();
                     }
                 }
 
+                // =========================================================================
+                // ЛОГИКА ЗАПУСКА И СИНХРОНИЗАЦИИ НОВЫХ СОСТОЯНИЙ
                 // =========================================================================
 
                 // Логика запуска внешней JSON-анимации мода
@@ -552,7 +563,30 @@ namespace FurnitureAnimationsMod
                     Plugin.Log.LogWarning($"[SDK_Icon] Активирован локальный встроенный плеер для анимации: {currentPoseData.ControllerName}");
 
                     var newPlayer = characterComp.gameObject.AddComponent<FurnitureAnimationPlayer>();
+
+                    // Шаг А: Первичный запуск (плеер считает базовое состояние "ИмяАнимации_noAudio")
                     newPlayer.Play(characterComp, currentPoseData.ControllerName, furniture, currentPoseData);
+
+                    // Шаг Б: Мгновенный принудительный запуск музыкального автомата под НОВУЮ анимацию в том же кадре!
+                    if (AnimationAudioManager.Instance != null)
+                    {
+                        AnimationAudioManager.Instance.ScanAndPlay(currentPoseData.ControllerName);
+
+                        // Шаг В: Если у новой анимации нашелся реальный аудиотрек, сразу перевызываем применение из ОЗУ
+                        string trueTrack = AnimationAudioManager.Instance.GetCurrentTrackName();
+                        if (trueTrack != "noAudio")
+                        {
+                            string newSessionKey = $"{currentPoseData.ControllerName}_{trueTrack}";
+
+                            if (config.RuntimePlaybackMemory != null && config.RuntimePlaybackMemory.TryGetValue(newSessionKey, out PlaybackSettingsData savedSettings))
+                            {
+                                // Накатываем сохраненные параметры скорости из ОЗУ уже для правильной музыкальной пары
+                                newPlayer.ChangeSpeed(savedSettings.Speed - newPlayer.GetSpeed());
+                                // newPlayer.SetEaseMode(savedSettings.EaseMode); // Разблокируем, когда допишем метод плеера
+                                Plugin.Log.LogInfo($"[ОЗУ_КЛИК_СИНХРОН] Музыка найдена! Память успешно переключена на пару: {newSessionKey}");
+                            }
+                        }
+                    }
                     return;
                 }
 
@@ -564,7 +598,6 @@ namespace FurnitureAnimationsMod
                     {
                         Global.code.StartCoroutine(ExecuteBonesInjectionDelayed(characterComp, currentPoseData.JsonFileName));
                     }
-
                 }
             }
         }
