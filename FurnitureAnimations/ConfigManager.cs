@@ -187,6 +187,8 @@ namespace FurnitureAnimationsMod
         {
             if (string.IsNullOrEmpty(furnitureName) || string.IsNullOrEmpty(animationName)) return;
 
+            string cleanFurnName = furnitureName.Replace("(Clone)", "").Trim();
+
             // Находим нужный конфиг мебели в ОЗУ-словаре мода
             if (LoadedConfigs.TryGetValue(furnitureName, out FurnitureConfig config) && config != null)
             {
@@ -215,6 +217,101 @@ namespace FurnitureAnimationsMod
 
                 Plugin.Log.LogInfo($"[ОЗУ_МЕНЕДЖЕР] Зафиксировано в ОЗУ для [{sessionKey}]: Скорость={speed * 100}%, Сглаживание={easeMode}");
             }
+        }
+
+        public static void InitializeRuntimeMemoryForFurniture(Furniture furniture)
+        {
+            if (furniture == null) return;
+
+            string cleanFurnName = furniture.name.Replace("(Clone)", "").Trim();
+
+            // Находим конфиг мебели в глобальном ОЗУ-реестре
+            if (!LoadedConfigs.TryGetValue(cleanFurnName, out FurnitureConfig config) || config == null)
+            {
+                Plugin.Log.LogWarning($"[RAM_Init] Конфиг для мебели {cleanFurnName} не найден в LoadedConfigs. Пропуск.");
+                return;
+            }
+
+            // Лениво создаем словарь памяти, если его еще нет
+            if (config.RuntimePlaybackMemory == null)
+            {
+                config.RuntimePlaybackMemory = new Dictionary<string, PlaybackSettingsData>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            // Шаг 1. Сканируем вообще все аудиофайлы в папке Audio (как в методе ScanAndPlay)
+            List<string> allAudioFiles = new List<string> { "noAudio" }; // noAudio доступен всегда по ТЗ
+            string audioFolder = Path.Combine(PluginDirectory, "Audio");
+
+            if (Directory.Exists(audioFolder))
+            {
+                string[] files = Directory.GetFiles(audioFolder, "*.*");
+                foreach (string file in files)
+                {
+                    string ext = Path.GetExtension(file).ToLower();
+                    if (ext == ".wav" || ext == ".mp3" || ext == ".ogg")
+                    {
+                        string pureName = Path.GetFileName(file);
+                        if (!allAudioFiles.Contains(pureName))
+                        {
+                            allAudioFiles.Add(pureName);
+                        }
+                    }
+                }
+            }
+
+            // Шаг 2. Перебираем позы мебели и отбираем ТОЛЬКО динамические анимации
+            if (config.InteractionPoses == null || config.InteractionPoses.Count == 0) return;
+
+            int newlyCreatedPairs = 0;
+
+            foreach (var pose in config.InteractionPoses)
+            {
+                if (pose == null) continue;
+
+                // Фикс Бага 2: Жестко отсекаем статичные позы по полю Type!
+                if (pose.Type != "PoseAnimationsMod")
+                {
+                    continue;
+                }
+
+                string animName = pose.ControllerName;
+                if (string.IsNullOrEmpty(animName)) continue;
+
+                // Шаг 3. Строим пары Анимация -> Аудио по правилам ТЗ
+                foreach (string audioTrack in allAudioFiles)
+                {
+                    bool isIdle = animName.ToLower().Contains("idle");
+
+                    // Правило ТЗ: Для "idle" пишем только связку с "noAudio"
+                    if (isIdle && audioTrack != "noAudio")
+                    {
+                        continue;
+                    }
+
+                    // Правило ТЗ: Танцевальные анимации сочетаются с noAudio и ТОЛЬКО со своими треками
+                    if (!isIdle && audioTrack != "noAudio" && !audioTrack.StartsWith(animName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    // Формируем монолитный сессионный ключ
+                    string sessionKey = $"{animName}_{audioTrack}";
+
+                    // Если пара еще не была создана в памяти, инициализируем ее дефолтами по ТЗ (150%, Linear)
+                    if (!config.RuntimePlaybackMemory.ContainsKey(sessionKey))
+                    {
+                        config.RuntimePlaybackMemory[sessionKey] = new PlaybackSettingsData
+                        {
+                            Speed = 1.5f,       // 150% по умолчанию
+                            EaseMode = EaseMode.Linear // Linear по умолчанию
+                        };
+                        newlyCreatedPairs++;
+                    }
+                }
+            }
+
+            Plugin.Log.LogInfo($"[RAM_Init] Успешная подготовка ОЗУ для '{cleanFurnName}'. " +
+                               $"Всего пар в памяти: {config.RuntimePlaybackMemory.Count} (Создано новых: {newlyCreatedPairs})");
         }
     }
 }

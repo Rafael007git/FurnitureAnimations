@@ -354,6 +354,16 @@ namespace FurnitureAnimationsMod
 
             try
             {
+                // Наш Этап 1 (Путь А): Жестко готовим ОЗУ-карту до отрисовки кнопок
+                ConfigManager.InitializeRuntimeMemoryForFurniture(furniture);
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"[RAM_Error] Сбой пре-инициализации памяти в UIPose.Open: {ex.Message}");
+            }
+
+            try
+            {
                 // Находим или вешаем наш контроллер AnimationUiControls прямо на объект самого окна UIPose игры!
                 // Теперь панель родится сразу при клике "Сесть" (в позах или анимациях) и будет жить до закрытия меню.
                 AnimationUiControls uiControls = __instance.gameObject.GetComponent<AnimationUiControls>();
