@@ -306,6 +306,8 @@ namespace FurnitureAnimationsMod
                             EaseMode = EaseMode.Linear // Linear по умолчанию
                         };
                         newlyCreatedPairs++;
+
+                        Plugin.Log.LogInfo($"[RAM_State_New] -> Сгенерирована пара для '{cleanFurnName}': {sessionKey} (Дефолт: 150%, Linear)");
                     }
                 }
             }

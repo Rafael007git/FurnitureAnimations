@@ -9,7 +9,7 @@ namespace FurnitureAnimationsMod
     public class AnimationRadar : MonoBehaviour
     {
         private FurnitureAnimationPlayer _player;
-        private Rect _windowRect = new Rect(Screen.width - 410f, 10f, 400f, 650f); // Немного расширили окно под таблицу
+        private Rect _windowRect = new Rect(Screen.width - 410f, 10f, 420f, 950f); // Немного расширили окно под таблицу
         private float _fpsCounter = 0f;
         private float _fpsTimer = 0f;
         private int _fpsDisplay = 0;
@@ -107,7 +107,7 @@ namespace FurnitureAnimationsMod
             GUILayout.Label("<b>[RAM CONFIGURATION MAP FOR THIS FURNITURE]</b>", textStyle);
 
             // Начало области прокрутки таблицы ОЗУ-карт
-            _scrollPosition = GUILayout.BeginScrollView(_scrollPosition, GUILayout.Height(320));
+            _scrollPosition = GUILayout.BeginScrollView(_scrollPosition, GUILayout.Height(620));
 
             GUIStyle tableHeaderStyle = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold };
             tableHeaderStyle.normal.textColor = Color.yellow;
@@ -164,7 +164,7 @@ namespace FurnitureAnimationsMod
                     rowStyle.normal.textColor = rowColor;
 
                     GUILayout.BeginHorizontal();
-                    GUILayout.Label($"{rowPrefix}{animName}\n   └─ {audioTrack}", rowStyle, GUILayout.Width(220));
+                    GUILayout.Label($"{rowPrefix}{animName}\n   └─ {audioTrack}", rowStyle, GUILayout.Width(240));
                     GUILayout.Label(speedText, rowStyle, GUILayout.Width(60));
                     GUILayout.Label(easeText, rowStyle, GUILayout.Width(80));
                     GUILayout.EndHorizontal();
