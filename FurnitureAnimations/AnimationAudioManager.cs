@@ -111,9 +111,8 @@ namespace FurnitureAnimationsMod
 
             _currentLoadCoroutine = StartCoroutine(LoadAndPlayAudio(nextTrackPath, GetAudioType(nextTrackPath)));
             Plugin.Log.LogInfo($"[AudioEngine] Переключено на {Path.GetFileName(nextTrackPath)} ({_currentTrackIndex + 1}/{_currentPlaylist.Count})");
-            
+
             // --- ЭТАП 1: ТРИГГЕР МУЗЫКАЛЬНОГО АВТОМАТА ПРИ СМЕНЕ ТРЕКА (Пункт 24-25 ТЗ) --- 🎼🚀
-            // Находим ванильное окно UIPose, чтобы легально и без рефлексии узнать текущую мебель интерактива!
             UIPose uiPoseNext = GameObject.FindObjectOfType<UIPose>();
             FurnitureAnimationPlayer activePlayer = GameObject.FindObjectOfType<FurnitureAnimationPlayer>();
 
@@ -125,26 +124,28 @@ namespace FurnitureAnimationsMod
                 if (ConfigManager.LoadedConfigs.TryGetValue(cleanFurnName, out FurnitureConfig config) && config != null && config.RuntimePlaybackMemory != null)
                 {
                     string activeAnimName = activePlayer.GetPlayingAnimationName();
-                    string newTrackKey = GetCurrentTrackName(); // Получаем свежее имя файла
+
+                    // ФИКС РАССИНХРОНА: Берем чистое имя файла СИНХРОННО прямо из вычисленного пути,
+                    // не дожидаясь, пока асинхронная корутина обновит AudioSource!
+                    string newTrackKey = Path.GetFileName(nextTrackPath);
                     string sessionKey = $"{activeAnimName}_{newTrackKey}";
 
                     if (config.RuntimePlaybackMemory.TryGetValue(sessionKey, out PlaybackSettingsData savedSettings) && savedSettings != null)
                     {
-                        // А) Связка уже настраивалась в этой сессии: применяем её темп и сглаживание!
+                        // А) Легальная связка найдена в ОЗУ: применяем её параметры!
                         activePlayer.ChangeSpeed(savedSettings.Speed - activePlayer.GetSpeed());
-                        // Если у тебя в плеере будет метод прямого выставления EaseMode, вызываем его:
                         // activePlayer.SetEaseMode(savedSettings.EaseMode); 
 
                         Plugin.Log.LogInfo($"[Автомат_ОЗУ] Трек изменился! Из памяти применена пара [{sessionKey}]: Скорость={savedSettings.Speed * 100}%");
                     }
                     else
                     {
-                        // Б) Связки еще нет в ОЗУ: выставляем дефолт по ТЗ (150% и Linear)!
+                        // Б) ЖЕСТКИЙ БЛОК ФАНТОМОВ ПО ТЗ (Путь А): 
+                        // Если этой пары нет в изначальном слепке мебели, включаем временный дефолт,
+                        // но КАТЕГОРИЧЕСКИ НЕ ЗАСОРЯЕМ ОЗУ-словарь фантомной строкой!
                         activePlayer.ChangeSpeed(1.5f - activePlayer.GetSpeed());
 
-                        // Лениво инициализируем дефолты в ОЗУ для этой новой пары
-                        config.RuntimePlaybackMemory[sessionKey] = new PlaybackSettingsData { Speed = 1.5f, EaseMode = EaseMode.Linear };
-                        Plugin.Log.LogInfo($"[Автомат_ОЗУ] Новый трек! Для пары [{sessionKey}] выставлен дефолт по ТЗ: 150%");
+                        Plugin.Log.LogWarning($"[Автомат_ОЗУ_ФАНТОМ] Для пары [{sessionKey}] применен временный дефолт. Запись в ОЗУ заблокирована.");
                     }
 
                     // Мгновенно заставляем нашу UI-панель обновить цифры на кнопках скорости, чтобы интерфейс не врал
