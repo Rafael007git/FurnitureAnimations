@@ -69,7 +69,12 @@ namespace FurnitureAnimationsMod
                             });
                             RebindButtonAction(buttonsContainer, "Mod_BtnEaseToggle", () => {
                                 var p = UnityEngine.Object.FindObjectOfType<FurnitureAnimationPlayer>();
-                                if (p != null) { p.ToggleEaseMode(); UpdateEaseButton(); }
+                                if (p != null)
+                                {
+                                    _player = p; // <-- СИНХРОНИЗИРУЕМ ПОЛЕ КЛАССА, ЧТОБЫ UI УВИДЕЛ РЕЖИМ!
+                                    p.ToggleEaseMode();
+                                    UpdateEaseButton();
+                                }
                             });
                         }
 

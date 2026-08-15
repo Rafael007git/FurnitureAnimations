@@ -221,7 +221,7 @@ namespace FurnitureAnimationsMod
                         _audioSource.volume = 1.0f;
                         _audioSource.mute = _isGlobalMuted;
                         _audioSource.Play();
-                        Plugin.Log.LogWarning($"[AudioEngine] Звуковой файл '{clip.name}' запущен!");
+                        Plugin.Log.LogInfo($"[AudioEngine] Звуковой файл '{Path.GetFileName(filePath)}' успешно воспроизводится!");
                     }
                 }
             }
