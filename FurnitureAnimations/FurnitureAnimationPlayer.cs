@@ -180,6 +180,14 @@ namespace FurnitureAnimationsMod
                         _speedModifier = savedSettings.Speed;
                         _currentEaseMode = savedSettings.EaseMode;
                         Plugin.Log.LogInfo($"[ОЗУ_СТАРТ] Найдена рантайм-пара [{sessionKey}]. Скорость: {_speedModifier * 100}%, Сглаживание: {_currentEaseMode}");
+
+                        // --- СИНХРОНИЗАЦИЯ uGUI ИНТЕРФЕЙСА С ОЗУ ПРИ СТАРТЕ --- 🧠🔄
+                        // Плеер применил настройки из памяти и принудительно просит uGUI обновиться под них!
+                        var uiControls = UnityEngine.Object.FindObjectOfType<AnimationUiControls>();
+                        if (uiControls != null)
+                        {
+                            uiControls.UpdateInterfaceStates();
+                        }
                     }
                     else
                     {

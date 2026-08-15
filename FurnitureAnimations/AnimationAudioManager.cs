@@ -170,7 +170,7 @@ namespace FurnitureAnimationsMod
 
                     if (config.RuntimePlaybackMemory.TryGetValue(sessionKey, out PlaybackSettingsData savedSettings) && savedSettings != null)
                     {
-                        // А) Легальная связка найдена в ОЗУ: применяем её параметры!
+                        // А) Из памяти применили параметры
                         activePlayer.ChangeSpeed(savedSettings.Speed - activePlayer.GetSpeed());
                         // activePlayer.SetEaseMode(savedSettings.EaseMode); 
 
@@ -178,19 +178,18 @@ namespace FurnitureAnimationsMod
                     }
                     else
                     {
-                        // Б) ЖЕСТКИЙ БЛОК ФАНТОМОВ ПО ТЗ (Путь А): 
-                        // Если этой пары нет в изначальном слепке мебели, включаем временный дефолт,
-                        // но КАТЕГОРИЧЕСКИ НЕ ЗАСОРЯЕМ ОЗУ-словарь фантомной строкой!
+                        // Б) Включили дефолт, ОЗУ не засоряем
                         activePlayer.ChangeSpeed(1.5f - activePlayer.GetSpeed());
-
-                        Plugin.Log.LogWarning($"[Автомат_ОЗУ_ФАНТОМ] Для пары [{sessionKey}] применен временный дефолт. Запись в ОЗУ заблокирована.");
+                        Plugin.Log.LogWarning($"[Автомат_ОЗУ_ФАНТОМ] Для пары [{sessionKey}] применен временный дефолт.");
                     }
 
-                    // Мгновенно заставляем нашу UI-панель обновить цифры на кнопках скорости, чтобы интерфейс не врал
+                    // --- ВОТ ЭТА СТРОЧКА (В самом низу, после всего ОЗУ-выбора) --- 🎼🚀🎨
+                    // Плеер уже изменил стейт, теперь принудительно заставляем uGUI перерисовать иконки и цифры!
                     AnimationUiControls uiControls = GameObject.FindObjectOfType<AnimationUiControls>();
                     if (uiControls != null)
                     {
                         uiControls.UpdateInterfaceStates();
+                        Plugin.Log.LogInfo($"[UI_СИНХРОН] Панель мода перерисована под новый трек: {sessionKey}");
                     }
                 }
             }

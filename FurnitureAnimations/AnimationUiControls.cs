@@ -599,9 +599,19 @@ namespace FurnitureAnimationsMod
 
         private void UpdateEaseButton()
         {
-            if (_player == null) return;
+            // 1. Проверяем, видит ли uGUI живой плеер прямо сейчас
+            if (_player == null || _player.Equals(null))
+            {
+                Plugin.Log.LogWarning("[UI_DEB_EASE] UpdateEaseButton вызван, но _player == null! Картинка не изменится.");
+                return;
+            }
             UpdateText("Mod_BtnEaseToggle", $"Interpolation: {_player.GetEaseMode()}");
             UpdateImageSprite("Mod_BtnEaseToggle", GetCurrentEaseSprite());
+
+            // Обновляем текст, если он есть
+            // 2. Считываем режим из плеера и получаем для него спрайт
+            EaseMode currentMode = _player.GetEaseMode();
+            UpdateText("Mod_BtnEaseToggle", $"Interpolation: {currentMode}");
         }
 
         private void UpdateSoundButton()

@@ -1,6 +1,7 @@
-﻿using System;
-using System.IO;
+﻿using Newtonsoft.Json;
+using System;
 using System.Collections.Generic;
+using System.IO;
 using UnityEngine;
 
 namespace FurnitureAnimationsMod
@@ -315,5 +316,44 @@ namespace FurnitureAnimationsMod
             Plugin.Log.LogInfo($"[RAM_Init] Успешная подготовка ОЗУ для '{cleanFurnName}'. " +
                                $"Всего пар в памяти: {config.RuntimePlaybackMemory.Count} (Создано новых: {newlyCreatedPairs})");
         }
+
+        // Сохраняем настройки для анимаций и аудио при выходе из интерактива
+        public static void SaveFurniturePlaybackMemory(string furnitureName)
+        {
+            string cleanName = furnitureName.Replace("(Clone)", "").Trim();
+
+            if (!LoadedConfigs.TryGetValue(cleanName, out FurnitureConfig config) || config == null)
+            {
+                Plugin.Log.LogWarning($"[JSON_Запись] Не найден конфиг в ОЗУ для {cleanName}. Сохранение отменено.");
+                return;
+            }
+
+            try
+            {
+                // Формируем путь к параллельному файлу мебели
+                string configPath = Path.Combine(PluginDirectory, "Configs", $"{cleanName}.json");
+
+                string dir = Path.GetDirectoryName(configPath);
+                if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+
+                var jsonSettings = new JsonSerializerSettings
+                {
+                    Formatting = Formatting.Indented,
+                    NullValueHandling = NullValueHandling.Ignore
+                };
+
+                // Запекаем весь конфиг мебели со всеми его камерами, позами и нашей ОЗУ-картой!
+                string jsonText = JsonConvert.SerializeObject(config, jsonSettings);
+                File.WriteAllText(configPath, jsonText);
+
+                int pairsCount = config.RuntimePlaybackMemory != null ? config.RuntimePlaybackMemory.Count : 0;
+                Plugin.Log.LogInfo($"[JSON_Запись] Успех! Параметры мебели '{cleanName}' запечены на диск ({pairsCount} пар). Путь: {configPath}");
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"[JSON_Запись_Ошибка] Критический сбой при записи JSON для {cleanName}: {ex.Message}");
+            }
+        }
+
     }
 }

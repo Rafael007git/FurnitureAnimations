@@ -49,7 +49,7 @@ namespace FurnitureAnimationsMod
         // --- НАШЕ НОВОЕ ДОПОЛНЕНИЕ ДЛЯ ОЗУ (ЭТАП 1) --- 🧠⚡
         // Ключ строки будет иметь формат: "ИмяАнимации_ИмяАудио" (например, "danceBachata_danceBachata-01")
         // [Newtonsoft.Json.JsonIgnore] гарантирует, что на Этапе 1 мы работаем СТРОГО в памяти и диск не трогаем!
-        [Newtonsoft.Json.JsonIgnore]
+        // [Newtonsoft.Json.JsonIgnore]
         public Dictionary<string, PlaybackSettingsData> RuntimePlaybackMemory = new Dictionary<string, PlaybackSettingsData>(StringComparer.OrdinalIgnoreCase);
     }
 

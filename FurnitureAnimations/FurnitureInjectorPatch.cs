@@ -688,6 +688,31 @@ namespace FurnitureAnimationsMod
         [HarmonyPrefix]
         public static bool Prefix(Furniture __instance)
         {
+            if (__instance != null)
+            {
+                try
+                {
+                    // --- ЭТАП 3: СОХРАНЕНИЕ ОЗУ-КАРТЫ В JSON ПРИ ВЫХОДЕ --- 💾🔥
+                    string cleanFurnName = __instance.name.Replace("(Clone)", "").Trim();
+
+                    // Проверяем, есть ли что сохранять в реестре LoadedConfigs
+                    if (ConfigManager.LoadedConfigs.TryGetValue(cleanFurnName, out FurnitureConfig config) && config != null)
+                    {
+                        int pairsCount = config.RuntimePlaybackMemory != null ? config.RuntimePlaybackMemory.Count : 0;
+                        Plugin.Log.LogInfo($"[JSON_Экспорт] Игрок покидает '{cleanFurnName}'. Сбрасываем ОЗУ-карту ({pairsCount} пар) на диск...");
+
+                        // Вызываем ваш стандартный метод сохранения мода. 
+                        // (Если в вашем ConfigManager метод сохранения называется немного иначе, подставьте его точное имя)
+                        ConfigManager.SaveFurniturePlaybackMemory(cleanFurnName);
+                    }
+                }
+                catch (System.Exception ex)
+                {
+                    Plugin.Log.LogError($"[JSON_Экспорт_Ошибка] Ошибка автоматического сохранения ОЗУ в JSON: {ex.Message}");
+                }
+            }
+
+            // Ниже идет ваш оригинальный код безопасности
             if (__instance.user == null)
             {
                 Plugin.Log.LogWarning("[SafetyPatch] Безопасный выход из пустого интерактива.");
