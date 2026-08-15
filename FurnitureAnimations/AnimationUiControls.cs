@@ -217,7 +217,12 @@ namespace FurnitureAnimationsMod
                     // Кнопка Сглаживания
                     CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnEaseToggle", "Interpolation: ", btnPos, GetCurrentEaseSprite(), () => {
                         var p = UnityEngine.Object.FindObjectOfType<FurnitureAnimationPlayer>();
-                        if (p != null) { p.ToggleEaseMode(); UpdateEaseButton(); }
+                        if (p != null)
+                        {
+                            _player = p; // <-- СИНХРОНИЗИРУЕМ ПОЛЕ КЛАССА, ЧТОБЫ UI УВИДЕЛ РЕЖИМ!
+                            p.ToggleEaseMode();
+                            UpdateEaseButton();
+                        }
                     });
                     btnPos.y += spacing;
 
@@ -281,16 +286,16 @@ namespace FurnitureAnimationsMod
             Transform container = _uiPanelInstance.transform.Find("Mod_AnimationButtonsContainer");
             if (container == null) return;
 
-            // --- ИСПРАВЛЕНИЕ БАГА АНИМАЦИИ: Динамический перехват плеера --- ⚡
-            // Использованием .Equals(null) или жестким FindObjectOfType гарантируем, 
-            // что стертый плеер Латины уступит место новому жильцу!
+            // --- ИСПРАВЛЕНИЕ БАГА АНИМАЦИИ: Гарантированный перехват живого плеера --- ⚡
+            // Используем исключительно физическое присутствие компонента на сцене
             if (_player == null || _player.Equals(null))
             {
                 _player = UnityEngine.Object.FindObjectOfType<FurnitureAnimationPlayer>();
             }
 
-            // А) Управление кнопками анимации И ЗВУКА: видны только если плеер живой и анимация выбрана
-            bool hasActiveAnimation = (_player != null && _player.isActiveAndEnabled);
+            // Проверяем физическое существование плеера (убираем капризный isActiveAndEnabled для uGUI)
+            bool hasActiveAnimation = (_player != null && !_player.Equals(null));
+
             container.Find("Mod_BtnSpeedPlus")?.gameObject.SetActive(hasActiveAnimation);
             container.Find("Mod_BtnSpeedMinus")?.gameObject.SetActive(hasActiveAnimation);
             container.Find("Mod_BtnEaseToggle")?.gameObject.SetActive(hasActiveAnimation);
@@ -313,8 +318,8 @@ namespace FurnitureAnimationsMod
             UIPose uiPose = GameObject.FindObjectOfType<UIPose>();
             Furniture currentFurniture = uiPose != null ? uiPose.curFurniture : null;
 
-            int vanillaCamsCount = 0;   // Счётчик встроенных ванильных камер игры
-            int customCamsCount = 0;    // Счётчик наших кастомных SDK-камер
+            int vanillaCamsCount = 0;
+            int customCamsCount = 0;
 
             if (currentFurniture != null && currentFurniture.cameras?.items != null)
             {
@@ -323,7 +328,6 @@ namespace FurnitureAnimationsMod
                     Transform t = obj as Transform;
                     if (t != null)
                     {
-                        // Раздельно считаем типы камер на сцене мебели
                         if (t.name.StartsWith("Custom camera"))
                         {
                             customCamsCount++;
@@ -333,7 +337,6 @@ namespace FurnitureAnimationsMod
                             vanillaCamsCount++;
                         }
 
-                        // Фиксируем имя той, которая активна прямо сейчас
                         if (t.gameObject.activeInHierarchy)
                         {
                             currentSelectedCamName = t.name;
@@ -343,7 +346,6 @@ namespace FurnitureAnimationsMod
                 }
             }
 
-            // Вытаскиваем лимиты свободных слотов для добавления
             FurnitureConfig currentConfig = null;
             if (currentFurniture != null)
             {
@@ -351,10 +353,10 @@ namespace FurnitureAnimationsMod
                 ConfigManager.LoadedConfigs.TryGetValue(cleanName, out currentConfig);
             }
 
-            int nextVacantNum = (currentFurniture != null && currentConfig != null) ? ConfigManager.GetNextVacantCameraNumber(currentFurniture, currentConfig) : -1;
+            int nextVacantNum = (currentFurniture != null && currentConfig != null) ?
+                ConfigManager.GetNextVacantCameraNumber(currentFurniture, currentConfig) : -1;
             bool hasVacantSlots = (nextVacantNum != -1);
 
-            // Условие блокировки удаления единственной физической камеры (Защита от фантомных ракурсов)
             bool isTheOnlyPhysicalCameraLeft = isCustomCamSelected && (vanillaCamsCount == 0) && (customCamsCount <= 1);
 
             // В) УПРАВЛЕНИЕ ЕДИНОЙ КОНТЕКСТНОЙ КНОПКОЙ КАМЕРЫ 🔥🎯
@@ -363,28 +365,23 @@ namespace FurnitureAnimationsMod
             {
                 GameObject btnGo = contextBtnTrans.gameObject;
                 Button b = btnGo.GetComponent<Button>();
-                RawImage ri = btnGo.GetComponent<RawImage>(); // Хватаем компонент нашей текстуры иконки!
+                RawImage ri = btnGo.GetComponent<RawImage>();
 
                 if (isCustomCamSelected)
                 {
                     btnGo.SetActive(true);
-
                     if (isTheOnlyPhysicalCameraLeft)
                     {
-                        // Жесткий запрет: ванильных камер нет, кастомная — последняя на сцене.
                         UpdateText("Mod_BtnContextCamera", "Cannot delete last cam");
                         UpdateImageSprite("Mod_BtnContextCamera", _iconDeleteCamera);
                         if (b != null) b.interactable = false;
-                        // ДЕЛАЕМ ТЕКСТУРУ ИКОНКИ ПОЛУПРОЗРАЧНОЙ (30%) 🎨
                         if (ri != null) ri.color = new Color(1f, 1f, 1f, 0.3f);
                     }
                     else
                     {
-                        // Кастомную камеру можно спокойно удалять
                         UpdateText("Mod_BtnContextCamera", $"Delete: {currentSelectedCamName}");
                         UpdateImageSprite("Mod_BtnContextCamera", _iconDeleteCamera);
                         if (b != null) b.interactable = true;
-                        // ВОЗВРАЩАЕМ 100% ЯРКОСТЬ
                         if (ri != null) ri.color = Color.white;
                     }
                 }
@@ -394,31 +391,25 @@ namespace FurnitureAnimationsMod
                     UpdateText("Mod_BtnContextCamera", $"Add camera {nextVacantNum}");
                     UpdateImageSprite("Mod_BtnContextCamera", _iconAddCamera);
                     if (b != null) b.interactable = true;
-                    // ВОЗВРАЩАЕМ 100% ЯРКОСТЬ
                     if (ri != null) ri.color = Color.white;
                 }
                 else
                 {
-                    // Если активна встроенная ванильная камера игры — блокируем кнопку, защищая её от изменений
                     btnGo.SetActive(true);
                     UpdateText("Mod_BtnContextCamera", "Vanilla Camera");
                     UpdateImageSprite("Mod_BtnContextCamera", _iconAddCamera);
                     if (b != null) b.interactable = false;
-                    // ДЕЛАЕМ ТЕКСТУРУ ИКОНКИ ПОЛУПРОЗРАЧНОЙ (30%) 🎨
                     if (ri != null) ri.color = new Color(1f, 1f, 1f, 0.3f);
                 }
             }
 
-            // Обновляем текстовые статусы звуков и интерполяций
+            // Финальный безусловный рефреш uGUI (сработает идеально, так как ссылка жива)
             UpdateSpeedButtonsText();
             UpdateEaseButton();
             UpdateSoundButton();
 
-            // Если плеер на сцене умер (анимация выключена), очищаем ссылку, чтобы при следующем запуске анимации мод перехватил её заново
-            if (_player != null && !_player.isActiveAndEnabled)
-            {
-                _player = null;
-            }
+            // ФИКС УТЕЧКИ ССЫЛОК: Полностью удаляем агрессивное зануление _player = null в конце метода!
+            // Движок Unity сам очистит ссылку благодаря нашей проверке _player.Equals(null) на следующем тике.
         }
 
         // --- ИСПОЛНИТЕЛЬНАЯ КНОПКА: ДОБАВИТЬ КАМЕРУ ---
