@@ -183,17 +183,12 @@ namespace FurnitureAnimationsMod
                     }
                     else
                     {
-                        // Б) НАБОР ЕЩЕ НЕ СОЗДАН: Инициализируем дефолты строго по ТЗ (150% и Linear)!
+                        // Б) ЖЕСТКИЙ БЛОК ФАНТОМОВ ПО ТЗ: Включаем временный дефолт,
+                        // но КАТЕГОРИЧЕСКИ НЕ ЗАСОРЯЕМ ОЗУ-словарь перекрестными строками!
                         _speedModifier = 1.5f;
                         _currentEaseMode = EaseMode.Linear;
 
-                        // Запекаем дефолты в наш «блокнот» ОЗУ, чтобы при следующем тике они уже существовали
-                        config.RuntimePlaybackMemory[sessionKey] = new PlaybackSettingsData
-                        {
-                            Speed = _speedModifier,
-                            EaseMode = _currentEaseMode
-                        };
-                        Plugin.Log.LogInfo($"[ОЗУ_СТАРТ] Новая пара [{sessionKey}]. Выставлен дефолт по ТЗ: 150% и Linear.");
+                        Plugin.Log.LogWarning($"[ОЗУ_СТАРТ_БЛОК] Для пары [{sessionKey}] применен временный дефолт. Запись в ОЗУ отклонена.");
                     }
                 }
             }

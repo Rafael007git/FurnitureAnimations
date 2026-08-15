@@ -562,30 +562,31 @@ namespace FurnitureAnimationsMod
                 {
                     Plugin.Log.LogWarning($"[SDK_Icon] Активирован локальный встроенный плеер для анимации: {currentPoseData.ControllerName}");
 
+                    // 1. Принудительно очищаем рантайм-состояние трека в аудио-менеджере СИНХРОННО до старта плеера!
+                    if (AnimationAudioManager.Instance != null)
+                    {
+                        AnimationAudioManager.Instance.StopAudio();
+
+                        // Сбрасываем индекс плейлиста в -1, чтобы GetCurrentTrackName() 
+                        // ЖЕЛЕЗНО вернул "noAudio" в этом кадре!
+                        var indexField = typeof(AnimationAudioManager).GetField("_currentTrackIndex",
+                            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                        if (indexField != null) indexField.SetValue(AnimationAudioManager.Instance, -1);
+                    }
+
                     var newPlayer = characterComp.gameObject.AddComponent<FurnitureAnimationPlayer>();
 
-                    // Шаг А: Первичный запуск (плеер считает базовое состояние "ИмяАнимации_noAudio")
+                    // 2. Запускаем плеер. Теперь он гарантированно соберет чистый ключ "ИмяАнимации_noAudio"
                     newPlayer.Play(characterComp, currentPoseData.ControllerName, furniture, currentPoseData);
 
-                    // Шаг Б: Мгновенный принудительный запуск музыкального автомата под НОВУЮ анимацию в том же кадре!
+                    // 3. Запускаем сканирование и подбор музыки для новой анимации
                     if (AnimationAudioManager.Instance != null)
                     {
                         AnimationAudioManager.Instance.ScanAndPlay(currentPoseData.ControllerName);
 
-                        // Шаг В: Если у новой анимации нашелся реальный аудиотрек, сразу перевызываем применение из ОЗУ
-                        string trueTrack = AnimationAudioManager.Instance.GetCurrentTrackName();
-                        if (trueTrack != "noAudio")
-                        {
-                            string newSessionKey = $"{currentPoseData.ControllerName}_{trueTrack}";
-
-                            if (config.RuntimePlaybackMemory != null && config.RuntimePlaybackMemory.TryGetValue(newSessionKey, out PlaybackSettingsData savedSettings))
-                            {
-                                // Накатываем сохраненные параметры скорости из ОЗУ уже для правильной музыкальной пары
-                                newPlayer.ChangeSpeed(savedSettings.Speed - newPlayer.GetSpeed());
-                                // newPlayer.SetEaseMode(savedSettings.EaseMode); // Разблокируем, когда допишем метод плеера
-                                Plugin.Log.LogInfo($"[ОЗУ_КЛИК_СИНХРОН] Музыка найдена! Память успешно переключена на пару: {newSessionKey}");
-                            }
-                        }
+                        // ВАЖНО: Больше никакого ручного ChangeSpeed здесь не вызываем! 
+                        // Наша функция ScanAndPlay сама внутри себя запустит LoadAndPlayAudio, 
+                        // а Update-цикл или плеер подхватят настройки ОЗУ легально.
                     }
                     return;
                 }
