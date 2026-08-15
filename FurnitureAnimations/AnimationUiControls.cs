@@ -59,8 +59,8 @@ namespace FurnitureAnimationsMod
                         // Перепривязываем события для кнопок анимаций
                         if (_player != null)
                         {
-                            RebindButtonAction(buttonsContainer, "Mod_BtnSpeedPlus", () => { _player.ChangeSpeed(0.1f); UpdateSpeedButtonsText(); });
-                            RebindButtonAction(buttonsContainer, "Mod_BtnSpeedMinus", () => { _player.ChangeSpeed(-0.1f); UpdateSpeedButtonsText(); });
+                            RebindButtonAction(buttonsContainer, "Mod_BtnSpeedPlus", () => { FurnitureAnimationPlayer.Instance?.ChangeSpeed(0.1f); UpdateSpeedButtonsText(); });
+                            RebindButtonAction(buttonsContainer, "Mod_BtnSpeedMinus", () => { FurnitureAnimationPlayer.Instance?.ChangeSpeed(-0.1f); UpdateSpeedButtonsText(); });
                             RebindButtonAction(buttonsContainer, "Mod_BtnEaseToggle", () => ExecuteEaseToggleAction());
                         }
 
@@ -186,18 +186,36 @@ namespace FurnitureAnimationsMod
                     // Б) БЛОК АНИМАЦИЙ И ЗВУКА (ИДЕТ СЛЕДОМ) 🎬🎵
                     // ==========================================================
 
-                    // Кнопка Скорость +
-                    string speedPlusTxt = _player != null ? $"Speed: {Mathf.RoundToInt(_player.GetSpeed() * 100)}% (+10)" : "Speed: ---";
-                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnSpeedPlus", speedPlusTxt, btnPos, _iconSpeedPlus, () => { _player?.ChangeSpeed(0.1f); UpdateSpeedButtonsText(); });
+                    // --- КНОПКА СКОРОСТЬ + ---
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnSpeedPlus", "Speed: ---", btnPos, _iconSpeedPlus, () =>
+                    {
+                        // Вместо _player? берем строго живой синглтон!
+                        var livePlayer = FurnitureAnimationPlayer.Instance;
+                        if (livePlayer != null)
+                        {
+                            livePlayer.ChangeSpeed(0.1f);
+                            UpdateSpeedButtonsText();
+                        }
+                    });
                     btnPos.y += spacing;
 
-                    // Кнопка Скорость -
-                    string speedMinusTxt = _player != null ? $"Speed: {Mathf.RoundToInt(_player.GetSpeed() * 100)}% (-10)" : "Speed: ---";
-                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnSpeedMinus", speedMinusTxt, btnPos, _iconSpeedMinus, () => { _player?.ChangeSpeed(-0.1f); UpdateSpeedButtonsText(); });
+                    // --- КНОПКА СКОРОСТЬ - ---
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnSpeedMinus", "Speed: ---", btnPos, _iconSpeedMinus, () =>
+                    {
+                        var livePlayer = FurnitureAnimationPlayer.Instance;
+                        if (livePlayer != null)
+                        {
+                            livePlayer.ChangeSpeed(-0.1f);
+                            UpdateSpeedButtonsText();
+                        }
+                    });
                     btnPos.y += spacing;
 
                     // Кнопка Сглаживания
-                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnEaseToggle", "Interpolation: ", btnPos, GetCurrentEaseSprite(), () => ExecuteEaseToggleAction());
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnEaseToggle", "Interpolation: ", btnPos, GetCurrentEaseSprite(), () =>
+                    {
+                        ExecuteEaseToggleAction();
+                    });
                     btnPos.y += spacing;
 
                     // Кнопка: Следующий трек
@@ -622,21 +640,27 @@ namespace FurnitureAnimationsMod
 
         private void ExecuteEaseToggleAction()
         {
-            // 1. Гарантируем, что оперируем живым плеером
-            if (_player == null || _player.Equals(null) || !_player.isActiveAndEnabled)
+            // 1. Хватаем строго живой синглтон плеера напрямую из движка в момент клика
+            var livePlayer = FurnitureAnimationPlayer.Instance;
+
+            // Резервный поиск на случай, если синглтон еще не успел обновиться
+            if (livePlayer == null || livePlayer.Equals(null) || !livePlayer.isActiveAndEnabled)
             {
-                _player = UnityEngine.Object.FindObjectOfType<FurnitureAnimationPlayer>();
+                livePlayer = UnityEngine.Object.FindObjectOfType<FurnitureAnimationPlayer>();
             }
 
-            if (_player != null && _activeFurnitureInstance != null)
+            // Синхронизируем наше локальное поле класса, чтобы другие методы (например, UpdateEaseButton) не упали
+            _player = livePlayer;
+
+            if (livePlayer != null && _activeFurnitureInstance != null)
             {
-                // 2. Меняем режим в плеере и обновляем иконку/текст кнопки
-                _player.ToggleEaseMode();
+                // 2. Меняем режим в ЖИВОМ плеере и обновляем иконку/текст кнопки
+                livePlayer.ToggleEaseMode();
                 UpdateEaseButton();
 
                 // 3. Безопасно вычисляем компоненты ключа
                 string cleanFurnName = _activeFurnitureInstance.name.Replace("(Clone)", "").Trim();
-                string activeAnimName = _player.GetPlayingAnimationName();
+                string activeAnimName = livePlayer.GetPlayingAnimationName();
 
                 // Фикс ошибок 404: если имя трека сомнительное, принудительно шлем "noAudio" по ТЗ
                 string currentTrackName = "noAudio";
@@ -654,15 +678,15 @@ namespace FurnitureAnimationsMod
                     cleanFurnName,
                     activeAnimName,
                     currentTrackName,
-                    _player.GetSpeed(),
-                    _player.GetEaseMode()
+                    livePlayer.GetSpeed(),
+                    livePlayer.GetEaseMode()
                 );
 
-                Plugin.Log.LogInfo($"[UI_Action] Сглаживание изменено для {activeAnimName} + {currentTrackName}");
+                Plugin.Log.LogInfo($"[UI_Action] Сглаживание успешно изменено для живой пары: {activeAnimName} + {currentTrackName}");
             }
             else
             {
-                Plugin.Log.LogError("[UI_Action] Не удалось переключить сглаживание: активный плеер не найден!");
+                Plugin.Log.LogError("[UI_Action] Не удалось переключить сглаживание: активный плеер анимаций физически отсутствует на сцене!");
             }
         }
         #endregion
