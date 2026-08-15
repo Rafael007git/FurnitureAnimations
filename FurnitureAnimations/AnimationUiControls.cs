@@ -61,20 +61,7 @@ namespace FurnitureAnimationsMod
                         {
                             RebindButtonAction(buttonsContainer, "Mod_BtnSpeedPlus", () => { _player.ChangeSpeed(0.1f); UpdateSpeedButtonsText(); });
                             RebindButtonAction(buttonsContainer, "Mod_BtnSpeedMinus", () => { _player.ChangeSpeed(-0.1f); UpdateSpeedButtonsText(); });
-                            RebindButtonAction(buttonsContainer, "Mod_BtnEaseToggle", () =>
-                            {
-                                if (_player != null && _activeFurnitureInstance != null)
-                                {
-                                    _player.ToggleEaseMode();
-                                    UpdateEaseButton();
-
-                                    // Считываем имя трека и пушим стейты в ОЗУ-блокнот мебели
-                                    string cleanFurnName = _activeFurnitureInstance.name.Replace("(Clone)", "").Trim();
-                                    string currentTrackPath = (AnimationAudioManager.Instance != null) ? AnimationAudioManager.Instance.GetCurrentTrackName() : "";
-
-                                    ConfigManager.UpdateRuntimePlaybackMemory(cleanFurnName, _player.GetPlayingAnimationName(), currentTrackPath, _player.GetSpeed(), _player.GetEaseMode());
-                                }
-                            });
+                            RebindButtonAction(buttonsContainer, "Mod_BtnEaseToggle", () => ExecuteEaseToggleAction());
                         }
 
                         RebindButtonAction(buttonsContainer, "Mod_BtnMuteToggle", () =>
@@ -210,19 +197,7 @@ namespace FurnitureAnimationsMod
                     btnPos.y += spacing;
 
                     // Кнопка Сглаживания
-                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnEaseToggle", $"Interpolation: ", btnPos, GetCurrentEaseSprite(), () =>
-                    {
-                        if (_player != null && _activeFurnitureInstance != null)
-                        {
-                            _player.ToggleEaseMode();
-                            UpdateEaseButton();
-
-                            string cleanFurnName = _activeFurnitureInstance.name.Replace("(Clone)", "").Trim();
-                            string currentTrackPath = (AnimationAudioManager.Instance != null) ? AnimationAudioManager.Instance.GetCurrentTrackName() : "";
-
-                            ConfigManager.UpdateRuntimePlaybackMemory(cleanFurnName, _player.GetPlayingAnimationName(), currentTrackPath, _player.GetSpeed(), _player.GetEaseMode());
-                        }
-                    });
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnEaseToggle", "Interpolation: ", btnPos, GetCurrentEaseSprite(), () => ExecuteEaseToggleAction());
                     btnPos.y += spacing;
 
                     // Кнопка: Следующий трек
@@ -286,8 +261,9 @@ namespace FurnitureAnimationsMod
             if (container == null) return;
 
             // --- ИСПРАВЛЕНИЕ БАГА АНИМАЦИИ: Динамический перехват плеера --- ⚡
-            // Если плеер еще не был найден (или был уничтожен при смене позы), ищем его на сцене прямо сейчас перед проверкой флагов!
-            if (_player == null)
+            // Использованием .Equals(null) или жестким FindObjectOfType гарантируем, 
+            // что стертый плеер Латины уступит место новому жильцу!
+            if (_player == null || _player.Equals(null) || !_player.isActiveAndEnabled)
             {
                 _player = UnityEngine.Object.FindObjectOfType<FurnitureAnimationPlayer>();
             }
@@ -641,6 +617,52 @@ namespace FurnitureAnimationsMod
             {
                 b.onClick.RemoveAllListeners();
                 b.onClick.AddListener(() => onClick?.Invoke());
+            }
+        }
+
+        private void ExecuteEaseToggleAction()
+        {
+            // 1. Гарантируем, что оперируем живым плеером
+            if (_player == null || _player.Equals(null) || !_player.isActiveAndEnabled)
+            {
+                _player = UnityEngine.Object.FindObjectOfType<FurnitureAnimationPlayer>();
+            }
+
+            if (_player != null && _activeFurnitureInstance != null)
+            {
+                // 2. Меняем режим в плеере и обновляем иконку/текст кнопки
+                _player.ToggleEaseMode();
+                UpdateEaseButton();
+
+                // 3. Безопасно вычисляем компоненты ключа
+                string cleanFurnName = _activeFurnitureInstance.name.Replace("(Clone)", "").Trim();
+                string activeAnimName = _player.GetPlayingAnimationName();
+
+                // Фикс ошибок 404: если имя трека сомнительное, принудительно шлем "noAudio" по ТЗ
+                string currentTrackName = "noAudio";
+                if (AnimationAudioManager.Instance != null)
+                {
+                    string rawTrack = AnimationAudioManager.Instance.GetCurrentTrackName();
+                    if (!string.IsNullOrEmpty(rawTrack) && !rawTrack.Contains("404") && rawTrack != "unknown")
+                    {
+                        currentTrackName = rawTrack;
+                    }
+                }
+
+                // 4. Отправляем на валидацию и запись в ОЗУ-карту
+                ConfigManager.UpdateRuntimePlaybackMemory(
+                    cleanFurnName,
+                    activeAnimName,
+                    currentTrackName,
+                    _player.GetSpeed(),
+                    _player.GetEaseMode()
+                );
+
+                Plugin.Log.LogInfo($"[UI_Action] Сглаживание изменено для {activeAnimName} + {currentTrackName}");
+            }
+            else
+            {
+                Plugin.Log.LogError("[UI_Action] Не удалось переключить сглаживание: активный плеер не найден!");
             }
         }
         #endregion
