@@ -58,48 +58,43 @@ namespace FurnitureAnimationsMod
         // Внутренний метод сканирования ОЗУ-состояний и запуска (вынесен для переиспользования при UnMute)
         public void ScanAndPlay(string animationName)
         {
-            // 1. Мгновенно останавливаем текущие потоки звука, чтобы исключить накладки
+            // Защита от входящего мусора: если имя анимации уже содержит суффикс noAudio, очищаем его
+            if (animationName.Contains("_"))
+            {
+                int underscoreIndex = animationName.IndexOf('_');
+                animationName = animationName.Substring(0, underscoreIndex);
+            }
+
             if (_currentLoadCoroutine != null) StopCoroutine(_currentLoadCoroutine);
             if (_audioSource != null) _audioSource.Stop();
 
-            // 2. ТОТАЛЬНАЯ ЗАЧИСТКА: Выжигаем хвосты плейлистов предыдущих анимаций!
             _currentPlaylist.Clear();
-            _currentTrackIndex = -1;
+            _currentTrackIndex = -1; // Жестко сбрасываем рантайм-индекс в дефолт
             _lastInitializedAnimation = animationName;
 
-            // На всякий случай сохраняем ванильную проверку папки из оригинала
             string audioFolder = Path.Combine(ConfigManager.PluginDirectory, "Audio");
             if (!Directory.Exists(audioFolder)) Directory.CreateDirectory(audioFolder);
 
-            // 3. Находим текущую мебель через UIPose, чтобы залезть в ОЗУ-карту состояний
             UIPose uiPose = GameObject.FindObjectOfType<UIPose>();
-            if (uiPose == null || uiPose.curFurniture == null)
-            {
-                Plugin.Log.LogWarning($"[AudioEngine] Невозможно собрать плейлист из ОЗУ: меню UIPose закрыто.");
-                return;
-            }
+            if (uiPose == null || uiPose.curFurniture == null) return;
 
             string cleanFurnName = uiPose.curFurniture.name.Replace("(Clone)", "").Trim();
 
-            // 4. Собираем треки ИСКЛЮЧИТЕЛЬНО из нашего готового словаря памяти
+            // Наполняем плейлист из ОЗУ-карты состояний
             if (ConfigManager.LoadedConfigs.TryGetValue(cleanFurnName, out FurnitureConfig config) && config != null && config.RuntimePlaybackMemory != null)
             {
                 foreach (string sessionKey in config.RuntimePlaybackMemory.Keys)
                 {
-                    // Ищем ключи, принадлежащие строго нашей анимации (например, "DanceLatinaHips_DanceLatinaHips-01.mp3")
                     if (sessionKey.StartsWith(animationName + "_", StringComparison.OrdinalIgnoreCase))
                     {
-                        // Вытаскиваем имя трека из составного ключа (всё, что после знака подчеркивания)
                         int underscoreIndex = sessionKey.IndexOf('_');
                         if (underscoreIndex > 0)
                         {
                             string trackName = sessionKey.Substring(underscoreIndex + 1);
-
-                            // Если для этой анимации в памяти запечена музыка (не "noAudio"), восстанавливаем путь к файлу
                             if (!trackName.Equals("noAudio", StringComparison.OrdinalIgnoreCase))
                             {
                                 string fullPath = Path.Combine(audioFolder, trackName);
-                                if (!_currentPlaylist.Contains(fullPath))
+                                if (!_currentPlaylist.Contains(fullPath) && File.Exists(fullPath))
                                 {
                                     _currentPlaylist.Add(fullPath);
                                 }
@@ -109,19 +104,19 @@ namespace FurnitureAnimationsMod
                 }
             }
 
-            // 5. Контроль тишины: Если в ОЗУ-карте для этой анимации были только связки с noAudio, выходим
+            // ГЛОБАЛЬНЫЙ ФИКС ХАОСА: Если треков нет, намертво блокируем дальнейшие тики плейлиста!
             if (_currentPlaylist.Count == 0)
             {
-                Plugin.Log.LogInfo($"[AudioEngine] Из ОЗУ считано 0 треков для '{animationName}'. Старый звук полностью заглушен. Режим: noAudio.");
+                _currentTrackIndex = -1; // Гарантируем, что GetCurrentTrackName() вернет "noAudio"
+                Plugin.Log.LogInfo($"[AudioEngine] Для '{animationName}' запечен чистый режим тишины. Рантайм-индекс сброшен.");
                 return;
             }
 
-            // 6. Если треки в памяти для этой анимации запечены — выбираем случайный и запускаем
             _currentTrackIndex = UnityEngine.Random.Range(0, _currentPlaylist.Count);
             string selectedTrack = _currentPlaylist[_currentTrackIndex];
 
             _currentLoadCoroutine = StartCoroutine(LoadAndPlayAudio(selectedTrack, GetAudioType(selectedTrack)));
-            Plugin.Log.LogInfo($"[AudioEngine] Запущено воспроизведение: {Path.GetFileName(selectedTrack)}");
+            Plugin.Log.LogInfo($"[AudioEngine] Запущено воспроизведение из ОЗУ-карты: {Path.GetFileName(selectedTrack)}");
         }
 
         public void PlayNextTrack()
@@ -288,14 +283,35 @@ namespace FurnitureAnimationsMod
         // =========================================================================
         public string GetCurrentTrackName()
         {
-            // Если включен режим тишины или плейлист пуст — это жесткий кейс "noAudio" по ТЗ!
+            // Если включен режим тишины, плейлист пуст или индекс сброшен — это жесткий кейс "noAudio" по ТЗ!
             if (_isGlobalMuted || _currentPlaylist == null || _currentPlaylist.Count == 0 || _currentTrackIndex < 0 || _currentTrackIndex >= _currentPlaylist.Count)
             {
                 return "noAudio";
             }
 
-            // Возвращаем чистое имя файла с расширением (например, "danceBachata-01.ogg")
-            return Path.GetFileName(_currentPlaylist[_currentTrackIndex]);
+            // Вытаскиваем чистое имя файла с расширением
+            string rawFileName = Path.GetFileName(_currentPlaylist[_currentTrackIndex]);
+
+            if (string.IsNullOrEmpty(rawFileName))
+            {
+                return "noAudio";
+            }
+
+            // УЛЬТРА-ФИКС ДУБЛИКАТОВ: Если рантайм игры успел дважды склеить строку (например, bswing01_bswing01_noAudio),
+            // мы берем только финальную значимую часть после последнего подчеркивания!
+            if (rawFileName.Contains("_"))
+            {
+                int lastUnderscore = rawFileName.LastIndexOf('_');
+                string cleanSuffix = rawFileName.Substring(lastUnderscore + 1);
+
+                // Если за подчеркиванием прятался чистый noAudio — отдаем его по ТЗ
+                if (cleanSuffix.Equals("noAudio", StringComparison.OrdinalIgnoreCase))
+                {
+                    return "noAudio";
+                }
+            }
+
+            return rawFileName;
         }
 
         private void OnDestroy()
