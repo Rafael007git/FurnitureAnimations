@@ -234,8 +234,24 @@ namespace FurnitureAnimationsMod
 
         public void ToggleEaseMode()
         {
+            // 1. Переключаем режим по кругу (ваша оригинальная логика)
             _currentEaseMode = (EaseMode)(((int)_currentEaseMode + 1) % 3);
             Plugin.Log.LogWarning($"[EaseManager] Режим сглаживания изменен на: {_currentEaseMode}");
+
+            // 2. ДОБАВЛЕНО: Мгновенно синхронизируем изменения с нашей ОЗУ-картой памяти! 🧠⚡
+            if (_targetFurniture != null)
+            {
+                string trackKey = (AnimationAudioManager.Instance != null) ? AnimationAudioManager.Instance.GetCurrentTrackName() : "noAudio";
+
+                // Отправляем текущую скорость и НОВЫЙ режим сглаживания на честную перезапись в ОЗУ
+                ConfigManager.UpdateRuntimePlaybackMemory(
+                    _targetFurniture.name,
+                    GetPlayingAnimationName(),
+                    trackKey,
+                    _speedModifier,
+                    _currentEaseMode
+                );
+            }
         }
 
         public EaseMode GetEaseMode() => _currentEaseMode;
