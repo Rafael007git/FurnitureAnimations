@@ -331,7 +331,7 @@ namespace FurnitureAnimationsMod
             try
             {
                 // Формируем путь к параллельному файлу мебели
-                string configPath = Path.Combine(PluginDirectory, "Configs", $"{cleanName}.json");
+                string configPath = Path.Combine(PluginDirectory, "FurnitureConfigs", $"{cleanName}_Config.json");
 
                 string dir = Path.GetDirectoryName(configPath);
                 if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
