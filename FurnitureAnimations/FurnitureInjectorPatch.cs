@@ -562,32 +562,26 @@ namespace FurnitureAnimationsMod
                 {
                     Plugin.Log.LogWarning($"[SDK_Icon] Активирован локальный встроенный плеер для анимации: {currentPoseData.ControllerName}");
 
-                    // 1. Принудительно очищаем рантайм-состояние трека в аудио-менеджере СИНХРОННО до старта плеера!
+                    // 1. Сначала подготавливаем аудио-менеджер СИНХРОННО!
                     if (AnimationAudioManager.Instance != null)
                     {
                         AnimationAudioManager.Instance.StopAudio();
 
-                        // Сбрасываем индекс плейлиста в -1, чтобы GetCurrentTrackName() 
-                        // ЖЕЛЕЗНО вернул "noAudio" в этом кадре!
-                        var indexField = typeof(AnimationAudioManager).GetField("_currentTrackIndex",
-                            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                        if (indexField != null) indexField.SetValue(AnimationAudioManager.Instance, -1);
+                        // ВАЖНО: Запускаем ScanAndPlay ДО рождения плеера!
+                        // Наш новый ScanAndPlay из ОЗУ мгновенно выставит _currentTrackIndex 
+                        // и загрузит плейлист в ОЗУ в этом же кадре!
+                        AnimationAudioManager.Instance.ScanAndPlay(currentPoseData.ControllerName);
                     }
 
+                    // 2. И ТОЛЬКО ТЕПЕРЬ рождаем плеер!
                     var newPlayer = characterComp.gameObject.AddComponent<FurnitureAnimationPlayer>();
 
-                    // 2. Запускаем плеер. Теперь он гарантированно соберет чистый ключ "ИмяАнимации_noAudio"
+                    // 3. Запускаем плеер. 
+                    // Теперь, когда он внутри метода Play() вызовет GetCurrentTrackName(),
+                    // аудио-менеджер выдаст ему ЧЕСТНОЕ имя файла (например, DanceAround01-A.mp3)!
+                    // Плеер сразу же в [ОЗУ_СТАРТ] подтянет ваши кастомные 230% и PerFrame!
                     newPlayer.Play(characterComp, currentPoseData.ControllerName, furniture, currentPoseData);
 
-                    // 3. Запускаем сканирование и подбор музыки для новой анимации
-                    if (AnimationAudioManager.Instance != null)
-                    {
-                        AnimationAudioManager.Instance.ScanAndPlay(currentPoseData.ControllerName);
-
-                        // ВАЖНО: Больше никакого ручного ChangeSpeed здесь не вызываем! 
-                        // Наша функция ScanAndPlay сама внутри себя запустит LoadAndPlayAudio, 
-                        // а Update-цикл или плеер подхватят настройки ОЗУ легально.
-                    }
                     return;
                 }
 
