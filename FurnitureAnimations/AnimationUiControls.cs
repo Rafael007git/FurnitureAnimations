@@ -59,9 +59,18 @@ namespace FurnitureAnimationsMod
                         // Перепривязываем события для кнопок анимаций
                         if (_player != null)
                         {
-                            RebindButtonAction(buttonsContainer, "Mod_BtnSpeedPlus", () => { FurnitureAnimationPlayer.Instance?.ChangeSpeed(0.1f); UpdateSpeedButtonsText(); });
-                            RebindButtonAction(buttonsContainer, "Mod_BtnSpeedMinus", () => { FurnitureAnimationPlayer.Instance?.ChangeSpeed(-0.1f); UpdateSpeedButtonsText(); });
-                            RebindButtonAction(buttonsContainer, "Mod_BtnEaseToggle", () => ExecuteEaseToggleAction());
+                            RebindButtonAction(buttonsContainer, "Mod_BtnSpeedPlus", () => {
+                                var p = UnityEngine.Object.FindObjectOfType<FurnitureAnimationPlayer>();
+                                if (p != null) { p.ChangeSpeed(0.1f); UpdateSpeedButtonsText(); }
+                            });
+                            RebindButtonAction(buttonsContainer, "Mod_BtnSpeedMinus", () => {
+                                var p = UnityEngine.Object.FindObjectOfType<FurnitureAnimationPlayer>();
+                                if (p != null) { p.ChangeSpeed(-0.1f); UpdateSpeedButtonsText(); }
+                            });
+                            RebindButtonAction(buttonsContainer, "Mod_BtnEaseToggle", () => {
+                                var p = UnityEngine.Object.FindObjectOfType<FurnitureAnimationPlayer>();
+                                if (p != null) { p.ToggleEaseMode(); UpdateEaseButton(); }
+                            });
                         }
 
                         RebindButtonAction(buttonsContainer, "Mod_BtnMuteToggle", () =>
@@ -187,34 +196,23 @@ namespace FurnitureAnimationsMod
                     // ==========================================================
 
                     // --- КНОПКА СКОРОСТЬ + ---
-                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnSpeedPlus", "Speed: ---", btnPos, _iconSpeedPlus, () =>
-                    {
-                        // Вместо _player? берем строго живой синглтон!
-                        var livePlayer = FurnitureAnimationPlayer.Instance;
-                        if (livePlayer != null)
-                        {
-                            livePlayer.ChangeSpeed(0.1f);
-                            UpdateSpeedButtonsText();
-                        }
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnSpeedPlus", "Speed: ---", btnPos, _iconSpeedPlus, () => {
+                        var p = UnityEngine.Object.FindObjectOfType<FurnitureAnimationPlayer>();
+                        if (p != null) { p.ChangeSpeed(0.1f); UpdateSpeedButtonsText(); }
                     });
                     btnPos.y += spacing;
 
                     // --- КНОПКА СКОРОСТЬ - ---
-                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnSpeedMinus", "Speed: ---", btnPos, _iconSpeedMinus, () =>
-                    {
-                        var livePlayer = FurnitureAnimationPlayer.Instance;
-                        if (livePlayer != null)
-                        {
-                            livePlayer.ChangeSpeed(-0.1f);
-                            UpdateSpeedButtonsText();
-                        }
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnSpeedMinus", "Speed: ---", btnPos, _iconSpeedMinus, () => {
+                        var p = UnityEngine.Object.FindObjectOfType<FurnitureAnimationPlayer>();
+                        if (p != null) { p.ChangeSpeed(-0.1f); UpdateSpeedButtonsText(); }
                     });
                     btnPos.y += spacing;
 
                     // Кнопка Сглаживания
-                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnEaseToggle", "Interpolation: ", btnPos, GetCurrentEaseSprite(), () =>
-                    {
-                        ExecuteEaseToggleAction();
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnEaseToggle", "Interpolation: ", btnPos, GetCurrentEaseSprite(), () => {
+                        var p = UnityEngine.Object.FindObjectOfType<FurnitureAnimationPlayer>();
+                        if (p != null) { p.ToggleEaseMode(); UpdateEaseButton(); }
                     });
                     btnPos.y += spacing;
 
@@ -281,7 +279,7 @@ namespace FurnitureAnimationsMod
             // --- ИСПРАВЛЕНИЕ БАГА АНИМАЦИИ: Динамический перехват плеера --- ⚡
             // Использованием .Equals(null) или жестким FindObjectOfType гарантируем, 
             // что стертый плеер Латины уступит место новому жильцу!
-            if (_player == null || _player.Equals(null) || !_player.isActiveAndEnabled)
+            if (_player == null || _player.Equals(null))
             {
                 _player = UnityEngine.Object.FindObjectOfType<FurnitureAnimationPlayer>();
             }
