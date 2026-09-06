@@ -162,6 +162,9 @@ namespace FurnitureAnimationsMod
                     break;
             }
 
+            // =========================================================================
+            // ФИКС КАПКАНА ФАЗЫ: СБРОС ЛЕГАСИ-ПЛЕЕРА В КАДР №0 ДЛЯ ТОЧНОЙ ПРИВЯЗКИ 🪓🎯
+            // =========================================================================
             Texture2D finalPreview = _lastCapturedIcon;
 
             // Динамически меняем текст нашей кнопки интерактива на сцене игры
@@ -172,8 +175,60 @@ namespace FurnitureAnimationsMod
                 buttonTextComp.text = buttonText;
             }
 
-            // Расчет локального смещения относительно мебели
-            Vector3 exactLocPos = closestFurniture.transform.InverseTransformPoint(playerPos);
+            // Проверяем, запущена ли сейчас внешняя JSON-анимация (тип PoseAnimationsModActive)
+            if (currentState == CharacterPoseState.PoseAnimationsModActive)
+            {
+                try
+                {
+                    // Локальная безопасная функция конвертации массива в Vector3
+                    Vector3 ArrayToVector3(float[] arr) => (arr != null && arr.Length >= 3) ? new Vector3(arr[0], arr[1], arr[2]) : Vector3.zero;
+
+                    // Достукиваемся до живого инстанса ЛЕГАСИ-плеера мода PoseAnimations (aedenthorn)
+                    if (PoseAnimations.BepInExPlugin.currentlyPosing.ContainsKey(characterComp))
+                    {
+                        var animInstance = PoseAnimations.BepInExPlugin.currentlyPosing[characterComp];
+                        if (animInstance != null && animInstance.data != null)
+                        {
+                            Plugin.Log.LogWarning($"[FurnitureFix] Сбрасываем ЛЕГАСИ-плеер '{animInstance.data.name}' в кадр №0 перед расчетом векторов.");
+
+                            // 1. Возвращаем индексы легаси-плеера в абсолютное начало
+                            animInstance.currentDelta = 0;
+                            animInstance.currentFrame = 0;
+                            animInstance.deltaTime = 0f;
+                            animInstance.reversing = false;
+
+                            // 2. Вручную принудительно выпрямляем скелет по координатам кадра №0 (deltas[0])
+                            if (animInstance.data.deltas != null && animInstance.data.deltas.Count > 0)
+                            {
+                                var firstDelta = animInstance.data.deltas[0]; // Строго первая дельта из JSON
+                                if (firstDelta != null && firstDelta.boneDatas != null)
+                                {
+                                    foreach (var kvp in firstDelta.boneDatas)
+                                    {
+                                        if (animInstance.bones.ContainsKey(kvp.Key) && animInstance.bones[kvp.Key] != null)
+                                        {
+                                            // Жестко ставим кость (включая hip) в её стартовую точку из Blender
+                                            animInstance.bones[kvp.Key].localPosition = ArrayToVector3(kvp.Value.startPos);
+                                            animInstance.bones[kvp.Key].localRotation = Quaternion.Euler(ArrayToVector3(kvp.Value.startRot));
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 3. Вместо Physics.SyncTransforms() просто встряхиваем трансформ персонажа, 
+                            // чтобы Unity применила локальные матрицы для расчета InverseTransformPoint
+                            characterComp.transform.hasChanged = true;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Plugin.Log.LogError($"[FurnitureFix] Не удалось сбросить фазу легаси-анимации: {ex.Message}");
+                }
+            }
+
+            // И вот теперь, когда легаси-плеер замер в честном нулевом кадре, снимаем координаты!
+            Vector3 exactLocPos = closestFurniture.transform.InverseTransformPoint(uiInstance.selectedCharacter.position);
             Quaternion localQuaternion = Quaternion.Inverse(closestFurniture.transform.rotation) * uiInstance.selectedCharacter.rotation;
             Vector3 exactLocRot = localQuaternion.eulerAngles;
 
@@ -197,8 +252,9 @@ namespace FurnitureAnimationsMod
                 () => {
                     SavePoseToDataFolder(furnitureName, controllerName, exactLocPos, exactLocRot, currentState, characterComp);
                 },
-                currentState // <-- ПРОСТО ДОПИШИТЕ ЭТУ ПЕРЕМЕННУЮ СЮДА ЧЕРЕЗ ЗАПЯТУЮ! 🌟
+                currentState
             );
+            // === КОНЕЦ МЕТОДА ONSAVEINTERACTCLICKED ===
         }
 
         private static void SavePoseToDataFolder(string furnitureName, string controller, Vector3 pos, Vector3 rot, CharacterPoseState poseState, CharacterCustomization character)
