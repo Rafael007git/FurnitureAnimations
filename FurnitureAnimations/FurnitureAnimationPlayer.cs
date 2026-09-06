@@ -351,7 +351,7 @@ namespace FurnitureAnimationsMod
 
                 // 3. ИНТЕРПОЛЯЦИЯ И ФИНАЛЬНАЯ ПРОЕКЦИЯ В МИР UNITY
                 Vector3 targetLocalPos = Vector3.Lerp(startLocalPos, endLocalPos, lerpFraction);
-                Quaternion targetLocalRot = Quaternion.Lerp(startLocalRot, endLocalRot, lerpFraction);
+                Quaternion targetLocalRot = Quaternion.Slerp(startLocalRot, endLocalRot, lerpFraction);
 
                 _character.transform.position = _targetFurniture.transform.TransformPoint(targetLocalPos);
                 _character.transform.rotation = _targetFurniture.transform.rotation * targetLocalRot;
@@ -374,7 +374,7 @@ namespace FurnitureAnimationsMod
                             Quaternion boneEndRot = Quaternion.Euler(ArrayToVector3(kp.Value.endRot));
 
                             boneTransform.localPosition = Vector3.Lerp(boneStartPos, boneEndPos, lerpFraction);
-                            boneTransform.localRotation = Quaternion.Lerp(boneStartRot, boneEndRot, lerpFraction);
+                            boneTransform.localRotation = Quaternion.Slerp(boneStartRot, boneEndRot, lerpFraction);
                         }
                     }
                 }

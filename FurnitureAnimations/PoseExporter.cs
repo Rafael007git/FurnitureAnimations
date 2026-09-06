@@ -376,7 +376,7 @@ namespace FurnitureAnimationsMod
                 }
 
                 if (Global.code != null && Global.code.uiCombat != null)
-                    Global.code.uiCombat.ShowHeader("Поза успешно сохранена!");
+                    Global.code.uiCombat.ShowHeader("Furniture config updated");
             }
             catch (Exception ex)
             {
