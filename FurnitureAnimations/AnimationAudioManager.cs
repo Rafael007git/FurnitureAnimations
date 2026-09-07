@@ -225,7 +225,7 @@ namespace FurnitureAnimationsMod
                         _audioSource.priority = 0;
                         _audioSource.spatialBlend = 1.0f; // Переключаем из 2D (0f) в 3D (1f)
                         _audioSource.minDistance = 2.0f;  // Дистанция, до которой звук максимальный
-                        _audioSource.maxDistance = 20.0f; // Дистанция, на которой звук полностью затихнет
+                        _audioSource.maxDistance = 15.0f; // Дистанция, на которой звук полностью затихнет
                         _audioSource.rolloffMode = AudioRolloffMode.Logarithmic; // Режим затухания физический
                         _audioSource.volume = 1.0f;
                         _audioSource.mute = _isGlobalMuted;
