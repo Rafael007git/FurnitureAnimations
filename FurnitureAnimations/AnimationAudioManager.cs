@@ -39,6 +39,13 @@ namespace FurnitureAnimationsMod
             _loopAudio = loopAudio;
             _lastInitializedAnimation = animationName; // Запоминаем имя для возможного UnMute позже
 
+            // Сдвигаем менеджер к текущей мебели перед запуском звука
+            UIPose uiPose = GameObject.FindObjectOfType<UIPose>();
+            if (uiPose != null && uiPose.curFurniture != null)
+            {
+                this.transform.position = uiPose.curFurniture.transform.position;
+            }
+
             if (_currentLoadCoroutine != null) StopCoroutine(_currentLoadCoroutine);
             if (_audioSource != null && _audioSource.isPlaying) _audioSource.Stop();
 
@@ -213,10 +220,13 @@ namespace FurnitureAnimationsMod
                     {
                         _audioSource.clip = clip;
                         _audioSource.loop = _loopAudio;
-                        _audioSource.bypassEffects = true;
-                        _audioSource.bypassListenerEffects = true;
+                        _audioSource.bypassEffects = false;
+                        _audioSource.bypassListenerEffects = false;
                         _audioSource.priority = 0;
-                        _audioSource.spatialBlend = 0f;
+                        _audioSource.spatialBlend = 1.0f; // Переключаем из 2D (0f) в 3D (1f)
+                        _audioSource.minDistance = 2.0f;  // Дистанция, до которой звук максимальный
+                        _audioSource.maxDistance = 20.0f; // Дистанция, на которой звук полностью затихнет
+                        _audioSource.rolloffMode = AudioRolloffMode.Logarithmic; // Режим затухания физический
                         _audioSource.volume = 1.0f;
                         _audioSource.mute = _isGlobalMuted;
                         _audioSource.Play();
