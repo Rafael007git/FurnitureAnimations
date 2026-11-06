@@ -45,10 +45,10 @@ namespace FurnitureAnimationsMod
         {
             GUI.DragWindow(new Rect(0, 0, 400, 20));
 
-            // Защита и автоматическое связывание с активным плеером
+            // === ИСПРАВЛЕНО: Локальный поиск плеера без глобального синглтона ===
             if (_player == null || _player.Equals(null))
             {
-                _player = FurnitureAnimationPlayer.Instance;
+                _player = gameObject.GetComponent<FurnitureAnimationPlayer>();
             }
 
             // Пытаемся определить текущую мебель интерактива через UIPose или плеер
@@ -75,6 +75,9 @@ namespace FurnitureAnimationsMod
 
             string cleanFurnitureName = currentFurniture.name.Replace("(Clone)", "").Trim();
 
+            // === ИСПРАВЛЕНО: Находим локальный аудиоменеджер строго на этом персонаже ===
+            var localAudio = gameObject.GetComponent<AnimationAudioManager>();
+
             StringBuilder sb = new StringBuilder();
             sb.AppendLine($"<b>[SYSTEM]</b>");
             sb.AppendLine($" Game FPS: {_fpsDisplay} | DeltaTime: {Time.deltaTime:F4}s");
@@ -85,7 +88,8 @@ namespace FurnitureAnimationsMod
             if (_player != null && _player._animData != null)
             {
                 string curAnim = _player.GetPlayingAnimationName();
-                string curTrack = (AnimationAudioManager.Instance != null) ? AnimationAudioManager.Instance.GetCurrentTrackName() : "noAudio";
+                // Используем локальный аудиоменеджер для получения имени трека
+                string curTrack = (localAudio != null) ? localAudio.GetCurrentTrackName() : "noAudio";
                 sb.AppendLine($" Playing Animation : {curAnim}");
                 sb.AppendLine($" Playing Audio Track: <color=cyan>{curTrack}</color>");
                 sb.AppendLine($" Engine Frame State : {_player._gameFrameCounter} / {_player._totalTargetFrames} (Index: {_player._currentTransitionIndex})");
@@ -123,23 +127,21 @@ namespace FurnitureAnimationsMod
 
             int totalPairsCalculated = 0;
 
-            // ФИКС ОШИБКИ CS0103: Извлекаем config из LoadedConfigs прямо перед чтением словаря ОЗУ
             if (ConfigManager.LoadedConfigs.TryGetValue(cleanFurnitureName, out FurnitureConfig config) && config != null && config.RuntimePlaybackMemory != null && config.RuntimePlaybackMemory.Count > 0)
             {
-                // Получаем имя текущей играющей анимации и трека для подсветки строки
+                // Получаем имя играющей анимации и трека из локальных компонентов этого персонажа
                 string truePlayingAnimName = (_player != null && _player._animData != null) ? _player.GetPlayingAnimationName() : "";
-                string activeTrack = (AnimationAudioManager.Instance != null) ? AnimationAudioManager.Instance.GetCurrentTrackName() : "noAudio";
+                string activeTrack = (localAudio != null) ? localAudio.GetCurrentTrackName() : "noAudio";
 
                 foreach (KeyValuePair<string, PlaybackSettingsData> entry in config.RuntimePlaybackMemory)
                 {
-                    string sessionKey = entry.Key; // Формат: "DanceKneelingA_noAudio"
+                    string sessionKey = entry.Key;
                     PlaybackSettingsData settings = entry.Value;
 
                     if (settings == null) continue;
 
                     totalPairsCalculated++;
 
-                    // Красиво разделяем ключ для вывода на экран по первому символу подчеркивания
                     int underscoreIndex = sessionKey.IndexOf('_');
                     string animName = underscoreIndex > 0 ? sessionKey.Substring(0, underscoreIndex) : sessionKey;
                     string audioTrack = underscoreIndex > 0 ? sessionKey.Substring(underscoreIndex + 1) : "unknown";
@@ -147,7 +149,6 @@ namespace FurnitureAnimationsMod
                     string speedText = $"{Mathf.RoundToInt(settings.Speed * 100)}%";
                     string easeText = settings.EaseMode.ToString();
 
-                    // Выделяем цветом строчку, которая проигрывается прямо сейчас
                     string rowPrefix = "";
                     Color rowColor = Color.white;
 
@@ -156,7 +157,7 @@ namespace FurnitureAnimationsMod
                         if (audioTrack.Equals(activeTrack, StringComparison.OrdinalIgnoreCase))
                         {
                             rowPrefix = "▶ ";
-                            rowColor = Color.green; // Зеленый для активной пары
+                            rowColor = Color.green;
                         }
                     }
 
@@ -185,7 +186,6 @@ namespace FurnitureAnimationsMod
             GUILayout.Label($"Total Combinations in UI Matrix: <b>{totalPairsCalculated}</b>", textStyle);
             GUILayout.Label($"Total Pairs Initialized in RAM: <b><color=lime>{ramCount}</color></b>", textStyle);
 
-            // Кнопка принудительного дампа
             if (GUILayout.Button("DUMP MAP TO LOG FILE"))
             {
                 Plugin.Log.LogWarning($"[RADAR_DUMP] Ручной отчет по ОЗУ для {cleanFurnitureName}. Записано пар: {ramCount}");
@@ -198,5 +198,6 @@ namespace FurnitureAnimationsMod
                 }
             }
         }
+
     }
 }
