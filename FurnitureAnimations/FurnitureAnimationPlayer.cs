@@ -20,7 +20,7 @@ namespace FurnitureAnimationsMod
         private CharacterCustomization _character;
         internal PoseAnimationData _animData;
         internal Vector3 targetLocalPos;
-        internal Quaternion targetLocalRot;
+        // internal Quaternion targetLocalRot;
 
         private Furniture _targetFurniture;                 // Ссылка на целевой объект мебели
         private Vector3 _localBasePos;                      // Стартовая локальная позиция из конфига
@@ -34,9 +34,9 @@ namespace FurnitureAnimationsMod
         internal int _totalTargetFrames = 0;
         internal bool _reversing = false;
 
-        private Vector3 _baseWorldPos;
-        private Quaternion _baseWorldRot;
-        private Quaternion _modelRotationModifier;
+        // private Vector3 _baseWorldPos;
+        // private Quaternion _baseWorldRot;
+        // private Quaternion _modelRotationModifier;
 
         private readonly Dictionary<string, Transform> _boneCache = new Dictionary<string, Transform>();
 

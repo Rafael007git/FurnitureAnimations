@@ -205,13 +205,16 @@ namespace FurnitureAnimationsMod
         private System.Collections.IEnumerator LoadAndPlayAudio(string filePath, AudioType type)
         {
             string fileUri = "file://" + filePath.Replace("\\", "/");
+            Plugin.Log.LogInfo($"[AudioDebug] Starting WebRequest for file: {Path.GetFileName(filePath)}");
+
             using (UnityWebRequest multimediaRequest = UnityWebRequestMultimedia.GetAudioClip(fileUri, type))
             {
                 yield return multimediaRequest.SendWebRequest();
 
                 if (multimediaRequest.result == UnityWebRequest.Result.ConnectionError || multimediaRequest.result == UnityWebRequest.Result.ProtocolError)
+
                 {
-                    Plugin.Log.LogError($"[AudioEngine] Ошибка UnityWebRequest: {multimediaRequest.error}");
+                    Plugin.Log.LogError($"[AudioDebug] UnityWebRequest failed: {multimediaRequest.error}");
                 }
                 else
                 {
@@ -219,7 +222,11 @@ namespace FurnitureAnimationsMod
                     if (clip != null && _audioSource != null)
                     {
                         _audioSource.clip = clip;
-                        _audioSource.loop = _loopAudio;
+
+                        // === КРИТИЧЕСКИЙ ФИКС: Для работы автомата плейлиста клип НЕ должен циклиться в Unity! ===
+                        // Если трек всего один — пусть Unity его циклит. Если треков много — отдаем управление будильнику!
+                        _audioSource.loop = (_currentPlaylist != null && _currentPlaylist.Count <= 1) ? _loopAudio : false;
+
                         _audioSource.bypassEffects = false;
                         _audioSource.bypassListenerEffects = false;
                         _audioSource.priority = 0;
@@ -230,23 +237,35 @@ namespace FurnitureAnimationsMod
                         _audioSource.volume = 1.0f;
                         _audioSource.mute = _isGlobalMuted;
                         _audioSource.Play();
-                        Plugin.Log.LogInfo($"[AudioEngine] Звуковой файл '{Path.GetFileName(filePath)}' успешно воспроизводится!");
+
+                        Plugin.Log.LogInfo($"[AudioDebug] Track '{Path.GetFileName(filePath)}' started playing successfully. Clip length: {clip.length:F2} seconds. AudioSource.loop forced to: {_audioSource.loop}");
 
                         // =========================================================================
-                        // ЧЕСТНЫЙ АВТОМАТ БЕЗ UPDATE: Усыпляем поток ровно на длину музыкального трека 💤🎵
+                        // ЧЕСТНЫЙ АВТОМАТ: Ставим будильник, если на диске/в ОЗУ есть другие песни 💤🎵
                         // =========================================================================
-                        if (!_loopAudio && _currentPlaylist != null && _currentPlaylist.Count > 1)
+                        if (_currentPlaylist != null && _currentPlaylist.Count > 1)
                         {
-                            // Ждем длину песни минус 0.1 секунды для бесшовного перехода
+                            Plugin.Log.LogInfo($"[AudioDebug] Multiple tracks detected ({_currentPlaylist.Count}). Setting alarm for {clip.length:F2} seconds...");
+
+                            // Усыпляем корутину ровно на длину трека
                             yield return new UnityEngine.WaitForSeconds(clip.length);
 
-                            Plugin.Log.LogInfo("[AudioEngine] Трек завершился по времени клипа. Автоматический переход к следующей песне...");
+                            Plugin.Log.LogWarning($"[AudioDebug] Alarm triggered naturally for '{Path.GetFileName(filePath)}'. Advancing to next track!");
                             PlayNextTrack();
+                        }
+                        else
+                        {
+                            Plugin.Log.LogInfo($"[AudioDebug] Alarm skipped. Single track loop mode active.");
                         }
                         // =========================================================================
                     }
+                    else
+                    {
+                        Plugin.Log.LogError($"[AudioDebug] Clip or AudioSource is NULL. Clip: {clip != null}, Source: {_audioSource != null}");
+                    }
                 }
             }
+            Plugin.Log.LogInfo($"[AudioDebug] Coroutine execution reached the very end for: {Path.GetFileName(filePath)}");
             _currentLoadCoroutine = null;
         }
 
