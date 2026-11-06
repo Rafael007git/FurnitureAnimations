@@ -107,8 +107,21 @@ namespace FurnitureAnimationsMod
                 return;
             }
 
-            // Подключаем разделенные компоненты аудио и UI
-            gameObject.AddComponent<AnimationAudioManager>().Initialize(animationName, _animData.loop);
+            // =========================================================================
+            // --- MONOLITHIC AUDIO-CHARACTER BINDING ---
+            // Wipe out any old audio managers on this character to prevent overlap chaos
+            var oldAudio = gameObject.GetComponent<AnimationAudioManager>();
+            if (oldAudio != null)
+            {
+                oldAudio.StopAudio();
+                DestroyImmediate(oldAudio);
+            }
+
+            // Spawn a fresh clean manager directly tied to this character lifecycle
+            var audioManager = gameObject.AddComponent<AnimationAudioManager>();
+            audioManager.Initialize(animationName, _animData.loop);
+            // =========================================================================
+
             // Интерфейс теперь создается глобально через UIPose.Open, плеер его больше не спавнит! 🛡
             // gameObject.AddComponent<AnimationUiControls>().Initialize(this); 
 
@@ -269,6 +282,22 @@ namespace FurnitureAnimationsMod
         private void LateUpdate()
         {
             if (_character == null || _animData == null || _animData.deltas == null || _targetFurniture == null) return;
+
+            // --- THE CHARACTER-CENTRIC SANITY GUARD ---
+            // 1. If the character stopped interacting or switched to another object entirely
+            bool isStillInteracting = _character.interactingObject == _targetFurniture.gameObject;
+
+            // 2. If native game or Free Pose Mode forced the Animator back ON, meaning our custom JSON loop is overridden
+            bool isAnimatorInterrupted = _character.anim != null && _character.anim.enabled;
+
+            if (!isStillInteracting || isAnimatorInterrupted)
+            {
+                Plugin.Log.LogWarning($"[Engine_Sanity] Custom playback interrupted for '{_character.name}'. Interacting: {isStillInteracting}, AnimatorReset: {isAnimatorInterrupted}. Self-destructing player.");
+
+                // This will safely trigger OnDestroy(), enabling the native animator and cleanly shutting down audio
+                Destroy(this);
+                return;
+            }
 
             // 1. СТРОГАЯ СИСТЕМНАЯ НУЛЕВАЯ БАЗА
             int totalTransitions = _animData.deltas.Count;
@@ -517,12 +546,20 @@ namespace FurnitureAnimationsMod
         {
             if (Instance == this) Instance = null;
 
+            // Clean up the specific audio manager bound to this character instance
+            var boundAudio = gameObject.GetComponent<AnimationAudioManager>();
+            if (boundAudio != null)
+            {
+                boundAudio.StopAudio();
+                DestroyImmediate(boundAudio);
+            }
+
             if (_character != null && _character.anim != null)
             {
                 _character.anim.enabled = true;
                 _character.anim.speed = 1f;
             }
-            Plugin.Log.LogWarning("[LocalPlayer] Встроенный движок выключен, управление возвращено Юнити.");
+            Plugin.Log.LogWarning("[LocalPlayer] Animation engine deactivated, control returned to native Unity.");
         }
 
     }

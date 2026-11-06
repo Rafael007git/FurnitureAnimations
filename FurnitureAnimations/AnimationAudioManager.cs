@@ -62,6 +62,21 @@ namespace FurnitureAnimationsMod
             ScanAndPlay(animationName);
         }
 
+        // --- AUTOMATIC PLAYLIST TRACK COUPLING ---
+        private void Update()
+        {
+            // If the source is initialized, not muted, and stopped playing by itself (track ended)
+            if (_audioSource != null && !_isGlobalMuted && !_audioSource.isPlaying && _currentLoadCoroutine == null)
+            {
+                // Only advance if we actually have tracks and a valid current index
+                if (_currentPlaylist != null && _currentPlaylist.Count > 1 && _currentTrackIndex >= 0)
+                {
+                    Plugin.Log.LogInfo("[AudioEngine] Track finished naturally. Advancing to the next song automatically.");
+                    PlayNextTrack();
+                }
+            }
+        }
+
         // Внутренний метод сканирования ОЗУ-состояний и запуска (вынесен для переиспользования при UnMute)
         public void ScanAndPlay(string animationName)
         {
@@ -157,9 +172,16 @@ namespace FurnitureAnimationsMod
             _currentLoadCoroutine = StartCoroutine(LoadAndPlayAudio(nextTrackPath, GetAudioType(nextTrackPath)));
             Plugin.Log.LogInfo($"[AudioEngine] Переключено на {Path.GetFileName(nextTrackPath)} ({_currentTrackIndex + 1}/{_currentPlaylist.Count})");
 
-            // --- ЭТАП 1: ТРИГГЕР МУЗЫКАЛЬНОГО АВТОМАТА ПРИ СМЕНЕ ТРЕКА (Пункт 24-25 ТЗ) --- 🎼🚀
+            // --- CONTEXTUAL UI LINK FIX: TARGET SPECIFIC PLAYER THROUGH UIPOSE --- 🎼🚀
             UIPose uiPoseNext = GameObject.FindObjectOfType<UIPose>();
-            FurnitureAnimationPlayer activePlayer = GameObject.FindObjectOfType<FurnitureAnimationPlayer>();
+            FurnitureAnimationPlayer activePlayer = null;
+
+            // Instead of blind GameObject.FindObjectOfType, we grab the player strictly from the active character in UI!
+            if (uiPoseNext != null && uiPoseNext.curFurniture != null && uiPoseNext.curFurniture.user != null)
+            {
+                activePlayer = uiPoseNext.curFurniture.user.gameObject.GetComponent<FurnitureAnimationPlayer>();
+            }
+            // ---------------------------------------------------------------------
 
             if (uiPoseNext != null && uiPoseNext.curFurniture != null && activePlayer != null && activePlayer.isActiveAndEnabled)
             {
@@ -225,7 +247,7 @@ namespace FurnitureAnimationsMod
                         _audioSource.priority = 0;
                         _audioSource.spatialBlend = 1.0f; // Переключаем из 2D (0f) в 3D (1f)
                         _audioSource.minDistance = 2.0f;  // Дистанция, до которой звук максимальный
-                        _audioSource.maxDistance = 15.0f; // Дистанция, на которой звук полностью затихнет
+                        _audioSource.maxDistance = 151.0f; // Дистанция, на которой звук полностью затихнет
                         _audioSource.rolloffMode = AudioRolloffMode.Logarithmic; // Режим затухания физический
                         _audioSource.volume = 1.0f;
                         _audioSource.mute = _isGlobalMuted;

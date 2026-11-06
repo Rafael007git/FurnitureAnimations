@@ -553,37 +553,31 @@ namespace FurnitureAnimationsMod
                     }
                 }
 
-                // =========================================================================
-                // ЛОГИКА ЗАПУСКА И СИНХРОНИЗАЦИИ НОВЫХ СОСТОЯНИЙ
-                // =========================================================================
-
                 // Логика запуска внешней JSON-анимации мода
                 if (currentPoseData.Type.Equals("PoseAnimationsMod", StringComparison.OrdinalIgnoreCase))
                 {
-                    Plugin.Log.LogWarning($"[SDK_Icon] Активирован локальный встроенный плеер для анимации: {currentPoseData.ControllerName}");
+                    Plugin.Log.LogWarning($"[SDK_Icon] Activating local embedded player for animation: {currentPoseData.ControllerName}");
 
-                    // 1. Сначала подготавливаем аудио-менеджер СИНХРОННО!
+                    // --- ANTI-ZOMBIE PLUG: HARD CLEANUP BEFORE SPAWN ---
+                    var zombiePlayers = characterComp.gameObject.GetComponents<FurnitureAnimationPlayer>();
+                    foreach (var zombie in zombiePlayers)
+                    {
+                        if (zombie != null) UnityEngine.Object.DestroyImmediate(zombie);
+                    }
+
                     if (AnimationAudioManager.Instance != null)
                     {
                         AnimationAudioManager.Instance.StopAudio();
-
-                        // ВАЖНО: Запускаем ScanAndPlay ДО рождения плеера!
-                        // Наш новый ScanAndPlay из ОЗУ мгновенно выставит _currentTrackIndex 
-                        // и загрузит плейлист в ОЗУ в этом же кадре!
                         AnimationAudioManager.Instance.ScanAndPlay(currentPoseData.ControllerName);
                     }
 
-                    // 2. И ТОЛЬКО ТЕПЕРЬ рождаем плеер!
+                    // Now birth a single, clean player on the character
                     var newPlayer = characterComp.gameObject.AddComponent<FurnitureAnimationPlayer>();
-
-                    // 3. Запускаем плеер. 
-                    // Теперь, когда он внутри метода Play() вызовет GetCurrentTrackName(),
-                    // аудио-менеджер выдаст ему ЧЕСТНОЕ имя файла (например, DanceAround01-A.mp3)!
-                    // Плеер сразу же в [ОЗУ_СТАРТ] подтянет ваши кастомные 230% и PerFrame!
                     newPlayer.Play(characterComp, currentPoseData.ControllerName, furniture, currentPoseData);
 
                     return;
                 }
+
 
                 // Логика Диорамы (Сценарий Б)
                 if (currentPoseData.Type.Equals("CustomJSON", StringComparison.OrdinalIgnoreCase))
@@ -675,7 +669,7 @@ namespace FurnitureAnimationsMod
         }
     }
 
-    // === ПАТЧ 6: БЕЗОПАСНЫЙ ВЫХОД ИЗ ИНТЕРАКТИВА ===
+    // === PATCH 6: SMART INTERACTION QUIT WITH AUTOMATIC PLAYER CLEANUP ===
     [HarmonyPatch(typeof(Furniture), "DoQuitInteraction")]
     public class FurnitureQuitSafetyPatch
     {
@@ -686,30 +680,69 @@ namespace FurnitureAnimationsMod
             {
                 try
                 {
-                    // --- ЭТАП 3: СОХРАНЕНИЕ ОЗУ-КАРТЫ В JSON ПРИ ВЫХОДЕ --- 💾🔥
+                    // --- STEP 3: SAVE RAM PLAYBACK MEMORY TO JSON ON QUIT --- 💾🔥
                     string cleanFurnName = __instance.name.Replace("(Clone)", "").Trim();
 
-                    // Проверяем, есть ли что сохранять в реестре LoadedConfigs
                     if (ConfigManager.LoadedConfigs.TryGetValue(cleanFurnName, out FurnitureConfig config) && config != null)
                     {
                         int pairsCount = config.RuntimePlaybackMemory != null ? config.RuntimePlaybackMemory.Count : 0;
-                        Plugin.Log.LogInfo($"[JSON_Экспорт] Игрок покидает '{cleanFurnName}'. Сбрасываем ОЗУ-карту ({pairsCount} пар) на диск...");
+                        Plugin.Log.LogInfo($"[JSON_Export] Interaction ending for '{cleanFurnName}'. Flushing RAM memory ({pairsCount} pairs) to disk...");
 
-                        // Вызываем ваш стандартный метод сохранения мода. 
-                        // (Если в вашем ConfigManager метод сохранения называется немного иначе, подставьте его точное имя)
                         ConfigManager.SaveFurniturePlaybackMemory(cleanFurnName);
                     }
                 }
                 catch (System.Exception ex)
                 {
-                    Plugin.Log.LogError($"[JSON_Экспорт_Ошибка] Ошибка автоматического сохранения ОЗУ в JSON: {ex.Message}");
+                    Plugin.Log.LogError($"[JSON_Export_Error] Failed to auto-save RAM to JSON: {ex.Message}");
                 }
+
+                // =========================================================================
+                // THE ELEGANT SOLUTION: DESTROY PLAYER COMPONENT IF IT EXISTS ON LEAVING HERO 🎯
+                // =========================================================================
+                try
+                {
+                    if (__instance.user != null)
+                    {
+                        var stuckPlayer = __instance.user.gameObject.GetComponent<FurnitureAnimationPlayer>();
+
+                        if (stuckPlayer != null)
+                        {
+                            // Verify if the exiting character is the main player hero
+                            bool isMainHero = __instance.user.gameObject.name.Contains("Player") ||
+                                              __instance.user.gameObject.GetComponent("PlayerControl") != null ||
+                                              __instance.user.gameObject.GetComponent("PlayerMove") != null;
+
+                            if (isMainHero)
+                            {
+                                Plugin.Log.LogWarning($"[SafetyCleanup] Main player is leaving furniture. Destroying stuck animation player for '{stuckPlayer.GetPlayingAnimationName()}'.");
+
+                                // Instantly destroy the player's engine component. OnDestroy will restore native animations
+                                UnityEngine.Object.DestroyImmediate(stuckPlayer);
+
+                                // Shut down the global audio since the main player walks away
+                                if (AnimationAudioManager.Instance != null)
+                                {
+                                    AnimationAudioManager.Instance.StopAudio();
+                                }
+                            }
+                            else
+                            {
+                                Plugin.Log.LogInfo($"[SafetyCleanup] Companion character '{__instance.user.gameObject.name}' is leaving interaction slot. Skipping animation engine cleanup.");
+                            }
+                        }
+                    }
+                }
+                catch (System.Exception ex)
+                {
+                    Plugin.Log.LogError($"[SafetyCleanup_Error] Failed to execute semantic runtime cleanup: {ex.Message}");
+                }
+                // =========================================================================
             }
 
-            // Ниже идет ваш оригинальный код безопасности
+            // Original fallback safety code
             if (__instance.user == null)
             {
-                Plugin.Log.LogWarning("[SafetyPatch] Безопасный выход из пустого интерактива.");
+                Plugin.Log.LogWarning("[SafetyPatch] Safe quit from empty interaction.");
                 var playerComp = UnityEngine.Object.FindObjectOfType<CharacterCustomization>();
                 if (playerComp != null)
                 {
@@ -720,6 +753,7 @@ namespace FurnitureAnimationsMod
             return true;
         }
     }
+
 
     // === ПАТЧ 7: РОКИРОВКА КНОПОК И ПОЛНАЯ ЗАЧИСТКА ОКНА СОХРАНЕНИЯ (RELEASE 0.2.0 STABLE) ===
     [HarmonyPatch(typeof(UIFreePose), "Open")]
