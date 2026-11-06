@@ -8,7 +8,7 @@ namespace FurnitureAnimationsMod
 {
     public class AnimationAudioManager : MonoBehaviour
     {
-        public static AnimationAudioManager Instance { get; private set; }
+        // public static AnimationAudioManager Instance { get; private set; }
 
         // --- КРИТИЧЕСКОЕ ИЗМЕНЕНИЕ: Статическая переменная сохраняет состояние глобально ---
         private static bool _isGlobalMuted = false;
@@ -24,15 +24,8 @@ namespace FurnitureAnimationsMod
 
         private void Awake()
         {
-            // Синглтон инициализируем строго один раз при создании компонента
-            if (Instance == null)
-            {
-                Instance = this;
-            }
-
             _audioSource = gameObject.GetComponent<AudioSource>() ?? gameObject.AddComponent<AudioSource>();
         }
-
 
         public void Initialize(string animationName, bool loopAudio)
         {
@@ -347,7 +340,7 @@ namespace FurnitureAnimationsMod
 
         private void OnDestroy()
         {
-            if (Instance == this) Instance = null;
+            // СТРОЧКУ 'if (Instance == this) Instance = null;' МЫ УДАЛИЛИ 🛑
             if (_audioSource != null && _audioSource.isPlaying)
             {
                 _audioSource.Stop();

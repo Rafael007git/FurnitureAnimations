@@ -56,7 +56,6 @@ namespace FurnitureAnimationsMod
         {
             Instance = this;
             _character = character;
-            _sanityWarmupFrames = 0; // СБРОС СЧЕТЧИКА ДЛЯ НОВОЙ СЕССИИ АНИМАЦИИ! 🎯
 
             // --- СВЕРХТОЧНЫЙ ПЕРЕХВАТ И ОЖИВЛЕНИЕ РАДАРА ---
             var existingRadar = _character.gameObject.GetComponent<AnimationRadar>();
@@ -181,8 +180,9 @@ namespace FurnitureAnimationsMod
                         config.RuntimePlaybackMemory = new Dictionary<string, PlaybackSettingsData>(StringComparer.OrdinalIgnoreCase);
                     }
 
-                    // Извлекаем имя текущего трека из аудио-менеджера
-                    string currentTrackPath = (AnimationAudioManager.Instance != null) ? AnimationAudioManager.Instance.GetCurrentTrackName() : "";
+                    // === ИСПРАВЛЕНО: Локальный поиск аудиоменеджера без синглтона ===
+                    var localAudio = gameObject.GetComponent<AnimationAudioManager>();
+                    string currentTrackPath = (localAudio != null) ? localAudio.GetCurrentTrackName() : "";
                     string trackKey = string.IsNullOrEmpty(currentTrackPath) ? "noAudio" : Path.GetFileName(currentTrackPath);
 
                     // Собираем наш уникальный составной ключ сессии: "ИмяАнимации_ИмяАудио"
@@ -233,19 +233,19 @@ namespace FurnitureAnimationsMod
                         config.RuntimePlaybackMemory = new Dictionary<string, PlaybackSettingsData>(StringComparer.OrdinalIgnoreCase);
                     }
 
-                    string currentTrackPath = (AnimationAudioManager.Instance != null) ? AnimationAudioManager.Instance.GetCurrentTrackName() : "";
+                    // === ИСПРАВЛЕНО: Локальный поиск аудиоменеджера на кукле без синглтона ===
+                    var localAudio = gameObject.GetComponent<AnimationAudioManager>();
+                    string currentTrackPath = (localAudio != null) ? localAudio.GetCurrentTrackName() : "";
                     string trackKey = string.IsNullOrEmpty(currentTrackPath) ? "noAudio" : Path.GetFileName(currentTrackPath);
 
                     string sessionKey = $"{_animData.name}_{trackKey}";
 
-                    // Ленивая инициализация: если ячейки в ОЗУ еще нет, создаем на лету
                     if (!config.RuntimePlaybackMemory.TryGetValue(sessionKey, out PlaybackSettingsData currentSettings) || currentSettings == null)
                     {
                         currentSettings = new PlaybackSettingsData { EaseMode = _currentEaseMode };
                         config.RuntimePlaybackMemory[sessionKey] = currentSettings;
                     }
 
-                    // Перезаписываем скорость в ОЗУ сессии интерактива!
                     currentSettings.Speed = _speedModifier;
                     Plugin.Log.LogInfo($"[ОЗУ_КЛИК] Скорость {_speedModifier * 100:F0}% успешно зафиксирована в ОЗУ для пары [{sessionKey}]");
                 }
@@ -256,16 +256,17 @@ namespace FurnitureAnimationsMod
 
         public void ToggleEaseMode()
         {
-            // 1. Переключаем режим по кругу (ваша оригинальная логика)
+            // 1. Переключаем режим по кругу
             _currentEaseMode = (EaseMode)(((int)_currentEaseMode + 1) % 3);
             Plugin.Log.LogWarning($"[EaseManager] Режим сглаживания изменен на: {_currentEaseMode}");
 
             // 2. ДОБАВЛЕНО: Мгновенно синхронизируем изменения с нашей ОЗУ-картой памяти! 🧠⚡
             if (_targetFurniture != null)
             {
-                string trackKey = (AnimationAudioManager.Instance != null) ? AnimationAudioManager.Instance.GetCurrentTrackName() : "noAudio";
+                // === ИСПРАВЛЕНО: Локальный поиск имени трека без синглтона ===
+                var localAudio = gameObject.GetComponent<AnimationAudioManager>();
+                string trackKey = (localAudio != null) ? localAudio.GetCurrentTrackName() : "noAudio";
 
-                // Отправляем текущую скорость и НОВЫЙ режим сглаживания на честную перезапись в ОЗУ
                 ConfigManager.UpdateRuntimePlaybackMemory(
                     _targetFurniture.name,
                     GetPlayingAnimationName(),
@@ -279,9 +280,7 @@ namespace FurnitureAnimationsMod
         public EaseMode GetEaseMode() => _currentEaseMode;
 
         public string GetPlayingAnimationName() => _animData != null ? _animData.name : string.Empty;
-
-        private int _sanityWarmupFrames = 0; // Добавь это приватное поле в класс (или оставь прямо внутри метода как статичную/локальную логику, но лучше в теле класса)
-
+                
         private void LateUpdate()
         {
             if (_character == null || _animData == null || _animData.deltas == null || _targetFurniture == null) return;

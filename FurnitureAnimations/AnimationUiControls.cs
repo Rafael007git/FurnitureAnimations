@@ -78,14 +78,23 @@ namespace FurnitureAnimationsMod
                             });
                         }
 
+                        // === ТОЧЕЧНЫЙ ФИКС: Привязка к локальному аудиоменеджеру куклы ===
                         RebindButtonAction(buttonsContainer, "Mod_BtnMuteToggle", () =>
                         {
-                            if (AnimationAudioManager.Instance != null) { AnimationAudioManager.Instance.ToggleMute(); UpdateSoundButton(); }
+                            if (_activeFurnitureInstance != null && _activeFurnitureInstance.user != null)
+                            {
+                                var audio = _activeFurnitureInstance.user.gameObject.GetComponent<AnimationAudioManager>();
+                                if (audio != null) { audio.ToggleMute(); UpdateSoundButton(); }
+                            }
                         });
 
                         RebindButtonAction(buttonsContainer, "Mod_BtnNextAudio", () =>
                         {
-                            if (AnimationAudioManager.Instance != null) { AnimationAudioManager.Instance.PlayNextTrack(); UpdateSoundButton(); }
+                            if (_activeFurnitureInstance != null && _activeFurnitureInstance.user != null)
+                            {
+                                var audio = _activeFurnitureInstance.user.gameObject.GetComponent<AnimationAudioManager>();
+                                if (audio != null) { audio.PlayNextTrack(); UpdateSoundButton(); }
+                            }
                         });
 
                         // Перепривязываем нашу единую контекстную кнопку управления камерами! 🎯📸
@@ -226,14 +235,36 @@ namespace FurnitureAnimationsMod
                     });
                     btnPos.y += spacing;
 
+                    // === ТОЧЕЧНЫЙ ФИКС: Контекстное создание аудио-кнопок ===
                     // Кнопка: Следующий трек
-                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnNextAudio", "Next Audio", btnPos, _iconNextAudio, () => { if (AnimationAudioManager.Instance != null) { AnimationAudioManager.Instance.PlayNextTrack(); UpdateSoundButton(); } });
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnNextAudio", "Next Audio", btnPos, _iconNextAudio, () =>
+                    {
+                        if (_activeFurnitureInstance != null && _activeFurnitureInstance.user != null)
+                        {
+                            var audio = _activeFurnitureInstance.user.gameObject.GetComponent<AnimationAudioManager>();
+                            if (audio != null) { audio.PlayNextTrack(); UpdateSoundButton(); }
+                        }
+                    });
                     btnPos.y += spacing;
 
                     // Кнопка звука
-                    Texture2D currentSoundIcon = (AnimationAudioManager.Instance != null && AnimationAudioManager.Instance.IsMuted()) ? _iconSoundOff : _iconSoundOn;
-                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnMuteToggle", "Sound: ON", btnPos, currentSoundIcon, () => { if (AnimationAudioManager.Instance != null) { AnimationAudioManager.Instance.ToggleMute(); UpdateSoundButton(); } });
+                    Texture2D currentSoundIcon = _iconSoundOn;
+                    if (_activeFurnitureInstance != null && _activeFurnitureInstance.user != null)
+                    {
+                        var audio = _activeFurnitureInstance.user.gameObject.GetComponent<AnimationAudioManager>();
+                        if (audio != null && audio.IsMuted()) currentSoundIcon = _iconSoundOff;
+                    }
+
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnMuteToggle", "Sound: ON", btnPos, currentSoundIcon, () =>
+                    {
+                        if (_activeFurnitureInstance != null && _activeFurnitureInstance.user != null)
+                        {
+                            var audio = _activeFurnitureInstance.user.gameObject.GetComponent<AnimationAudioManager>();
+                            if (audio != null) { audio.ToggleMute(); UpdateSoundButton(); }
+                        }
+                    });
                     btnPos.y += spacing;
+
                 }
 
                 UpdateInterfaceStates();
@@ -614,9 +645,16 @@ namespace FurnitureAnimationsMod
             UpdateText("Mod_BtnEaseToggle", $"Interpolation: {currentMode}");
         }
 
+        // === ИСПРАВЛЕНО: Адресное обновление кнопки звука без синглтонов ===
         private void UpdateSoundButton()
         {
-            bool isMuted = AnimationAudioManager.Instance != null && AnimationAudioManager.Instance.IsMuted();
+            bool isMuted = false;
+            if (_activeFurnitureInstance != null && _activeFurnitureInstance.user != null)
+            {
+                var audio = _activeFurnitureInstance.user.gameObject.GetComponent<AnimationAudioManager>();
+                if (audio != null) isMuted = audio.IsMuted();
+            }
+
             UpdateText("Mod_BtnMuteToggle", isMuted ? "Sound: MUTED" : "Sound: ON");
             UpdateImageSprite("Mod_BtnMuteToggle", isMuted ? _iconSoundOff : _iconSoundOn);
         }
@@ -642,42 +680,40 @@ namespace FurnitureAnimationsMod
             }
         }
 
+        // === ИСПРАВЛЕНО: ExecuteEaseToggleAction без синглтонов ===
         private void ExecuteEaseToggleAction()
         {
-            // 1. Хватаем строго живой синглтон плеера напрямую из движка в момент клика
             var livePlayer = FurnitureAnimationPlayer.Instance;
 
-            // Резервный поиск на случай, если синглтон еще не успел обновиться
             if (livePlayer == null || livePlayer.Equals(null) || !livePlayer.isActiveAndEnabled)
             {
                 livePlayer = UnityEngine.Object.FindObjectOfType<FurnitureAnimationPlayer>();
             }
 
-            // Синхронизируем наше локальное поле класса, чтобы другие методы (например, UpdateEaseButton) не упали
             _player = livePlayer;
 
             if (livePlayer != null && _activeFurnitureInstance != null)
             {
-                // 2. Меняем режим в ЖИВОМ плеере и обновляем иконку/текст кнопки
                 livePlayer.ToggleEaseMode();
                 UpdateEaseButton();
 
-                // 3. Безопасно вычисляем компоненты ключа
                 string cleanFurnName = _activeFurnitureInstance.name.Replace("(Clone)", "").Trim();
                 string activeAnimName = livePlayer.GetPlayingAnimationName();
 
-                // Фикс ошибок 404: если имя трека сомнительное, принудительно шлем "noAudio" по ТЗ
                 string currentTrackName = "noAudio";
-                if (AnimationAudioManager.Instance != null)
+                if (_activeFurnitureInstance.user != null)
                 {
-                    string rawTrack = AnimationAudioManager.Instance.GetCurrentTrackName();
-                    if (!string.IsNullOrEmpty(rawTrack) && !rawTrack.Contains("404") && rawTrack != "unknown")
+                    var audio = _activeFurnitureInstance.user.gameObject.GetComponent<AnimationAudioManager>();
+                    if (audio != null)
                     {
-                        currentTrackName = rawTrack;
+                        string rawTrack = audio.GetCurrentTrackName();
+                        if (!string.IsNullOrEmpty(rawTrack) && !rawTrack.Contains("404") && rawTrack != "unknown")
+                        {
+                            currentTrackName = rawTrack;
+                        }
                     }
                 }
 
-                // 4. Отправляем на валидацию и запись в ОЗУ-карту
                 ConfigManager.UpdateRuntimePlaybackMemory(
                     cleanFurnName,
                     activeAnimName,

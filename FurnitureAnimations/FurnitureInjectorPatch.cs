@@ -489,97 +489,98 @@ namespace FurnitureAnimationsMod
                 // --- КРИТИЧЕСКИЙ ФИКС СЛИЯНИЯ: ЕСЛИ ПОЗА НЕ НАЙДЕНА В КОНФИГЕ МОДА ---
                 if (currentPoseData == null)
                 {
-                    // Это значит, что игрок кликнул по оригинальной ВАНИЛЬНОЙ позе игры!
-                    // Сносим наш кастомный плеер анимаций мгновенно, чтобы вернуть управление игре
                     var vanillaCleanupPlayer = characterComp.gameObject.GetComponent<FurnitureAnimationPlayer>();
                     if (vanillaCleanupPlayer != null)
                     {
                         UnityEngine.Object.DestroyImmediate(vanillaCleanupPlayer);
                     }
 
-                    // Включаем встроенный аниматор игры обратно, чтобы ванильная поза могла запуститься!
                     if (characterComp.anim != null)
                     {
                         characterComp.anim.enabled = true;
                         characterComp.anim.speed = 1f;
                     }
 
-                    // Выключаем проигрывание аудио, если оно работало
-                    if (AnimationAudioManager.Instance != null)
+                    // === ИСПРАВЛЕНО: Гасим звук строго у конкретного персонажа ===
+                    var vanillaAudio = characterComp.gameObject.GetComponent<AnimationAudioManager>();
+                    if (vanillaAudio != null)
                     {
-                        AnimationAudioManager.Instance.StopAudio();
+                        vanillaAudio.StopAudio();
                     }
 
                     Plugin.Log.LogInfo($"[SDK_Icon] Клик по ванильной позе '{uiPoseName}'. Наш плеер уничтожен, управление возвращено игре.");
-                    return; // Просто выходим, позволяя игре выполнить её стандартный метод DoPose
+                    return;
                 }
 
                 // =========================================================================
                 // УМНЫЙ ПЕРЕХВАТ ДЛЯ СМЕНЫ И ОСТАНОВКИ АНИМАЦИЙ 🛑💃
                 // =========================================================================
-
-                // Проверяем, запущен ли наш встроенный плеер на персонаже прямо сейчас
                 var activePlayer = characterComp.gameObject.GetComponent<FurnitureAnimationPlayer>();
 
                 if (activePlayer != null)
                 {
-                    // Узнаем имя анимации, которая крутится в данный момент
                     string currentlyPlayingAnim = activePlayer.GetPlayingAnimationName();
 
-                    // ЕСЛИ КЛИКНУЛИ ПО ТОЙ ЖЕ ИКОНКЕ -> Просто останавливаем «горшочек»
+                    // ЕСЛИ КЛИКНУЛИ ПО ТОЙ ЖЕ ИКОНКЕ -> Просто останавливаем
                     if (currentPoseData.Type.Equals("PoseAnimationsMod", StringComparison.OrdinalIgnoreCase) &&
                         currentPoseData.ControllerName == currentlyPlayingAnim)
                     {
                         Plugin.Log.LogWarning($"[SDK_Icon] Клик по той же анимации '{currentlyPlayingAnim}'. Останавливаем плеер.");
                         UnityEngine.Object.DestroyImmediate(activePlayer);
 
-                        if (AnimationAudioManager.Instance != null)
+                        // === ИСПРАВЛЕНО: Гасим локальный аудиоменеджер персонажа ===
+                        var sameAudio = characterComp.gameObject.GetComponent<AnimationAudioManager>();
+                        if (sameAudio != null)
                         {
-                            AnimationAudioManager.Instance.StopAudio();
+                            sameAudio.StopAudio();
                         }
-                        return; // Мгновенный выход, ничего нового не запускаем
+                        return;
                     }
 
-                    // ЕСЛИ КЛИКНУЛИ ПО ЛЮБОЙ ДРУГОЙ ИКОНКЕ -> Сносим старый плеер МГНОВЕННО и тушим звук
+                    // ЕСЛИ КЛИКНУЛИ ПО ЛЮБОЙ ДРУГОЙ ИКОНКЕ -> Сносим старый плеер
                     Plugin.Log.LogWarning($"[SDK_Icon] Переключение! Удаляем старую анимацию '{currentlyPlayingAnim}' перед запуском нового режима.");
-
-                    // Фикс Бага 3: Используем DestroyImmediate, чтобы старый плеер полностью стерся до генерации нового
                     UnityEngine.Object.DestroyImmediate(activePlayer);
 
-                    if (AnimationAudioManager.Instance != null)
+                    // === ИСПРАВЛЕНО: Гасим старый трек у этого персонажа ===
+                    var oldAudio = characterComp.gameObject.GetComponent<AnimationAudioManager>();
+                    if (oldAudio != null)
                     {
-                        // Обязательно тушим старый трек, переводя аудио-менеджер в состояние "noAudio"
-                        AnimationAudioManager.Instance.StopAudio();
+                        oldAudio.StopAudio();
                     }
                 }
+
+                // =========================================================================
+                // ЛОГИКА ЗАПУСКА И СИНХРОНИЗАЦИИ НОВЫХ СОСТОЯНИЙ
+                // =========================================================================
 
                 // Логика запуска внешней JSON-анимации мода
                 if (currentPoseData.Type.Equals("PoseAnimationsMod", StringComparison.OrdinalIgnoreCase))
                 {
-                    Plugin.Log.LogWarning($"[SDK_Icon] Activating local embedded player for animation: {currentPoseData.ControllerName}");
+                    Plugin.Log.LogWarning($"[SDK_Icon] Активирован локальный встроенный плеер для анимации: {currentPoseData.ControllerName}");
 
-                    // --- ANTI-ZOMBIE PLUG: HARD CLEANUP BEFORE SPAWN ---
-                    var zombiePlayers = characterComp.gameObject.GetComponents<FurnitureAnimationPlayer>();
-                    foreach (var zombie in zombiePlayers)
+                    // === ИСПРАВЛЕНО: Ковровая зачистка старых компонентов аудио на кукле перед стартом ===
+                    var zombieAudios = characterComp.gameObject.GetComponents<AnimationAudioManager>();
+                    foreach (var zombieAudio in zombieAudios)
                     {
-                        if (zombie != null) UnityEngine.Object.DestroyImmediate(zombie);
+                        if (zombieAudio != null)
+                        {
+                            zombieAudio.StopAudio();
+                            UnityEngine.Object.DestroyImmediate(zombieAudio);
+                        }
                     }
 
-                    if (AnimationAudioManager.Instance != null)
-                    {
-                        AnimationAudioManager.Instance.StopAudio();
-                        AnimationAudioManager.Instance.ScanAndPlay(currentPoseData.ControllerName);
-                    }
+                    // Создаем свежий, чистый аудиоменеджер строго на этом персонаже
+                    var newAudio = characterComp.gameObject.AddComponent<AnimationAudioManager>();
+                    newAudio.ScanAndPlay(currentPoseData.ControllerName);
 
-                    // Now birth a single, clean player on the character
+                    // И теперь рождаем плеер!
                     var newPlayer = characterComp.gameObject.AddComponent<FurnitureAnimationPlayer>();
                     newPlayer.Play(characterComp, currentPoseData.ControllerName, furniture, currentPoseData);
 
                     return;
                 }
 
-
-                // Логика Диорамы (Сценарий Б)
+                // Логика Диорамы
                 if (currentPoseData.Type.Equals("CustomJSON", StringComparison.OrdinalIgnoreCase))
                 {
                     Plugin.Log.LogWarning($"[SDK_Icon] Целевой файл Диорамы найден: {currentPoseData.JsonFileName}. Запускаем отложенный поток...");
@@ -707,7 +708,6 @@ namespace FurnitureAnimationsMod
 
                         if (stuckPlayer != null)
                         {
-                            // Verify if the exiting character is the main player hero
                             bool isMainHero = __instance.user.gameObject.name.Contains("Player") ||
                                               __instance.user.gameObject.GetComponent("PlayerControl") != null ||
                                               __instance.user.gameObject.GetComponent("PlayerMove") != null;
@@ -716,13 +716,14 @@ namespace FurnitureAnimationsMod
                             {
                                 Plugin.Log.LogWarning($"[SafetyCleanup] Main player is leaving furniture. Destroying stuck animation player for '{stuckPlayer.GetPlayingAnimationName()}'.");
 
-                                // Instantly destroy the player's engine component. OnDestroy will restore native animations
                                 UnityEngine.Object.DestroyImmediate(stuckPlayer);
 
-                                // Shut down the global audio since the main player walks away
-                                if (AnimationAudioManager.Instance != null)
+                                // === ИСПРАВЛЕНО: Гасим звук строго у конкретного уходящего игрока через GetComponent ===
+                                var playerAudio = __instance.user.gameObject.GetComponent<AnimationAudioManager>();
+                                if (playerAudio != null)
                                 {
-                                    AnimationAudioManager.Instance.StopAudio();
+                                    playerAudio.StopAudio();
+                                    UnityEngine.Object.DestroyImmediate(playerAudio);
                                 }
                             }
                             else
@@ -739,7 +740,6 @@ namespace FurnitureAnimationsMod
                 // =========================================================================
             }
 
-            // Original fallback safety code
             if (__instance.user == null)
             {
                 Plugin.Log.LogWarning("[SafetyPatch] Safe quit from empty interaction.");
