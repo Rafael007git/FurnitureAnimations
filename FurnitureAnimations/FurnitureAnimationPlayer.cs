@@ -56,6 +56,7 @@ namespace FurnitureAnimationsMod
         {
             Instance = this;
             _character = character;
+            _sanityWarmupFrames = 0; // СБРОС СЧЕТЧИКА ДЛЯ НОВОЙ СЕССИИ АНИМАЦИИ! 🎯
 
             // --- СВЕРХТОЧНЫЙ ПЕРЕХВАТ И ОЖИВЛЕНИЕ РАДАРА ---
             var existingRadar = _character.gameObject.GetComponent<AnimationRadar>();
@@ -279,24 +280,34 @@ namespace FurnitureAnimationsMod
 
         public string GetPlayingAnimationName() => _animData != null ? _animData.name : string.Empty;
 
+        private int _sanityWarmupFrames = 0; // Добавь это приватное поле в класс (или оставь прямо внутри метода как статичную/локальную логику, но лучше в теле класса)
+
         private void LateUpdate()
         {
             if (_character == null || _animData == null || _animData.deltas == null || _targetFurniture == null) return;
 
-            // --- THE CHARACTER-CENTRIC SANITY GUARD ---
-            // 1. If the character stopped interacting or switched to another object entirely
-            bool isStillInteracting = _character.interactingObject == _targetFurniture.gameObject;
-
-            // 2. If native game or Free Pose Mode forced the Animator back ON, meaning our custom JSON loop is overridden
-            bool isAnimatorInterrupted = _character.anim != null && _character.anim.enabled;
-
-            if (!isStillInteracting || isAnimatorInterrupted)
+            // --- THE CHARACTER-CENTRIC SANITY GUARD WITH WARMUP ---
+            // Даем ванильному движку игры 3 кадра на завершение переключения позы в интерфейсе, 
+            // чтобы избежать ложного срабатывания 'Interacting: False' в момент клика по иконке!
+            if (_sanityWarmupFrames < 3)
             {
-                Plugin.Log.LogWarning($"[Engine_Sanity] Custom playback interrupted for '{_character.name}'. Interacting: {isStillInteracting}, AnimatorReset: {isAnimatorInterrupted}. Self-destructing player.");
+                _sanityWarmupFrames++;
+            }
+            else
+            {
+                // 1. If the character stopped interacting or switched to another object entirely
+                bool isStillInteracting = _character.interactingObject == _targetFurniture.gameObject;
 
-                // This will safely trigger OnDestroy(), enabling the native animator and cleanly shutting down audio
-                Destroy(this);
-                return;
+                // 2. If native game or Free Pose Mode forced the Animator back ON, meaning our custom JSON loop is overridden
+                bool isAnimatorInterrupted = _character.anim != null && _character.anim.enabled;
+
+                if (!isStillInteracting || isAnimatorInterrupted)
+                {
+                    Plugin.Log.LogWarning($"[Engine_Sanity] Custom playback interrupted for '{_character.name}'. Interacting: {isStillInteracting}, AnimatorReset: {isAnimatorInterrupted}. Self-destructing player.");
+                    // This will safely trigger OnDestroy(), enabling the native animator and cleanly shutting down audio
+                    Destroy(this);
+                    return;
+                }
             }
 
             // 1. СТРОГАЯ СИСТЕМНАЯ НУЛЕВАЯ БАЗА
