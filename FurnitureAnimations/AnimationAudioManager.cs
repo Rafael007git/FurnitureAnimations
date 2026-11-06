@@ -55,21 +55,6 @@ namespace FurnitureAnimationsMod
             ScanAndPlay(animationName);
         }
 
-        // --- AUTOMATIC PLAYLIST TRACK COUPLING ---
-        private void Update()
-        {
-            // If the source is initialized, not muted, and stopped playing by itself (track ended)
-            if (_audioSource != null && !_isGlobalMuted && !_audioSource.isPlaying && _currentLoadCoroutine == null)
-            {
-                // Only advance if we actually have tracks and a valid current index
-                if (_currentPlaylist != null && _currentPlaylist.Count > 1 && _currentTrackIndex >= 0)
-                {
-                    Plugin.Log.LogInfo("[AudioEngine] Track finished naturally. Advancing to the next song automatically.");
-                    PlayNextTrack();
-                }
-            }
-        }
-
         // Внутренний метод сканирования ОЗУ-состояний и запуска (вынесен для переиспользования при UnMute)
         public void ScanAndPlay(string animationName)
         {
@@ -238,14 +223,27 @@ namespace FurnitureAnimationsMod
                         _audioSource.bypassEffects = false;
                         _audioSource.bypassListenerEffects = false;
                         _audioSource.priority = 0;
-                        _audioSource.spatialBlend = 1.0f; // Переключаем из 2D (0f) в 3D (1f)
-                        _audioSource.minDistance = 2.0f;  // Дистанция, до которой звук максимальный
-                        _audioSource.maxDistance = 151.0f; // Дистанция, на которой звук полностью затихнет
-                        _audioSource.rolloffMode = AudioRolloffMode.Logarithmic; // Режим затухания физический
+                        _audioSource.spatialBlend = 1.0f;
+                        _audioSource.minDistance = 2.0f;
+                        _audioSource.maxDistance = 151.0f;
+                        _audioSource.rolloffMode = AudioRolloffMode.Logarithmic;
                         _audioSource.volume = 1.0f;
                         _audioSource.mute = _isGlobalMuted;
                         _audioSource.Play();
                         Plugin.Log.LogInfo($"[AudioEngine] Звуковой файл '{Path.GetFileName(filePath)}' успешно воспроизводится!");
+
+                        // =========================================================================
+                        // ЧЕСТНЫЙ АВТОМАТ БЕЗ UPDATE: Усыпляем поток ровно на длину музыкального трека 💤🎵
+                        // =========================================================================
+                        if (!_loopAudio && _currentPlaylist != null && _currentPlaylist.Count > 1)
+                        {
+                            // Ждем длину песни минус 0.1 секунды для бесшовного перехода
+                            yield return new UnityEngine.WaitForSeconds(clip.length);
+
+                            Plugin.Log.LogInfo("[AudioEngine] Трек завершился по времени клипа. Автоматический переход к следующей песне...");
+                            PlayNextTrack();
+                        }
+                        // =========================================================================
                     }
                 }
             }
