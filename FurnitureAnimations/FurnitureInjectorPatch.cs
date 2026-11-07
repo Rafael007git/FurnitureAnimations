@@ -311,7 +311,7 @@ namespace FurnitureAnimationsMod
 
     }
 
-    // === PATCH 2: SEAMLESS AUTO-POSE ENTRANCE INTERCEPTOR (RELEASE 1.7.8) ===
+    // === PATCH 2: SEAMLESS AUTO-POSE ENTRANCE INTERCEPTOR (RELEASE 1.8.0) ===
     [HarmonyPatch(typeof(Furniture), "InitiateInteract")]
     public class FurnitureAutoPosePatch
     {
@@ -327,14 +327,12 @@ namespace FurnitureAnimationsMod
             {
                 if (config.InteractionPoses != null && config.InteractionPoses.Count > 0)
                 {
-                    // Directly fetch the very first pose configured by the user in the JSON file
                     PoseData firstPoseData = config.InteractionPoses[0];
 
                     if (firstPoseData != null)
                     {
-                        Plugin.Log.LogWarning($"[AutoInteract] First configured pose detected: '{firstPoseData.DisplayName}' [Type: {firstPoseData.Type}]");
+                        Plugin.Log.LogInfo($"[AutoInteract] Auto-playback targeted layout profile: '{firstPoseData.DisplayName}' [Type: {firstPoseData.Type}]");
 
-                        // 1. Let the native game fire DoPose first to map base data and create native hooks
                         if (__instance.poses != null && __instance.poses.items.Count > 0)
                         {
                             Transform firstPoseTransform = __instance.poses.items[0] as Transform;
@@ -348,50 +346,42 @@ namespace FurnitureAnimationsMod
                             }
                         }
 
-                        // 2. Intercept and boot our engines depending on the animation target type
                         if (firstPoseData.Type.Equals("PoseAnimationsMod", StringComparison.OrdinalIgnoreCase))
                         {
-                            Plugin.Log.LogWarning($"[AutoInteract] Booting dynamic JSON playback engine for: '{firstPoseData.ControllerName}'");
+                            Plugin.Log.LogInfo($"[AutoInteract] Provisioning dynamic target engine matrix loops for animation track: '{firstPoseData.ControllerName}'");
 
-                            // Safety cleanup of legacy loops on this specific character instance
                             var oldPlayers = customization.gameObject.GetComponents<FurnitureAnimationPlayer>();
                             foreach (var p in oldPlayers) UnityEngine.Object.DestroyImmediate(p);
 
+                            // КРИТИЧЕСКИЙ ТОЧЕЧНЫЙ ФИКС: Убрали дублирующий запуск ScanAndPlay. 
+                            // Оставляем только зачистку старых менеджеров звука на кукле перед стартом плеера.
                             var oldAudios = customization.gameObject.GetComponents<AnimationAudioManager>();
                             foreach (var a in oldAudios) { a.StopAudio(); UnityEngine.Object.DestroyImmediate(a); }
-
-                            // Spawn the audio machine and motion player explicitly using clean configuration data
-                            var newAudio = customization.gameObject.AddComponent<AnimationAudioManager>();
-                            newAudio.ScanAndPlay(firstPoseData.ControllerName);
 
                             var newPlayer = customization.gameObject.AddComponent<FurnitureAnimationPlayer>();
                             newPlayer.Play(customization, firstPoseData.ControllerName, __instance, firstPoseData);
                         }
                         else if (firstPoseData.Type.Equals("CustomJSON", StringComparison.OrdinalIgnoreCase))
                         {
-                            Plugin.Log.LogWarning($"[AutoInteract] Booting static Diorama matrix alignment for: '{firstPoseData.JsonFileName}'");
+                            Plugin.Log.LogInfo($"[AutoInteract] Provisioning hardware alignment configurations for static snapshot file: '{firstPoseData.JsonFileName}'");
 
-                            // FIXED: curInteractionLoc is read from character customization context, not the furniture
                             Transform activeLoc = customization.curInteractionLoc != null ? customization.curInteractionLoc : __instance.transform.Find("loc");
                             if (activeLoc != null)
                             {
-                                customization.transform.SetParent(null);
                                 customization.transform.position = activeLoc.position;
                                 customization.transform.rotation = activeLoc.rotation;
                             }
 
-                            // Force immediate hardware synchronization and clear Unity runtime matrix buffer
                             if (customization.anim != null)
                             {
                                 customization.anim.enabled = true;
                                 customization.anim.speed = 1f;
-                                customization.anim.Update(0f); // Flush Unity skeletal cache
+                                customization.anim.Update(0f);
                                 customization.anim.applyRootMotion = false;
                                 customization.anim.speed = 0f;
                                 customization.anim.enabled = false;
                             }
 
-                            // Safe direct call to our processor now that it's public
                             PoseIconClickDioramaPatch.ProcessPoseClick(customization, __instance, firstPoseData.DisplayName, "UnarmedController");
                         }
                     }
@@ -399,7 +389,6 @@ namespace FurnitureAnimationsMod
             }
         }
     }
-
 
     // === ПАТЧ 3: ГЛОБАЛЬНЫЙ ПЕРЕХВАТ ОКНА UIPOSE ДЛЯ АКТИВАЦИИ ПАНЕЛИ КАМЕР (Пункт 6 ТЗ) ===
     [HarmonyPatch(typeof(UIPose), "Open")]
@@ -919,45 +908,4 @@ namespace FurnitureAnimationsMod
         }
     }
 
-    [HarmonyPatch(typeof(global::Pose), "Warp")]
-    public class DebugPoseWarpSpy
-    {
-        [HarmonyPostfix]
-        public static void Postfix(global::Pose __instance, Transform character)
-        {
-            if (__instance == null || character == null) return;
-
-            Animator anim = character.GetComponent<Animator>();
-            string ctrlName = anim?.runtimeAnimatorController?.name ?? "None";
-            bool isEnabled = anim != null && anim.enabled;
-
-            Plugin.Log.LogWarning(
-                $"[TIMING_DEBUG] -> 1. Сработал метод Pose.Warp для позы '{__instance.name}'\n" +
-                $"Персонаж: {character.name}\n" +
-                $"Animator Enabled: {isEnabled}\n" +
-                $"Controller Name: {ctrlName}"
-            );
-        }
-    }
-
-    [HarmonyPatch(typeof(Furniture), "WarpCharacter")]
-    public class DebugWarpCharacterSpy
-    {
-        [HarmonyPostfix]
-        public static void Postfix(Furniture __instance, Transform character, Transform pose)
-        {
-            if (__instance == null || character == null || pose == null) return;
-
-            Animator anim = character.GetComponent<Animator>();
-            string ctrlName = anim?.runtimeAnimatorController?.name ?? "None";
-            bool isEnabled = anim != null && anim.enabled;
-
-            Plugin.Log.LogError(
-                $"[TIMING_DEBUG] -> 2. Сработал метод Furniture.WarpCharacter для мебели '{__instance.name}'\n" +
-                $"Выбранный локатор позы: {pose.name}\n" +
-                $"Animator Enabled: {isEnabled}\n" +
-                $"Controller Name: {ctrlName}"
-            );
-        }
-    }
 }
