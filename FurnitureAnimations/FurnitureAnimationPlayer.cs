@@ -138,13 +138,35 @@ namespace FurnitureAnimationsMod
                 Quaternion recordStartRot = Quaternion.Euler(ArrayToVector3(_animData.startRot));
                 _recordToFurnitureRotModifier = _localBaseRot * Quaternion.Inverse(recordStartRot);
 
-                // 4. Физически позиционируем персонажа в мире с учетом любого наклона стула
-                _character.transform.position = _targetFurniture.transform.TransformPoint(_localBasePos);
-                _character.transform.rotation = _targetFurniture.transform.rotation * _localBaseRot;
+                // === КРИТИЧЕСКИЙ ФИКС БАГА ПАМЯТИ МЕБЕЛИ: МГНОВЕННЫЙ СБРОС И КУПИРОВАНИЕ А-ПОЗЫ ===
+                // Перед тем как выключить аниматор, мы жестко синхронизируем трансформ персонажа с живым локатором позы игры!
+                Transform activeLoc = _character.curInteractionLoc != null ? _character.curInteractionLoc : _targetFurniture.transform.Find("loc");
+                if (activeLoc != null)
+                {
+                    // Сбрасываем иерархию Юнити, временно отвязывая персонажа от старых родителей
+                    _character.transform.SetParent(null);
+
+                    // Жестко привязываем мировые координаты куклы к новой мебели
+                    _character.transform.position = activeLoc.position;
+                    _character.transform.rotation = activeLoc.rotation;
+
+                    Plugin.Log.LogInfo($"[Engine_Warp] Character safely locked onto explicit interaction locator: {activeLoc.name}");
+                }
+                else
+                {
+                    // Фаллбэк на случай отсутствия локатора
+                    _character.transform.position = _targetFurniture.transform.TransformPoint(_localBasePos);
+                    _character.transform.rotation = _targetFurniture.transform.rotation * _localBaseRot;
+                }
             }
 
+            // Включаем нативный аниматор на долю секунды, чтобы Unity принудительно обновил и очистил внутренний кэш матриц костей
             if (_character.anim != null)
             {
+                _character.anim.enabled = true;
+                _character.anim.speed = 1f;
+                _character.anim.Update(0f); // Принудительный внутренний тик очистки кэша Unity! 🔄⚡
+
                 _character.anim.applyRootMotion = false;
                 _character.anim.speed = 0f;
                 _character.anim.enabled = false;

@@ -311,7 +311,7 @@ namespace FurnitureAnimationsMod
 
     }
 
-    // === ПАТЧ 2: АВТО-ПОЗА И ФИКСАЦИЯ КАМЕРЫ ПРИ ВХОДЕ ИНТЕРАКТИВА ===
+    // === PATCH 2: SEAMLESS AUTO-POSE ENTRANCE INTERCEPTOR (RELEASE 1.7.8) ===
     [HarmonyPatch(typeof(Furniture), "InitiateInteract")]
     public class FurnitureAutoPosePatch
     {
@@ -321,27 +321,85 @@ namespace FurnitureAnimationsMod
             if (__instance == null || customization == null) return;
 
             string furnitureName = __instance.name.Replace("(Clone)", "").Trim();
+            Plugin.Log.LogInfo($"[AutoInteract] Character '{customization.name}' entered furniture '{furnitureName}'. Analyzing layout...");
 
-            if (ConfigManager.LoadedConfigs.ContainsKey(furnitureName))
+            if (ConfigManager.LoadedConfigs.TryGetValue(furnitureName, out FurnitureConfig config))
             {
-                Plugin.Log.LogWarning($"[AutoInteract] Настройка бесшовного входа для: {furnitureName}");
-
-                if (__instance.poses != null && __instance.poses.items.Count > 0)
+                if (config.InteractionPoses != null && config.InteractionPoses.Count > 0)
                 {
-                    Transform firstPoseTransform = __instance.poses.items[0];
-                    if (firstPoseTransform != null)
+                    // Directly fetch the very first pose configured by the user in the JSON file
+                    PoseData firstPoseData = config.InteractionPoses[0];
+
+                    if (firstPoseData != null)
                     {
-                        Pose firstPose = firstPoseTransform.GetComponent<Pose>();
-                        if (firstPose != null)
+                        Plugin.Log.LogWarning($"[AutoInteract] First configured pose detected: '{firstPoseData.DisplayName}' [Type: {firstPoseData.Type}]");
+
+                        // 1. Let the native game fire DoPose first to map base data and create native hooks
+                        if (__instance.poses != null && __instance.poses.items.Count > 0)
                         {
-                            Plugin.Log.LogWarning($"[AutoInteract] Авто-вызов позы: {firstPose.name}");
-                            __instance.DoPose(firstPose);
+                            Transform firstPoseTransform = __instance.poses.items[0] as Transform;
+                            if (firstPoseTransform != null)
+                            {
+                                Pose vanillaPose = firstPoseTransform.GetComponent<Pose>();
+                                if (vanillaPose != null)
+                                {
+                                    __instance.DoPose(vanillaPose);
+                                }
+                            }
+                        }
+
+                        // 2. Intercept and boot our engines depending on the animation target type
+                        if (firstPoseData.Type.Equals("PoseAnimationsMod", StringComparison.OrdinalIgnoreCase))
+                        {
+                            Plugin.Log.LogWarning($"[AutoInteract] Booting dynamic JSON playback engine for: '{firstPoseData.ControllerName}'");
+
+                            // Safety cleanup of legacy loops on this specific character instance
+                            var oldPlayers = customization.gameObject.GetComponents<FurnitureAnimationPlayer>();
+                            foreach (var p in oldPlayers) UnityEngine.Object.DestroyImmediate(p);
+
+                            var oldAudios = customization.gameObject.GetComponents<AnimationAudioManager>();
+                            foreach (var a in oldAudios) { a.StopAudio(); UnityEngine.Object.DestroyImmediate(a); }
+
+                            // Spawn the audio machine and motion player explicitly using clean configuration data
+                            var newAudio = customization.gameObject.AddComponent<AnimationAudioManager>();
+                            newAudio.ScanAndPlay(firstPoseData.ControllerName);
+
+                            var newPlayer = customization.gameObject.AddComponent<FurnitureAnimationPlayer>();
+                            newPlayer.Play(customization, firstPoseData.ControllerName, __instance, firstPoseData);
+                        }
+                        else if (firstPoseData.Type.Equals("CustomJSON", StringComparison.OrdinalIgnoreCase))
+                        {
+                            Plugin.Log.LogWarning($"[AutoInteract] Booting static Diorama matrix alignment for: '{firstPoseData.JsonFileName}'");
+
+                            // FIXED: curInteractionLoc is read from character customization context, not the furniture
+                            Transform activeLoc = customization.curInteractionLoc != null ? customization.curInteractionLoc : __instance.transform.Find("loc");
+                            if (activeLoc != null)
+                            {
+                                customization.transform.SetParent(null);
+                                customization.transform.position = activeLoc.position;
+                                customization.transform.rotation = activeLoc.rotation;
+                            }
+
+                            // Force immediate hardware synchronization and clear Unity runtime matrix buffer
+                            if (customization.anim != null)
+                            {
+                                customization.anim.enabled = true;
+                                customization.anim.speed = 1f;
+                                customization.anim.Update(0f); // Flush Unity skeletal cache
+                                customization.anim.applyRootMotion = false;
+                                customization.anim.speed = 0f;
+                                customization.anim.enabled = false;
+                            }
+
+                            // Safe direct call to our processor now that it's public
+                            PoseIconClickDioramaPatch.ProcessPoseClick(customization, __instance, firstPoseData.DisplayName, "UnarmedController");
                         }
                     }
                 }
             }
         }
     }
+
 
     // === ПАТЧ 3: ГЛОБАЛЬНЫЙ ПЕРЕХВАТ ОКНА UIPOSE ДЛЯ АКТИВАЦИИ ПАНЕЛИ КАМЕР (Пункт 6 ТЗ) ===
     [HarmonyPatch(typeof(UIPose), "Open")]
@@ -466,7 +524,7 @@ namespace FurnitureAnimationsMod
             ProcessPoseClick(activeChar, parentFurniture, uiPoseName, uiCtrlName);
         }
 
-        private static void ProcessPoseClick(CharacterCustomization characterComp, Furniture furniture, string uiPoseName, string uiCtrlName)
+        public static void ProcessPoseClick(CharacterCustomization characterComp, Furniture furniture, string uiPoseName, string uiCtrlName)
         {
             if (characterComp == null || furniture == null) return;
 
