@@ -56,6 +56,10 @@ namespace FurnitureAnimationsMod
             Instance = this;
             _character = character;
 
+            // === TEMPORARY RUNTIME SPEED DEBUG SPY ===
+            string trace = Environment.StackTrace;
+            Plugin.Log.LogWarning($"[SPEED_BUG_DEBUG] Play() forcefully invoked! Current StackTrace:\n{trace}");
+
             // --- СВЕРХТОЧНЫЙ ПЕРЕХВАТ И ОЖИВЛЕНИЕ РАДАРА ---
             var existingRadar = _character.gameObject.GetComponent<AnimationRadar>();
             if (existingRadar == null)
@@ -143,7 +147,7 @@ namespace FurnitureAnimationsMod
                 if (activeLoc != null)
                 {
                     // Сбрасываем иерархию Юнити, временно отвязывая персонажа от старых родителей
-                    _character.transform.SetParent(null);
+                    // _character.transform.SetParent(null);
 
                     // Жестко привязываем мировые координаты куклы к новой мебели
                     _character.transform.position = activeLoc.position;
@@ -226,12 +230,18 @@ namespace FurnitureAnimationsMod
                     }
                     else
                     {
-                        // Б) ЖЕСТКИЙ БЛОК ФАНТОМОВ ПО ТЗ: Включаем временный дефолт,
-                        // но КАТЕГОРИЧЕСКИ НЕ ЗАСОРЯЕМ ОЗУ-словарь перекрестными строками!
-                        _speedModifier = 1.5f;
-                        _currentEaseMode = EaseMode.Linear;
+                        // Б) SMART FALLBACK PROTECTION:
+                        // If this is a technical re-trigger during the active session, 
+                        // preserve the user's customized settings instead of blindly forcing defaults!
+                        if (_speedModifier == 1.0f)
+                        {
+                            _speedModifier = 1.5f; // Apply default fallback speed only if it hasn't been modified yet
+                            _currentEaseMode = EaseMode.Linear; // Apply default fallback ease mode
+                        }
+                        // If _speedModifier is already customized (e.g., 0.7f) or _currentEaseMode was changed,
+                        // we leave them untouched, preserving the active runtime setup!
 
-                        Plugin.Log.LogWarning($"[ОЗУ_СТАРТ_БЛОК] Для пары [{sessionKey}] применен временный дефолт. Запись в ОЗУ отклонена.");
+                        Plugin.Log.LogWarning($"[RAM_Fallback] No profile found for [{sessionKey}]. Preserved active setup -> Speed: {_speedModifier * 100}%, EaseMode: {_currentEaseMode}");
                     }
                 }
             }
