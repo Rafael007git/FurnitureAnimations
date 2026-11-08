@@ -36,6 +36,29 @@ namespace FurnitureAnimationsMod
                 return;
             }
 
+            // --- FOCUS CHECK: Сверяем фокус интерфейса перед отрисовкой HUD ---
+            UIPose uiPose = GameObject.FindObjectOfType<UIPose>();
+            if (uiPose != null && uiPose.gameObject.activeInHierarchy)
+            {
+                // Если меню открыто, но текущий пользователь мебели НЕ совпадает с объектом,
+                // на котором висит этот радар — мягко уходим в спячку и уступаем дорогу фокусу!
+                if (uiPose.curFurniture != null && uiPose.curFurniture.user != null)
+                {
+                    if (uiPose.curFurniture.user.gameObject != this.gameObject)
+                    {
+                        return; // Уступаем отрисовку активному персонажу интерфейса
+                    }
+                }
+            }
+            else
+            {
+                // Если общее меню UIPose вообще закрыто, показывать радар для компаньонок нет смысла.
+                // Оставляем радар только на Главной Героине (Player), чтобы не захламлять пустой экран.
+                bool isMainHero = this.gameObject.name.Contains("Player") ||
+                                  this.gameObject.GetComponent("PlayerControl") != null;
+                if (!isMainHero) return;
+            }
+
             // Задаем стильный темный полупрозрачный фон для радара
             GUI.backgroundColor = new Color(0.05f, 0.05f, 0.08f, 0.92f);
             _windowRect = GUI.Window(999, _windowRect, DrawRadarWindow, "ANIMATION ENGINE TELEMETRY & RAM MAP");
@@ -45,23 +68,37 @@ namespace FurnitureAnimationsMod
         {
             GUI.DragWindow(new Rect(0, 0, 400, 20));
 
+            // Strongly bind to the local character instance this radar script is attached to
             if (_player == null || _player.Equals(null))
             {
                 _player = gameObject.GetComponent<FurnitureAnimationPlayer>();
             }
 
-            UIPose uiPose = GameObject.FindObjectOfType<UIPose>();
+            // CRITICAL VERIFICATION:
+            // Extract the active furniture instance directly from our own localized player runtime context.
+            // This prevents companions sitting on other furniture from hijacking the Main Hero's telemetry window!
             Furniture currentFurniture = null;
-
-            if (uiPose != null && uiPose.gameObject.activeInHierarchy)
-            {
-                currentFurniture = uiPose.curFurniture;
-            }
-            else if (_player != null)
+            if (_player != null)
             {
                 var furnitureField = _player.GetType().GetField("_targetFurniture",
                     System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
                 currentFurniture = furnitureField?.GetValue(_player) as Furniture;
+            }
+            else
+            {
+                // Fallback to active UI context only if the local custom player loop hasn't initialized yet
+                UIPose uiPose = GameObject.FindObjectOfType<UIPose>();
+                if (uiPose != null && uiPose.gameObject.activeInHierarchy)
+                {
+                    currentFurniture = uiPose.curFurniture;
+                }
+            }
+
+            if (currentFurniture == null)
+            {
+                GUIStyle centerLabelStyle = new GUIStyle(GUI.skin.label) { alignment = TextAnchor.MiddleCenter };
+                GUILayout.Label("\n\n🤖 NO ACTIVE FURNITURE INTERACTION DETECTED\n(Approach furniture and enter Pose Menu)", centerLabelStyle);
+                return;
             }
 
             if (currentFurniture == null)
