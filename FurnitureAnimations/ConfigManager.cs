@@ -190,33 +190,35 @@ namespace FurnitureAnimationsMod
 
             string cleanFurnName = furnitureName.Replace("(Clone)", "").Trim();
 
-            // Находим нужный конфиг мебели в ОЗУ-словаре мода
-            if (LoadedConfigs.TryGetValue(furnitureName, out FurnitureConfig config) && config != null)
+            if (LoadedConfigs.TryGetValue(cleanFurnName, out FurnitureConfig config) && config != null)
             {
-                // На всякий случай страхуем словарь от NullReferenceException
                 if (config.RuntimePlaybackMemory == null)
                 {
                     config.RuntimePlaybackMemory = new Dictionary<string, PlaybackSettingsData>(StringComparer.OrdinalIgnoreCase);
                 }
 
-                // Ключ трека по ТЗ: если пусто — кейс "noAudio", иначе — чистое имя файла
                 string trackKey = string.IsNullOrEmpty(trackName) ? "noAudio" : Path.GetFileName(trackName);
 
-                // Собираем наш монолитный составной ключ сессии
-                string sessionKey = $"{animationName}_{trackKey}";
-
-                // Ленивая инициализация: если такой пары в ОЗУ еще нет — создаем её с дефолтами
-                if (!config.RuntimePlaybackMemory.TryGetValue(sessionKey, out PlaybackSettingsData settings) || settings == null)
+                // DECOUPLED STORAGE WRITER:
+                // 1. Save Speed modifier under the music track unique key
+                string speedKey = $"{animationName}_{trackKey}";
+                if (!config.RuntimePlaybackMemory.TryGetValue(speedKey, out PlaybackSettingsData speedSettings) || speedSettings == null)
                 {
-                    settings = new PlaybackSettingsData();
-                    config.RuntimePlaybackMemory[sessionKey] = settings;
+                    speedSettings = new PlaybackSettingsData();
+                    config.RuntimePlaybackMemory[speedKey] = speedSettings;
                 }
+                speedSettings.Speed = speed;
 
-                // Мгновенно перезаписываем параметры в ОЗУ сессии интерактива!
-                settings.Speed = speed;
-                settings.EaseMode = easeMode;
+                // 2. Save structural EaseMode under the unified animation key globally
+                string easeKey = $"{animationName}_globalEase";
+                if (!config.RuntimePlaybackMemory.TryGetValue(easeKey, out PlaybackSettingsData easeSettings) || easeSettings == null)
+                {
+                    easeSettings = new PlaybackSettingsData();
+                    config.RuntimePlaybackMemory[easeKey] = easeSettings;
+                }
+                easeSettings.EaseMode = easeMode;
 
-                Plugin.Log.LogInfo($"[ОЗУ_МЕНЕДЖЕР] Зафиксировано в ОЗУ для [{sessionKey}]: Скорость={speed * 100}%, Сглаживание={easeMode}");
+                Plugin.Log.LogInfo($"[RAM_Manager] Cached separate entries for '{animationName}'. Track Speed saved to [{speedKey}]: {speed * 100}%, Global Ease saved to [{easeKey}]: {easeMode}");
             }
         }
 
@@ -298,17 +300,28 @@ namespace FurnitureAnimationsMod
                     // Формируем монолитный сессионный ключ
                     string sessionKey = $"{animName}_{audioTrack}";
 
-                    // Если пара еще не была создана в памяти, инициализируем ее дефолтами по ТЗ (150%, Linear)
+                    // 1. Prepare default speed for this track sequence if it doesn't exist
                     if (!config.RuntimePlaybackMemory.ContainsKey(sessionKey))
                     {
                         config.RuntimePlaybackMemory[sessionKey] = new PlaybackSettingsData
                         {
-                            Speed = 1.5f,       // 150% по умолчанию
-                            EaseMode = EaseMode.Linear // Linear по умолчанию
+                            Speed = 1.5f,
+                            EaseMode = EaseMode.Linear // Deployed purely for old profile serializations fallback
                         };
                         newlyCreatedPairs++;
+                    }
 
-                        Plugin.Log.LogInfo($"[RAM_State_New] -> Сгенерирована пара для '{cleanFurnName}': {sessionKey} (Дефолт: 150%, Linear)");
+                    // 2. Prepare default structural global EaseMode for this animation layout if it doesn't exist
+                    string globalEaseKey = $"{animName}_globalEase";
+                    if (!config.RuntimePlaybackMemory.ContainsKey(globalEaseKey))
+                    {
+                        config.RuntimePlaybackMemory[globalEaseKey] = new PlaybackSettingsData
+                        {
+                            Speed = 1.5f,
+                            EaseMode = EaseMode.Linear // Default structural interpolation anchor
+                        };
+                        newlyCreatedPairs++;
+                        Plugin.Log.LogInfo($"[RAM_State_New] -> Generated global layout structural Ease anchor: {globalEaseKey} (Default: Linear)");
                     }
                 }
             }

@@ -231,9 +231,10 @@ namespace FurnitureAnimationsMod
                         _audioSource.bypassListenerEffects = false;
                         _audioSource.priority = 0;
                         _audioSource.spatialBlend = 1.0f;
-                        _audioSource.minDistance = 2.0f;
+                        _audioSource.minDistance = 4.0f;
                         _audioSource.maxDistance = 151.0f;
                         _audioSource.rolloffMode = AudioRolloffMode.Logarithmic;
+                        _audioSource.dopplerLevel = 0.1f;
                         _audioSource.volume = 1.0f;
                         _audioSource.mute = _isGlobalMuted;
                         _audioSource.Play();

@@ -714,13 +714,7 @@ namespace FurnitureAnimationsMod
         // === ИСПРАВЛЕНО: ExecuteEaseToggleAction без синглтонов ===
         private void ExecuteEaseToggleAction()
         {
-            var livePlayer = FurnitureAnimationPlayer.Instance;
-
-            if (livePlayer == null || livePlayer.Equals(null) || !livePlayer.isActiveAndEnabled)
-            {
-                livePlayer = UnityEngine.Object.FindObjectOfType<FurnitureAnimationPlayer>();
-            }
-
+            var livePlayer = GetLivePlayer();
             _player = livePlayer;
 
             if (livePlayer != null && _activeFurnitureInstance != null)
@@ -731,33 +725,22 @@ namespace FurnitureAnimationsMod
                 string cleanFurnName = _activeFurnitureInstance.name.Replace("(Clone)", "").Trim();
                 string activeAnimName = livePlayer.GetPlayingAnimationName();
 
-                string currentTrackName = "noAudio";
-                if (_activeFurnitureInstance.user != null)
-                {
-                    var audio = _activeFurnitureInstance.user.gameObject.GetComponent<AnimationAudioManager>();
-                    if (audio != null)
-                    {
-                        string rawTrack = audio.GetCurrentTrackName();
-                        if (!string.IsNullOrEmpty(rawTrack) && !rawTrack.Contains("404") && rawTrack != "unknown")
-                        {
-                            currentTrackName = rawTrack;
-                        }
-                    }
-                }
-
+                // CRITICAL STRUCTURAL FIX: 
+                // EaseMode is tied strictly to the animation asset geometry, NOT the audio track.
+                // We pass a unified static anchor "globalEase" to ensure it applies to all songs!
                 ConfigManager.UpdateRuntimePlaybackMemory(
                     cleanFurnName,
                     activeAnimName,
-                    currentTrackName,
+                    "globalEase",
                     livePlayer.GetSpeed(),
                     livePlayer.GetEaseMode()
                 );
 
-                Plugin.Log.LogInfo($"[UI_Action] Сглаживание успешно изменено для живой пары: {activeAnimName} + {currentTrackName}");
+                Plugin.Log.LogInfo($"[UI_Action] EaseMode successfully updated globally for animation: {activeAnimName} -> {livePlayer.GetEaseMode()}");
             }
             else
             {
-                Plugin.Log.LogError("[UI_Action] Не удалось переключить сглаживание: активный плеер анимаций физически отсутствует на сцене!");
+                Plugin.Log.LogError("[UI_Action] Failed to change interpolation: active player is missing!");
             }
         }
         #endregion

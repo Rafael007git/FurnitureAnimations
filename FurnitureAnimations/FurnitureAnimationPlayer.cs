@@ -210,38 +210,45 @@ namespace FurnitureAnimationsMod
                     string currentTrackPath = (localAudio != null) ? localAudio.GetCurrentTrackName() : "";
                     string trackKey = string.IsNullOrEmpty(currentTrackPath) ? "noAudio" : Path.GetFileName(currentTrackPath);
 
-                    // Собираем наш уникальный составной ключ сессии: "ИмяАнимации_ИмяАудио"
-                    string sessionKey = $"{animationName}_{trackKey}";
+                    // === КРИТИЧЕСКИЙ АРХИТЕКТУРНЫЙ РАЗДЕЛИТЕЛЬ ПАРАМЕТРОВ ОЗУ === 🎯⚙️
+                    string trackSessionKey = $"{animationName}_{trackKey}";
+                    string easeSessionKey = $"{animationName}_globalEase";
 
-                    if (config.RuntimePlaybackMemory.TryGetValue(sessionKey, out PlaybackSettingsData savedSettings) && savedSettings != null)
+                    // 1. Извлекаем скорость воспроизведения (намертво привязана к конкретному аудио)
+                    if (config.RuntimePlaybackMemory.TryGetValue(trackSessionKey, out PlaybackSettingsData speedSettings) && speedSettings != null)
                     {
-                        // А) ПАРАМЕТРЫ НАЙДЕНЫ В ОЗУ: Мгновенно применяем их к плееру!
-                        _speedModifier = savedSettings.Speed;
-                        _currentEaseMode = savedSettings.EaseMode;
-                        Plugin.Log.LogInfo($"[ОЗУ_СТАРТ] Найдена рантайм-пара [{sessionKey}]. Скорость: {_speedModifier * 100}%, Сглаживание: {_currentEaseMode}");
-
-                        // --- СИНХРОНИЗАЦИЯ uGUI ИНТЕРФЕЙСА С ОЗУ ПРИ СТАРТЕ --- 🧠🔄
-                        // Плеер применил настройки из памяти и принудительно просит uGUI обновиться под них!
-                        var uiControls = UnityEngine.Object.FindObjectOfType<AnimationUiControls>();
-                        if (uiControls != null)
-                        {
-                            uiControls.UpdateInterfaceStates();
-                        }
+                        _speedModifier = speedSettings.Speed;
                     }
                     else
                     {
-                        // Б) SMART FALLBACK PROTECTION:
-                        // If this is a technical re-trigger during the active session, 
-                        // preserve the user's customized settings instead of blindly forcing defaults!
+                        // Применяем временный дефолт 150% только если скорость еще не была кастомизирована в этой сессии
                         if (_speedModifier == 1.0f)
                         {
-                            _speedModifier = 1.5f; // Apply default fallback speed only if it hasn't been modified yet
-                            _currentEaseMode = EaseMode.Linear; // Apply default fallback ease mode
+                            _speedModifier = 1.5f;
                         }
-                        // If _speedModifier is already customized (e.g., 0.7f) or _currentEaseMode was changed,
-                        // we leave them untouched, preserving the active runtime setup!
+                    }
 
-                        Plugin.Log.LogWarning($"[RAM_Fallback] No profile found for [{sessionKey}]. Preserved active setup -> Speed: {_speedModifier * 100}%, EaseMode: {_currentEaseMode}");
+                    // 2. Извлекаем структурное сглаживание (запечатано глобально за геометрией JSON-файла)
+                    if (config.RuntimePlaybackMemory.TryGetValue(easeSessionKey, out PlaybackSettingsData easeSettings) && easeSettings != null)
+                    {
+                        _currentEaseMode = easeSettings.EaseMode;
+                    }
+                    else
+                    {
+                        // Применяем временный дефолт Linear только если EaseMode еще не был изменен в этой сессии
+                        if (_speedModifier == 1.0f || _speedModifier == 1.5f)
+                        {
+                            _currentEaseMode = EaseMode.Linear;
+                        }
+                    }
+
+                    Plugin.Log.LogInfo($"[RAM_Start] Decoupled profile load for '{animationName}'. Speed: {_speedModifier * 100}% (via track), EaseMode: {_currentEaseMode} (via global ease key)");
+
+                    // Синхронизируем uGUI буферы хамелеона под новые примененные параметры
+                    var uiControls = UnityEngine.Object.FindObjectOfType<AnimationUiControls>();
+                    if (uiControls != null)
+                    {
+                        uiControls.UpdateInterfaceStates();
                     }
                 }
             }

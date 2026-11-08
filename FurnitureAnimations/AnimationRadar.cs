@@ -45,13 +45,11 @@ namespace FurnitureAnimationsMod
         {
             GUI.DragWindow(new Rect(0, 0, 400, 20));
 
-            // === ИСПРАВЛЕНО: Локальный поиск плеера без глобального синглтона ===
             if (_player == null || _player.Equals(null))
             {
                 _player = gameObject.GetComponent<FurnitureAnimationPlayer>();
             }
 
-            // Пытаемся определить текущую мебель интерактива через UIPose или плеер
             UIPose uiPose = GameObject.FindObjectOfType<UIPose>();
             Furniture currentFurniture = null;
 
@@ -74,8 +72,6 @@ namespace FurnitureAnimationsMod
             }
 
             string cleanFurnitureName = currentFurniture.name.Replace("(Clone)", "").Trim();
-
-            // === ИСПРАВЛЕНО: Находим локальный аудиоменеджер строго на этом персонаже ===
             var localAudio = gameObject.GetComponent<AnimationAudioManager>();
 
             StringBuilder sb = new StringBuilder();
@@ -83,13 +79,12 @@ namespace FurnitureAnimationsMod
             sb.AppendLine($" Game FPS: {_fpsDisplay} | DeltaTime: {Time.deltaTime:F4}s");
             sb.AppendLine($" Target Furniture: <color=yellow>{cleanFurnitureName}</color>");
 
-            // Секция активного состояния плеера
             sb.AppendLine($"\n<b>[ACTIVE PLAYER STATE]</b>");
+            string curAnim = (_player != null && _player._animData != null) ? _player.GetPlayingAnimationName() : "";
+            string curTrack = (localAudio != null) ? localAudio.GetCurrentTrackName() : "noAudio";
+
             if (_player != null && _player._animData != null)
             {
-                string curAnim = _player.GetPlayingAnimationName();
-                // Используем локальный аудиоменеджер для получения имени трека
-                string curTrack = (localAudio != null) ? localAudio.GetCurrentTrackName() : "noAudio";
                 sb.AppendLine($" Playing Animation : {curAnim}");
                 sb.AppendLine($" Playing Audio Track: <color=cyan>{curTrack}</color>");
                 sb.AppendLine($" Engine Frame State : {_player._gameFrameCounter} / {_player._totalTargetFrames} (Index: {_player._currentTransitionIndex})");
@@ -100,100 +95,115 @@ namespace FurnitureAnimationsMod
                 sb.AppendLine($" Player Engine Status: <color=gray>IDLE / VANILLA PRESET ACTIVE</color>");
             }
 
-            // Рендерим верхнюю текстовую телеметрию
             GUIStyle textStyle = new GUIStyle(GUI.skin.label) { richText = true, fontStyle = FontStyle.Normal };
             textStyle.normal.textColor = Color.white;
             GUILayout.Label(sb.ToString(), textStyle);
 
             // =========================================================================
-            // КАРТА ОЗУ СОСТОЯНИЙ (МЕБЕЛЬ -> АНИМАЦИЯ -> АУДИО)
+            // НОВАЯ ИЗОЛИРОВАННАЯ КАРТА ОЗУ ДЛЯ ТЕКУЩЕЙ АНИМАЦИИ 🧠⚙️
             // =========================================================================
-            GUILayout.Label("<b>[RAM CONFIGURATION MAP FOR THIS FURNITURE]</b>", textStyle);
-
-            // Начало области прокрутки таблицы ОЗУ-карт
-            _scrollPosition = GUILayout.BeginScrollView(_scrollPosition, GUILayout.Height(620));
-
-            GUIStyle tableHeaderStyle = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold };
-            tableHeaderStyle.normal.textColor = Color.yellow;
-
-            GUILayout.BeginHorizontal();
-            GUILayout.Label("Animation & Audio Pair Key", tableHeaderStyle, GUILayout.Width(220));
-            GUILayout.Label("Speed", tableHeaderStyle, GUILayout.Width(60));
-            GUILayout.Label("EaseMode", tableHeaderStyle, GUILayout.Width(80));
-            GUILayout.EndHorizontal();
-
-            // Отрисовываем разделительную черту
-            GUILayout.Box("", GUILayout.Height(2), GUILayout.ExpandWidth(true));
-
-            int totalPairsCalculated = 0;
-
-            if (ConfigManager.LoadedConfigs.TryGetValue(cleanFurnitureName, out FurnitureConfig config) && config != null && config.RuntimePlaybackMemory != null && config.RuntimePlaybackMemory.Count > 0)
+            if (ConfigManager.LoadedConfigs.TryGetValue(cleanFurnitureName, out FurnitureConfig config) && config != null && config.RuntimePlaybackMemory != null)
             {
-                // Получаем имя играющей анимации и трека из локальных компонентов этого персонажа
-                string truePlayingAnimName = (_player != null && _player._animData != null) ? _player.GetPlayingAnimationName() : "";
-                string activeTrack = (localAudio != null) ? localAudio.GetCurrentTrackName() : "noAudio";
-
-                foreach (KeyValuePair<string, PlaybackSettingsData> entry in config.RuntimePlaybackMemory)
+                if (!string.IsNullOrEmpty(curAnim))
                 {
-                    string sessionKey = entry.Key;
-                    PlaybackSettingsData settings = entry.Value;
+                    // 1. СЕКЦИЯ СГЛАЖИВАНИЯ ТЕКУЩЕЙ АНИМАЦИИ
+                    GUILayout.Label("<b>[GEOMETRY & INTERPOLATION ANCHOR]</b>", textStyle);
+                    string easeKey = $"{curAnim}_globalEase";
+                    EaseMode cachedEase = EaseMode.Linear;
 
-                    if (settings == null) continue;
-
-                    totalPairsCalculated++;
-
-                    int underscoreIndex = sessionKey.IndexOf('_');
-                    string animName = underscoreIndex > 0 ? sessionKey.Substring(0, underscoreIndex) : sessionKey;
-                    string audioTrack = underscoreIndex > 0 ? sessionKey.Substring(underscoreIndex + 1) : "unknown";
-
-                    string speedText = $"{Mathf.RoundToInt(settings.Speed * 100)}%";
-                    string easeText = settings.EaseMode.ToString();
-
-                    string rowPrefix = "";
-                    Color rowColor = Color.white;
-
-                    if (!string.IsNullOrEmpty(truePlayingAnimName) && animName.Equals(truePlayingAnimName, StringComparison.OrdinalIgnoreCase))
+                    if (config.RuntimePlaybackMemory.TryGetValue(easeKey, out PlaybackSettingsData easeData) && easeData != null)
                     {
-                        if (audioTrack.Equals(activeTrack, StringComparison.OrdinalIgnoreCase))
+                        cachedEase = easeData.EaseMode;
+                    }
+
+                    EaseMode liveEase = (_player != null) ? _player.GetEaseMode() : cachedEase;
+                    GUILayout.Label($" Active Animation Target: <color=yellow>{curAnim}</color>");
+                    GUILayout.Label($" Global Ease Profile (RAM): <color=lime>{cachedEase}</color> | Hardware State: <color=cyan>{liveEase}</color>");
+                    GUILayout.Space(8);
+
+                    // 2. СЕКЦИЯ СКОРОСТЕЙ И ТРЕКОВ (ТОЛЬКО ДЛЯ ТЕКУЩЕЙ АНИМАЦИИ!)
+                    GUILayout.Label($"<b>[AUDIO TRACK & SPEED FOR: {curAnim}]</b>", textStyle);
+                    _scrollPosition = GUILayout.BeginScrollView(_scrollPosition, GUILayout.Height(480));
+
+                    GUIStyle tableHeaderStyle = new GUIStyle(GUI.skin.label) { fontStyle = FontStyle.Bold };
+                    tableHeaderStyle.normal.textColor = Color.yellow;
+
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("Available Audio Track Name", tableHeaderStyle, GUILayout.Width(280));
+                    GUILayout.Label("Speed", tableHeaderStyle, GUILayout.Width(80));
+                    GUILayout.EndHorizontal();
+                    GUILayout.Box("", GUILayout.Height(2), GUILayout.ExpandWidth(true));
+
+                    int activeAnimationTracksCount = 0;
+                    foreach (KeyValuePair<string, PlaybackSettingsData> entry in config.RuntimePlaybackMemory)
+                    {
+                        string sessionKey = entry.Key;
+                        PlaybackSettingsData settings = entry.Value;
+
+                        if (settings == null) continue;
+
+                        // КРИТИЧЕСКИЙ ФИЛЬТР КОНТЕКСТА: 
+                        // Выводим трек только если он принадлежит текущей активной анимации и не является сервисным ключом сглаживания!
+                        if (!sessionKey.StartsWith(curAnim, StringComparison.OrdinalIgnoreCase) ||
+                            sessionKey.EndsWith("_globalEase", StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+
+                        activeAnimationTracksCount++;
+                        int underscoreIndex = sessionKey.IndexOf('_');
+                        string audioTrack = underscoreIndex > 0 ? sessionKey.Substring(underscoreIndex + 1) : "unknown";
+
+                        string speedText = $"{Mathf.RoundToInt(settings.Speed * 100)}%";
+
+                        string rowPrefix = "";
+                        Color rowColor = Color.white;
+
+                        if (audioTrack.Equals(curTrack, StringComparison.OrdinalIgnoreCase))
                         {
                             rowPrefix = "▶ ";
                             rowColor = Color.green;
                         }
+
+                        GUIStyle rowStyle = new GUIStyle(GUI.skin.label) { richText = true };
+                        rowStyle.normal.textColor = rowColor;
+
+                        GUILayout.BeginHorizontal();
+                        GUILayout.Label($"{rowPrefix}{audioTrack}", rowStyle, GUILayout.Width(280));
+                        GUILayout.Label(speedText, rowStyle, GUILayout.Width(80));
+                        GUILayout.EndHorizontal();
+                        GUILayout.Space(2);
                     }
 
-                    GUIStyle rowStyle = new GUIStyle(GUI.skin.label) { richText = true };
-                    rowStyle.normal.textColor = rowColor;
+                    GUILayout.EndScrollView();
 
-                    GUILayout.BeginHorizontal();
-                    GUILayout.Label($"{rowPrefix}{animName}\n   └─ {audioTrack}", rowStyle, GUILayout.Width(240));
-                    GUILayout.Label(speedText, rowStyle, GUILayout.Width(60));
-                    GUILayout.Label(easeText, rowStyle, GUILayout.Width(80));
-                    GUILayout.EndHorizontal();
-
-                    GUILayout.Space(4);
+                    // Подвальная статистика
+                    GUILayout.Box("", GUILayout.Height(2), GUILayout.ExpandWidth(true));
+                    GUILayout.Label($"Total Audio Tracks for Current Animation: <b>{activeAnimationTracksCount}</b>", textStyle);
                 }
+                else
+                {
+                    // Фаллбэк-панель на случай, если игрок просто зашел в меню мебели, но еще не нажал ни на одну кастомную иконку
+                    GUIStyle idleStateStyle = new GUIStyle(GUI.skin.label) { richText = true, alignment = TextAnchor.MiddleCenter };
+                    GUILayout.Label("\n\n<color=gray><i>[WAITING FOR PROFILE SELECT]\nClick on any Custom Animation Icon to display matrix telemetry map</i></color>", idleStateStyle);
+                }
+
+                int ramCount = config.RuntimePlaybackMemory.Count;
+                GUILayout.Label($"Total Memory Nodes Baked for Asset: <b><color=lime>{ramCount}</color></b>", textStyle);
             }
             else
             {
-                GUILayout.Label("<color=gray>No pairs initialized in Runtime Memory.</color>", textStyle);
+                GUILayout.Label("<color=gray>No profiles allocated inside Runtime Memory map.</color>", textStyle);
             }
-
-            GUILayout.EndScrollView();
-
-            // Подвальная статистика радара
-            GUILayout.Box("", GUILayout.Height(2), GUILayout.ExpandWidth(true));
-            int ramCount = (config != null && config.RuntimePlaybackMemory != null) ? config.RuntimePlaybackMemory.Count : 0;
-            GUILayout.Label($"Total Combinations in UI Matrix: <b>{totalPairsCalculated}</b>", textStyle);
-            GUILayout.Label($"Total Pairs Initialized in RAM: <b><color=lime>{ramCount}</color></b>", textStyle);
 
             if (GUILayout.Button("DUMP MAP TO LOG FILE"))
             {
-                Plugin.Log.LogWarning($"[RADAR_DUMP] Ручной отчет по ОЗУ для {cleanFurnitureName}. Записано пар: {ramCount}");
+                Plugin.Log.LogWarning($"[RADAR_DUMP] Manual RAM diagnostic report requested for: {cleanFurnitureName}");
                 if (config != null && config.RuntimePlaybackMemory != null)
                 {
                     foreach (var kp in config.RuntimePlaybackMemory)
                     {
-                        Plugin.Log.LogInfo($"   Key: {kp.Key} | Speed: {kp.Value.Speed} | Ease: {kp.Value.EaseMode}");
+                        Plugin.Log.LogInfo($"   Profile Node -> Key: {kp.Key} | Speed: {kp.Value.Speed} | Ease: {kp.Value.EaseMode}");
                     }
                 }
             }
