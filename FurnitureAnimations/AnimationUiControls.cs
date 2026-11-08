@@ -16,6 +16,10 @@ namespace FurnitureAnimationsMod
         private GameObject _uiPanelInstance;
         private bool _lastHadPlayerState = false;
 
+        // Light runtime cache parameters
+        private EaseMode _lastEaseModeState = EaseMode.Linear;
+        private float _lastSpeedState = 1.0f;
+
         // Кэш для иконок, чтобы не читать из сборки каждый кадр
         private Texture2D _iconSpeedPlus;
         private Texture2D _iconSpeedMinus;
@@ -274,29 +278,44 @@ namespace FurnitureAnimationsMod
                 Plugin.Log.LogError($"[UI] Ошибка декомпозиции иерархии плашек: {ex.Message}");
             }
         }
-        
+
         private void Update()
         {
-            // Быстрая проверка живости плеера на сцене движка Unity
-            bool currentHasPlayer = UnityEngine.Object.FindObjectOfType<FurnitureAnimationPlayer>() != null;
+            var livePlayer = GetLivePlayer();
+            bool currentHasPlayer = (livePlayer != null);
 
-            // Интерфейс просыпается и пересчитывает uGUI-кнопки ТОЛЬКО в ту миллисекунду,
-            // когда плеер физически появился на сцене (или исчез при возврате в позу)
             if (currentHasPlayer != _lastHadPlayerState)
             {
                 _lastHadPlayerState = currentHasPlayer;
 
                 if (currentHasPlayer)
                 {
-                    // Если плеер родился — запускаем мягкую корутину ожидания конца кадра.
-                    // Это даст ванильной игре UIPose время завершить свой внутренний цикл,
-                    // и мы со 100% гарантией включим кнопки на актуальной плашке Canvas! 🔥
+                    // Сбрасываем кэш в нейтраль, чтобы радар гарантированно пробил 
+                    // первую же рантайм-пару из ОЗУ на следующем кадре!
+                    _lastEaseModeState = (EaseMode)(-1);
+                    _lastSpeedState = -1f;
+
                     StartCoroutine(DelayedInterfaceRefresh());
                 }
                 else
                 {
-                    // Если плеер уничтожен (вернулись в позу) — мгновенно гасим кнопки скорости
                     UpdateInterfaceStates();
+                }
+                return;
+            }
+
+            if (currentHasPlayer)
+            {
+                EaseMode activeEase = livePlayer.GetEaseMode();
+                float activeSpeed = livePlayer.GetSpeed();
+
+                if (activeEase != _lastEaseModeState || activeSpeed != _lastSpeedState)
+                {
+                    _lastEaseModeState = activeEase;
+                    _lastSpeedState = activeSpeed;
+
+                    UpdateInterfaceStates();
+                    Plugin.Log.LogInfo($"[UI_Radar] Dynamic layout adjust complete. Ease set to: {activeEase}");
                 }
             }
         }
@@ -317,12 +336,9 @@ namespace FurnitureAnimationsMod
             Transform container = _uiPanelInstance.transform.Find("Mod_AnimationButtonsContainer");
             if (container == null) return;
 
-            // --- ИСПРАВЛЕНИЕ БАГА АНИМАЦИИ: Гарантированный перехват живого плеера --- ⚡
-            // Используем исключительно физическое присутствие компонента на сцене
-            if (_player == null || _player.Equals(null))
-            {
-                _player = UnityEngine.Object.FindObjectOfType<FurnitureAnimationPlayer>();
-            }
+            // --- ULTRA FAST CHARACTER-CENTRIC LINK SINK --- ⚡
+            // Grab the animation player component directly from the user currently sitting in the furniture
+            _player = GetLivePlayer();
 
             // Проверяем физическое существование плеера (убираем капризный isActiveAndEnabled для uGUI)
             bool hasActiveAnimation = (_player != null && !_player.Equals(null));
@@ -610,7 +626,10 @@ namespace FurnitureAnimationsMod
 
         private void UpdateSpeedButtonsText()
         {
+            _player = GetLivePlayer();
+
             if (_player == null) return;
+
             int percent = Mathf.RoundToInt(_player.GetSpeed() * 100);
             UpdateText("Mod_BtnSpeedMinus", $"Speed: {percent}% (-10)");
             UpdateText("Mod_BtnSpeedPlus", $"Speed: {percent}% (+10)");
@@ -628,23 +647,33 @@ namespace FurnitureAnimationsMod
             }
         }
 
+        private FurnitureAnimationPlayer GetLivePlayer()
+        {
+            // If we have an active furniture and someone is explicitly sitting in it
+            if (_activeFurnitureInstance != null && _activeFurnitureInstance.user != null)
+            {
+                // Directly grab the player component from the character's game object without searching the scene!
+                return _activeFurnitureInstance.user.gameObject.GetComponent<FurnitureAnimationPlayer>();
+            }
+            return null;
+        }
+
         private void UpdateEaseButton()
         {
-            // Guaranteed hot-swap link to find the active playback engine components on the scene
-            if (_player == null || _player.Equals(null))
-            {
-                _player = UnityEngine.Object.FindObjectOfType<FurnitureAnimationPlayer>();
-            }
+            _player = GetLivePlayer();
 
-            if (_player == null || _player.Equals(null))
-            {
-                return;
-            }
+            if (_player == null) return;
 
-            // Sync visual labels and pull the correct target ease matrix configuration
             EaseMode currentMode = _player.GetEaseMode();
+
+            // Напрямую берем текстуру под текущий режим
+            Texture2D targetIcon = _iconLinear;
+            if (currentMode == EaseMode.Global) targetIcon = _iconEaseWhole;
+            else if (currentMode == EaseMode.PerFrame) targetIcon = _iconEaseEach;
+
+            // Синхронно обновляем и текст, и картинку в один приход
             UpdateText("Mod_BtnEaseToggle", $"Interpolation: {currentMode}");
-            UpdateImageSprite("Mod_BtnEaseToggle", GetCurrentEaseSprite());
+            UpdateImageSprite("Mod_BtnEaseToggle", targetIcon);
         }
 
         // === ИСПРАВЛЕНО: Адресное обновление кнопки звука без синглтонов ===
