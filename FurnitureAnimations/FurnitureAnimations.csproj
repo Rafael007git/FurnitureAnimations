@@ -97,6 +97,7 @@
     <Compile Include="ConfigManager.cs" />
     <Compile Include="DioramaConstants.cs" />
     <Compile Include="EditorUiManager.cs" />
+    <Compile Include="FurnitureAnimAPI.cs" />
     <Compile Include="FurnitureAnimationPlayer.cs" />
     <Compile Include="FurnitureInjectorPatch.cs" />
     <Compile Include="FurnitureSdkButtonController.cs" />
