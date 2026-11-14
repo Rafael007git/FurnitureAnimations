@@ -122,7 +122,7 @@ namespace FurnitureAnimationsMod
 
             // Spawn a fresh clean manager directly tied to this character lifecycle
             var audioManager = gameObject.AddComponent<AnimationAudioManager>();
-            audioManager.Initialize(animationName, _animData.loop);
+            audioManager.Initialize(animationName, _animData.loop, furniture);
             // =========================================================================
 
             // Интерфейс теперь создается глобально через UIPose.Open, плеер его больше не спавнит! 🛡

@@ -27,16 +27,21 @@ namespace FurnitureAnimationsMod
             _audioSource = gameObject.GetComponent<AudioSource>() ?? gameObject.AddComponent<AudioSource>();
         }
 
-        public void Initialize(string animationName, bool loopAudio)
+        public void Initialize(string animationName, bool loopAudio, Furniture targetFurniture = null)
         {
             _loopAudio = loopAudio;
             _lastInitializedAnimation = animationName; // Запоминаем имя для возможного UnMute позже
 
-            // Сдвигаем менеджер к текущей мебели перед запуском звука
-            UIPose uiPose = GameObject.FindObjectOfType<UIPose>();
-            if (uiPose != null && uiPose.curFurniture != null)
+            Furniture activeFurn = targetFurniture;
+            if (activeFurn == null)
             {
-                this.transform.position = uiPose.curFurniture.transform.position;
+                UIPose uiPose = GameObject.FindObjectOfType<UIPose>();
+                if (uiPose != null) activeFurn = uiPose.curFurniture;
+            }
+
+            if (activeFurn != null)
+            {
+                this.transform.position = activeFurn.transform.position;
             }
 
             if (_currentLoadCoroutine != null) StopCoroutine(_currentLoadCoroutine);
@@ -52,11 +57,11 @@ namespace FurnitureAnimationsMod
                 return;
             }
 
-            ScanAndPlay(animationName);
+            ScanAndPlay(animationName, activeFurn);
         }
 
         // Внутренний метод сканирования ОЗУ-состояний и запуска (вынесен для переиспользования при UnMute)
-        public void ScanAndPlay(string animationName)
+        public void ScanAndPlay(string animationName, Furniture targetFurniture = null)
         {
             // Защита от входящего мусора: если имя анимации уже содержит суффикс noAudio, очищаем его
             if (animationName.Contains("_"))
@@ -75,28 +80,55 @@ namespace FurnitureAnimationsMod
             string audioFolder = Path.Combine(ConfigManager.PluginDirectory, "Audio");
             if (!Directory.Exists(audioFolder)) Directory.CreateDirectory(audioFolder);
 
-            UIPose uiPose = GameObject.FindObjectOfType<UIPose>();
-            if (uiPose == null || uiPose.curFurniture == null) return;
+            Furniture activeFurn = targetFurniture;
+            if (activeFurn == null)
+            {
+                UIPose uiPose = GameObject.FindObjectOfType<UIPose>();
+                if (uiPose != null) activeFurn = uiPose.curFurniture;
+            }
+            if (activeFurn == null) return;
 
-            string cleanFurnName = uiPose.curFurniture.name.Replace("(Clone)", "").Trim();
+            // Предохранитель: не запускаем вторую музыку, если кто-то уже играет в радиусе 25 метров
+            /*
+            foreach (var otherAudio in GameObject.FindObjectsOfType<AnimationAudioManager>())
+            {
+                if (otherAudio != this && otherAudio._audioSource != null && otherAudio._audioSource.isPlaying &&
+                    Vector3.Distance(otherAudio.transform.position, activeFurn.transform.position) < 25f)
+                {
+                    Plugin.Log.LogInfo("[AudioEngine] Another musician is already playing nearby. Skipping audio to prevent overlap.");
+                    return;
+                }
+            }
+            */
+
+            string cleanFurnName = activeFurn.name.Replace("(Clone)", "").Trim();
 
             // Наполняем плейлист из ОЗУ-карты состояний
-            if (ConfigManager.LoadedConfigs.TryGetValue(cleanFurnName, out FurnitureConfig config) && config != null && config.RuntimePlaybackMemory != null)
+            if (ConfigManager.LoadedConfigs.TryGetValue(cleanFurnName, out FurnitureConfig config) && config != null)
             {
-                foreach (string sessionKey in config.RuntimePlaybackMemory.Keys)
+                // Если игрок ещё не открывал UIPose на этой мебели, прогреваем RuntimePlaybackMemory автоматически
+                if (config.RuntimePlaybackMemory == null || config.RuntimePlaybackMemory.Count == 0)
                 {
-                    if (sessionKey.StartsWith(animationName + "_", StringComparison.OrdinalIgnoreCase))
+                    ConfigManager.InitializeRuntimeMemoryForFurniture(activeFurn);
+                }
+
+                if (config.RuntimePlaybackMemory != null)
+                {
+                    foreach (string sessionKey in config.RuntimePlaybackMemory.Keys)
                     {
-                        int underscoreIndex = sessionKey.IndexOf('_');
-                        if (underscoreIndex > 0)
+                        if (sessionKey.StartsWith(animationName + "_", StringComparison.OrdinalIgnoreCase))
                         {
-                            string trackName = sessionKey.Substring(underscoreIndex + 1);
-                            if (!trackName.Equals("noAudio", StringComparison.OrdinalIgnoreCase))
+                            int underscoreIndex = sessionKey.IndexOf('_');
+                            if (underscoreIndex > 0)
                             {
-                                string fullPath = Path.Combine(audioFolder, trackName);
-                                if (!_currentPlaylist.Contains(fullPath) && File.Exists(fullPath))
+                                string trackName = sessionKey.Substring(underscoreIndex + 1);
+                                if (!trackName.Equals("noAudio", StringComparison.OrdinalIgnoreCase))
                                 {
-                                    _currentPlaylist.Add(fullPath);
+                                    string fullPath = Path.Combine(audioFolder, trackName);
+                                    if (!_currentPlaylist.Contains(fullPath) && File.Exists(fullPath))
+                                    {
+                                        _currentPlaylist.Add(fullPath);
+                                    }
                                 }
                             }
                         }
