@@ -340,8 +340,18 @@ namespace FurnitureAnimationsMod
             Plugin.Log.LogInfo($"[AudioEngine] Глобальный режим тишины: {(_isGlobalMuted ? "ВКЛ" : "ВЫКЛ")}");
         }
 
-
         public bool IsMuted() => _isGlobalMuted;
+
+        public float GetRemainingTrackTime()
+        {
+            if (_isGlobalMuted || _audioSource == null || !_audioSource.isPlaying || _audioSource.clip == null)
+            {
+                return 0f;
+            }
+
+            float remaining = _audioSource.clip.length - _audioSource.time;
+            return remaining > 0.1f ? remaining : 0f;
+        }
 
         public void StopAudio()
         {

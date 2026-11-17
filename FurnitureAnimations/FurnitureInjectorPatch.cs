@@ -399,6 +399,16 @@ namespace FurnitureAnimationsMod
         {
             if (__instance == null || furniture == null) return;
 
+            // Автономная замена функционала CustomizationFix: всегда показываем панель одежды на мебели
+            if (__instance.panelTakeOffClothes != null)
+            {
+                __instance.panelTakeOffClothes.SetActive(true);
+                if (__instance.panelTakeOffClothes.transform.parent != null)
+                {
+                    __instance.panelTakeOffClothes.transform.parent.gameObject.SetActive(true);
+                }
+            }
+
             try
             {
                 // Наш Этап 1 (Путь А): Жестко готовим ОЗУ-карту до отрисовки кнопок

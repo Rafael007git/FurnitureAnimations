@@ -113,5 +113,16 @@ namespace FurnitureAnimationsMod
             var animPlayer = companion.gameObject.GetComponent<FurnitureAnimationPlayer>();
             return animPlayer != null ? animPlayer.GetPlayingAnimationName() : null;
         }
+
+        public static float GetRemainingAudioTime(CharacterCustomization companion)
+        {
+            if (companion == null) return 0f;
+
+            AnimationAudioManager audioMgr = companion.GetComponent<AnimationAudioManager>();
+            if (audioMgr == null) return 0f;
+
+            return audioMgr.GetRemainingTrackTime();
+        }
+
     }
 }
