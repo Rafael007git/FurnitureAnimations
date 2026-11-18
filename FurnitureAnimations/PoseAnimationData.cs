@@ -17,6 +17,7 @@ namespace FurnitureAnimationsMod
     public class PoseAnimationDelta
     {
         public int frames; // Общее число кадров интерполяции внутри дельты
+        public EaseMode? easeMode = null; // Индивидуальное сглаживание перехода (если null — берется глобальное)
         public float[] endPosDelta = new float[3];
         public float[] endRotDelta = new float[3];
         public Dictionary<string, BoneDelta> boneDatas = new Dictionary<string, BoneDelta>();

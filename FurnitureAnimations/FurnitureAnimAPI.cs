@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace FurnitureAnimationsMod
@@ -23,8 +24,7 @@ namespace FurnitureAnimationsMod
             {
                 if (furniture.poses != null && furniture.poses.items != null && furniture.poses.items.Count > 0)
                 {
-                    // int targetIdx = UnityEngine.Random.Range(0, furniture.poses.items.Count);
-                    int targetIdx = 0; // Берем первую позу в списке
+                    int targetIdx = 0;
                     Transform poseTrans = furniture.poses.items[targetIdx] as Transform;
                     Pose chosenPose = poseTrans != null ? poseTrans.GetComponent<Pose>() : null;
 
@@ -35,7 +35,6 @@ namespace FurnitureAnimationsMod
                         string ctrlName = chosenPose.controller != null ? chosenPose.controller.name : "UnarmedController";
                         PoseIconClickDioramaPatch.ProcessPoseClick(companion, furniture, chosenPose.name, ctrlName);
 
-                        // Гарантированный запуск 3D-аудио для спутницы, если ProcessPoseClick пропустил его
                         var existingAudio = companion.gameObject.GetComponent<AnimationAudioManager>();
                         if (existingAudio == null)
                         {
@@ -53,7 +52,6 @@ namespace FurnitureAnimationsMod
                                 }
                             }
                         }
-
                         return;
                     }
                 }
@@ -62,8 +60,7 @@ namespace FurnitureAnimationsMod
                 if (ConfigManager.LoadedConfigs.TryGetValue(furnitureName, out FurnitureConfig config) &&
                     config.InteractionPoses != null && config.InteractionPoses.Count > 0)
                 {
-                    // PoseData poseData = config.InteractionPoses[UnityEngine.Random.Range(0, config.InteractionPoses.Count)];
-                    PoseData poseData = config.InteractionPoses[0]; // Берем первую позу из конфига
+                    PoseData poseData = config.InteractionPoses[0];
                     if (poseData != null)
                     {
                         PoseIconClickDioramaPatch.ProcessPoseClick(companion, furniture, poseData.DisplayName, "UnarmedController");
@@ -117,12 +114,52 @@ namespace FurnitureAnimationsMod
         public static float GetRemainingAudioTime(CharacterCustomization companion)
         {
             if (companion == null) return 0f;
-
             AnimationAudioManager audioMgr = companion.GetComponent<AnimationAudioManager>();
-            if (audioMgr == null) return 0f;
-
-            return audioMgr.GetRemainingTrackTime();
+            return audioMgr != null ? audioMgr.GetRemainingTrackTime() : 0f;
         }
 
+        // =========================================================================
+        // КОНТРАКТ ДЛЯ РЕДАКТОРА ANIMATION STUDIO
+        // =========================================================================
+
+        public static void StartPreview(CharacterCustomization character, PoseAnimationData data, float speed = 1.0f)
+        {
+            if (character == null || data == null) return;
+
+            var existingPlayer = character.gameObject.GetComponent<FurnitureAnimationPlayer>();
+            if (existingPlayer != null)
+            {
+                UnityEngine.Object.DestroyImmediate(existingPlayer);
+            }
+
+            var player = character.gameObject.AddComponent<FurnitureAnimationPlayer>();
+            player.PlayPreview(character, data, speed);
+        }
+
+        public static void StopPreview(CharacterCustomization character)
+        {
+            if (character == null) return;
+
+            var animPlayer = character.gameObject.GetComponent<FurnitureAnimationPlayer>();
+            if (animPlayer != null)
+            {
+                UnityEngine.Object.DestroyImmediate(animPlayer);
+            }
+
+            // В режиме редактора Free Pose оставляем аниматор усыпленным, чтобы не сбить гизмо-позу
+            if (character.anim != null)
+            {
+                character.anim.applyRootMotion = false;
+                character.anim.speed = 0f;
+                character.anim.enabled = false;
+            }
+        }
+
+        public static void SnapCharacterToPose(CharacterCustomization character, Dictionary<string, BoneDelta> poseSnapshot)
+        {
+            if (character == null) return;
+            StopPreview(character);
+            FurnitureAnimationPlayer.ApplyStaticPose(character, poseSnapshot);
+        }
     }
 }

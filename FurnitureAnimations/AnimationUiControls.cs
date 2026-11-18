@@ -279,6 +279,91 @@ namespace FurnitureAnimationsMod
             }
         }
 
+        public void InitializeFreePose(UIFreePose uiFreePose)
+        {
+            _activeFurnitureInstance = null;
+            _player = FurnitureAnimationPlayer.Instance;
+            LoadEmbeddedResources();
+
+            try
+            {
+                if (uiFreePose == null) return;
+
+                Transform existingPanel = uiFreePose.transform.Find("Mod_FreePoseAnimationControls_BG");
+                if (existingPanel != null)
+                {
+                    _uiPanelInstance = existingPanel.gameObject;
+                    _uiPanelInstance.SetActive(true);
+                    UpdateInterfaceStates();
+                    return;
+                }
+
+                // Берём за образец панель кнопок из UIPose (или любую панель с кнопками внутри UIFreePose)
+                UIPose uiPose = GameObject.FindObjectOfType<UIPose>();
+                GameObject vanillaButtonsContainerGo = uiPose != null ? uiPose.panelTakeOffClothes : null;
+                if (vanillaButtonsContainerGo == null || vanillaButtonsContainerGo.transform.parent == null) return;
+
+                Transform vanillaBgTransform = vanillaButtonsContainerGo.transform.parent;
+                _uiPanelInstance = GameObject.Instantiate(vanillaBgTransform.gameObject, uiFreePose.transform, false);
+                _uiPanelInstance.name = "Mod_FreePoseAnimationControls_BG";
+                _uiPanelInstance.SetActive(true);
+
+                RectTransform modRect = _uiPanelInstance.GetComponent<RectTransform>();
+                RectTransform vanRect = vanillaBgTransform.GetComponent<RectTransform>();
+                modRect.anchorMin = vanRect.anchorMin;
+                modRect.anchorMax = vanRect.anchorMax;
+                modRect.pivot = vanRect.pivot;
+                modRect.sizeDelta = new Vector2(vanRect.sizeDelta.x, vanRect.sizeDelta.y * 0.95f);
+                _uiPanelInstance.transform.localScale = vanRect.localScale;
+                modRect.localPosition = new Vector3(vanRect.localPosition.x, vanRect.localPosition.y - 173f, vanRect.localPosition.z);
+
+                Transform buttonsContainerNew = _uiPanelInstance.transform.Find(vanillaButtonsContainerGo.name);
+                if (buttonsContainerNew == null && _uiPanelInstance.transform.childCount > 0)
+                    buttonsContainerNew = _uiPanelInstance.transform.GetChild(0);
+
+                if (buttonsContainerNew == null) return;
+                buttonsContainerNew.name = "Mod_AnimationButtonsContainer";
+
+                Button[] oldButtons = _uiPanelInstance.GetComponentsInChildren<Button>(true);
+                foreach (Button oldBtn in oldButtons) { GameObject.DestroyImmediate(oldBtn.gameObject); }
+
+                Transform btnPrefab = vanillaButtonsContainerGo.transform.GetComponentInChildren<Button>()?.transform;
+                if (btnPrefab != null)
+                {
+                    Vector3 btnPos = Vector3.zero;
+                    float spacing = -45f;
+
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnSpeedPlus", "Speed: ---", btnPos, _iconSpeedPlus, () => {
+                        var p = GetLivePlayer();
+                        if (p != null) { p.ChangeSpeed(0.1f); UpdateSpeedButtonsText(); }
+                    });
+                    btnPos.y += spacing;
+
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnSpeedMinus", "Speed: ---", btnPos, _iconSpeedMinus, () => {
+                        var p = GetLivePlayer();
+                        if (p != null) { p.ChangeSpeed(-0.1f); UpdateSpeedButtonsText(); }
+                    });
+                    btnPos.y += spacing;
+
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnEaseToggle", "Interpolation: ", btnPos, GetCurrentEaseSprite(), () => {
+                        var p = GetLivePlayer();
+                        if (p != null)
+                        {
+                            _player = p;
+                            p.ToggleEaseMode();
+                            UpdateEaseButton();
+                        }
+                    });
+                }
+
+                UpdateInterfaceStates();
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.LogError($"[UI_FreePose] Ошибка создания плашки превью: {ex.Message}");
+            }
+        }
+
         private void Update()
         {
             var livePlayer = GetLivePlayer();
@@ -655,7 +740,8 @@ namespace FurnitureAnimationsMod
                 // Directly grab the player component from the character's game object without searching the scene!
                 return _activeFurnitureInstance.user.gameObject.GetComponent<FurnitureAnimationPlayer>();
             }
-            return null;
+            // В режиме Free Pose мебели нет — берём активный экземпляр превью-плеера
+            return FurnitureAnimationPlayer.Instance;
         }
 
         private void UpdateEaseButton()

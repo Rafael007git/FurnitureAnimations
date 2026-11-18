@@ -22,6 +22,7 @@ namespace FurnitureAnimationsMod
         // internal Quaternion targetLocalRot;
 
         private Furniture _targetFurniture;                 // Ссылка на целевой объект мебели
+        private bool _isPreviewMode = false;                // Флаг предпросмотра в мировых координатах Free Pose
         private Vector3 _localBasePos;                      // Стартовая локальная позиция из конфига
         private Quaternion _localBaseRot;                   // Стартовый локальный поворот из конфига
         private Quaternion _recordToFurnitureRotModifier;   // Переводчик осей из пространства записи в мебель
@@ -55,6 +56,7 @@ namespace FurnitureAnimationsMod
         {
             Instance = this;
             _character = character;
+            _isPreviewMode = false;
 
             // === TEMPORARY RUNTIME SPEED DEBUG SPY ===
             string trace = Environment.StackTrace;
@@ -254,6 +256,62 @@ namespace FurnitureAnimationsMod
             }
         }
 
+        public void PlayPreview(CharacterCustomization character, PoseAnimationData rawData, float speed = 1.0f)
+        {
+            if (character == null || rawData == null || rawData.deltas == null || rawData.deltas.Count == 0)
+            {
+                Plugin.Log.LogError("[PreviewPlayer] Некорректные данные для предпросмотра анимации.");
+                Destroy(this);
+                return;
+            }
+
+            Instance = this;
+            _character = character;
+            _animData = rawData;
+            _targetFurniture = null;
+            _isPreviewMode = true;
+            _speedModifier = Mathf.Clamp(speed, 0.1f, 3.0f);
+            _currentEaseMode = EaseMode.Linear;
+
+            var existingRadar = _character.gameObject.GetComponent<AnimationRadar>();
+            if (existingRadar == null)
+            {
+                _character.gameObject.AddComponent<AnimationRadar>();
+            }
+            else
+            {
+                var field = existingRadar.GetType().GetField("_player", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                field?.SetValue(existingRadar, this);
+            }
+
+            _localBasePos = _character.transform.position;
+            _localBaseRot = _character.transform.rotation;
+            _recordToFurnitureRotModifier = Quaternion.identity;
+
+            if (_character.anim != null)
+            {
+                _character.anim.enabled = true;
+                _character.anim.speed = 1f;
+                _character.anim.Update(0f);
+
+                _character.anim.applyRootMotion = false;
+                _character.anim.speed = 0f;
+                _character.anim.enabled = false;
+            }
+
+            _boneCache.Clear();
+            CacheSkeletonRecursive(_character.transform);
+            AbsoluteSkeletalReset(_animData.boneStartDict);
+
+            _currentTransitionIndex = 0;
+            _gameFrameCounter = 0;
+            _totalTargetFrames = 0;
+            _reversing = false;
+
+            Plugin.Log.LogInfo($"[PreviewPlayer] Запущен предпросмотр '{rawData.name ?? "Unsaved"}' (скорость {_speedModifier * 100:F0}%).");
+        }
+
+
         public void ChangeSpeed(float delta)
         {
             _speedModifier = Mathf.Clamp(_speedModifier + delta, 0.1f, 3.0f);
@@ -321,7 +379,8 @@ namespace FurnitureAnimationsMod
                 
         private void LateUpdate()
         {
-            if (_character == null || _animData == null || _animData.deltas == null || _targetFurniture == null) return;
+            if (_character == null || _animData == null || _animData.deltas == null) return;
+            if (!_isPreviewMode && _targetFurniture == null) return;
 
             // --- THE COMPACT CHARACTER-CENTRIC SANITY GUARD ---
             // We only self-destruct if the native game or Free Pose Mode forced the Animator back ON.
@@ -360,7 +419,8 @@ namespace FurnitureAnimationsMod
 
             // Сглаживание фракции (EaseMode)
             float lerpFraction = actualFraction;
-            switch (_currentEaseMode)
+            EaseMode activeTransitionEase = currentTransitionData.easeMode ?? _currentEaseMode;
+            switch (activeTransitionEase)
             {
                 case EaseMode.PerFrame:
                     lerpFraction = Mathf.SmoothStep(0f, 1f, actualFraction);
@@ -392,7 +452,7 @@ namespace FurnitureAnimationsMod
             try
             {
                 // Базовый кватернион-переводчик осей мебели (наш константный модификатор)
-                Quaternion quaternionOffset = _recordToFurnitureRotModifier;
+                Quaternion quaternionOffset = _isPreviewMode ? _localBaseRot : _recordToFurnitureRotModifier;
 
                 // 1. ВЫЧИСЛЯЕМ СТАРТОВУЮ ТОЧКУ ТЕКУЩЕГО ПЕРЕХОДА
                 Vector3 startLocalPos = _localBasePos;
@@ -417,8 +477,16 @@ namespace FurnitureAnimationsMod
                 Vector3 targetLocalPos = Vector3.Lerp(startLocalPos, endLocalPos, lerpFraction);
                 Quaternion targetLocalRot = Quaternion.Slerp(startLocalRot, endLocalRot, lerpFraction);
 
-                _character.transform.position = _targetFurniture.transform.TransformPoint(targetLocalPos);
-                _character.transform.rotation = _targetFurniture.transform.rotation * targetLocalRot;
+                if (_isPreviewMode)
+                {
+                    _character.transform.position = targetLocalPos;
+                    _character.transform.rotation = targetLocalRot;
+                }
+                else
+                {
+                    _character.transform.position = _targetFurniture.transform.TransformPoint(targetLocalPos);
+                    _character.transform.rotation = _targetFurniture.transform.rotation * targetLocalRot;
+                }
 
                 // Сохраняем в кэш для радара
                 this.targetLocalPos = targetLocalPos;
@@ -472,8 +540,16 @@ namespace FurnitureAnimationsMod
                         {
                             _currentTransitionIndex = 0; // На чистый ноль!
 
-                            _character.transform.position = _targetFurniture.transform.TransformPoint(_localBasePos);
-                            _character.transform.rotation = _targetFurniture.transform.rotation * _localBaseRot;
+                            if (_isPreviewMode)
+                            {
+                                _character.transform.position = _localBasePos;
+                                _character.transform.rotation = _localBaseRot;
+                            }
+                            else
+                            {
+                                _character.transform.position = _targetFurniture.transform.TransformPoint(_localBasePos);
+                                _character.transform.rotation = _targetFurniture.transform.rotation * _localBaseRot;
+                            }
                         }
                         else { Destroy(this); return; }
                     }
@@ -499,57 +575,55 @@ namespace FurnitureAnimationsMod
 
         private void AbsoluteSkeletalReset(Dictionary<string, BoneDelta> boneStartDict)
         {
-            // --- ДИАГНОСТИЧЕСКИЙ ТУМБЛЕР ИЗ МЕНЮ F1 (Полностью сохранен) ---
             if (Plugin.ForceAbsoluteSkeletalReset != null && !Plugin.ForceAbsoluteSkeletalReset.Value)
-            {
-                Plugin.Log.LogWarning("[Engine] Принудительный сброс скелета ОТКЛЮЧЕН в конфиге. Включен оригинальный аддитивный режим.");
                 return;
-            }
-            // ------------------------------------------
 
             if (_character == null) return;
+            ApplyBoneDictToCache(_boneCache, boneStartDict);
+        }
 
-            // Бежим строго по нашему реестру разрешенных костей
+        public static void ApplyStaticPose(CharacterCustomization character, Dictionary<string, BoneDelta> boneDict)
+        {
+            if (character == null) return;
+
+            if (character.anim != null)
+            {
+                character.anim.applyRootMotion = false;
+                character.anim.speed = 0f;
+                character.anim.enabled = false;
+            }
+
+            var tempCache = new Dictionary<string, Transform>();
+            CollectSkeleton(character.transform, tempCache);
+            ApplyBoneDictToCache(tempCache, boneDict);
+        }
+
+        private static void ApplyBoneDictToCache(Dictionary<string, Transform> boneCache, Dictionary<string, BoneDelta> boneDict)
+        {
             foreach (string boneName in DioramaConstants.AnatomyBoneRegistry)
             {
-                if (!_boneCache.TryGetValue(boneName, out Transform boneTrans))
+                if (!boneCache.TryGetValue(boneName, out Transform boneTrans) || boneTrans == null)
                     continue;
 
-                // ВАЖНО: Больше никакого хардкодного сброса в Quaternion.identity для всех подряд!
-                // Ищем кость строго в словаре СТАРТОВОЙ позы анимации (boneStartDict)
-                if (boneStartDict != null && boneStartDict.TryGetValue(boneName, out BoneDelta startDelta))
+                if (boneDict != null && boneDict.TryGetValue(boneName, out BoneDelta delta))
                 {
-                    // Применяем стартовое вращение из boneStartDict
-                    if (startDelta.endRot != null && startDelta.endRot.Length >= 4)
-                    {
-                        boneTrans.localRotation = new Quaternion(startDelta.endRot[0], startDelta.endRot[1], startDelta.endRot[2], startDelta.endRot[3]);
-                    }
-                    else if (startDelta.endRot != null && startDelta.endRot.Length == 3)
-                    {
-                        boneTrans.localRotation = Quaternion.Euler(startDelta.endRot[0], startDelta.endRot[1], startDelta.endRot[2]);
-                    }
+                    if (delta.endRot != null && delta.endRot.Length >= 4)
+                        boneTrans.localRotation = new Quaternion(delta.endRot[0], delta.endRot[1], delta.endRot[2], delta.endRot[3]);
+                    else if (delta.endRot != null && delta.endRot.Length == 3)
+                        boneTrans.localRotation = Quaternion.Euler(delta.endRot[0], delta.endRot[1], delta.endRot[2]);
                     else
-                    {
-                        // Если для кости в стартовой позе нет вращения, возвращаем в локальную нейтраль
                         boneTrans.localRotation = Quaternion.identity;
-                    }
 
-                    // Применяем стартовую позицию (например, высоту Y для таза 'hip')
-                    if (startDelta.endPos != null && startDelta.endPos.Length >= 3)
-                    {
-                        boneTrans.localPosition = new Vector3(startDelta.endPos[0], startDelta.endPos[1], startDelta.endPos[2]);
-                    }
+                    if (delta.endPos != null && delta.endPos.Length >= 3)
+                        boneTrans.localPosition = new Vector3(delta.endPos[0], delta.endPos[1], delta.endPos[2]);
                 }
                 else
                 {
-                    // Фаллбэк для старых статичных поз: если кости нет в словаре стартовых данных,
-                    // бережно сбрасываем её в нейтраль, чтобы сохранить обратную совместимость.
                     boneTrans.localRotation = Quaternion.identity;
                 }
             }
-
-            Plugin.Log.LogInfo($"[FurnitureAnimations] Скелет {_character.name} успешно инициализирован из boneStartDict. Стартовый якорь выставлен.");
         }
+
 
         private void CacheSkeletonRecursive(Transform parent)
         {
@@ -569,6 +643,20 @@ namespace FurnitureAnimationsMod
             if (name.EndsWith("head parent")) return "head parent";
             if (name.EndsWith("head target")) return "head target";
             return name;
+        }
+
+        private static void CollectSkeleton(Transform parent, Dictionary<string, Transform> cache)
+        {
+            if (parent == null) return;
+            string cleanName = parent.name;
+            if (cleanName.EndsWith("eyesRoot")) cleanName = "eyesRoot";
+            else if (cleanName.EndsWith("head parent")) cleanName = "head parent";
+            else if (cleanName.EndsWith("head target")) cleanName = "head target";
+
+            if (!cache.ContainsKey(cleanName)) cache[cleanName] = parent;
+
+            for (int i = 0; i < parent.childCount; i++)
+                CollectSkeleton(parent.GetChild(i), cache);
         }
 
         private Vector3 ArrayToVector3(float[] arr)
