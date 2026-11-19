@@ -98,12 +98,11 @@ namespace FurnitureAnimationsMod
         [HarmonyPostfix]
         public static void AfterFreePoseRefresh(UIFreePose __instance)
         {
-            if (__instance == null) return;
+            if (__instance == null || __instance.poseIconPrefab == null || __instance.poseIconPrefab.parent == null) return;
 
-            Button[] buttons = __instance.GetComponentsInChildren<Button>(true);
+            Button[] buttons = __instance.poseIconPrefab.parent.GetComponentsInChildren<Button>(true);
             foreach (Button btn in buttons)
             {
-                // Ищем позу, привязанную к кнопке иконки (обычно имя объекта кнопки совпадает с именем позы или внутри есть PoseIcon)
                 string itemName = btn.gameObject.name.Replace("(Clone)", "").Trim();
 
                 if (_registeredAnimations.Contains(itemName))

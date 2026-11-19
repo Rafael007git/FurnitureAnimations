@@ -883,6 +883,7 @@ namespace FurnitureAnimationsMod
         }
     }
 
+    /*
     [HarmonyPatch(typeof(UIFreePose), "SelectPose")]
     public class UIFreePoseSelectPoseTracker
     {
@@ -894,6 +895,7 @@ namespace FurnitureAnimationsMod
             Plugin.Log.LogInfo("[SDK_Tracker] Выбрана готовая ванильная поза из списка.");
         }
     }
+    */
 
     [HarmonyPatch(typeof(UIFreePose), "ToggleCustomPoseMode")]
     public class UIFreePoseToggleModeTracker

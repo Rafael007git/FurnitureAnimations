@@ -1,6 +1,7 @@
 ﻿using System;
 using System.ComponentModel;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -298,24 +299,34 @@ namespace FurnitureAnimationsMod
                     return;
                 }
 
-                // Берём за образец панель кнопок из UIPose (или любую панель с кнопками внутри UIFreePose)
-                UIPose uiPose = GameObject.FindObjectOfType<UIPose>();
+                // Находим UIPose даже если меню мебели сейчас выключено!
+                UIPose uiPose = (Global.code != null && Global.code.uiPose != null)
+                    ? Global.code.uiPose
+                    : Resources.FindObjectsOfTypeAll<UIPose>().FirstOrDefault();
+
                 GameObject vanillaButtonsContainerGo = uiPose != null ? uiPose.panelTakeOffClothes : null;
-                if (vanillaButtonsContainerGo == null || vanillaButtonsContainerGo.transform.parent == null) return;
+                if (vanillaButtonsContainerGo == null || vanillaButtonsContainerGo.transform.parent == null)
+                {
+                    Plugin.Log.LogWarning("[UI_FreePose] Не найден шаблон плашки в UIPose.");
+                    return;
+                }
 
                 Transform vanillaBgTransform = vanillaButtonsContainerGo.transform.parent;
+
+                // Клонируем ту самую плашку из меню мебели прямо в UIFreePose!
                 _uiPanelInstance = GameObject.Instantiate(vanillaBgTransform.gameObject, uiFreePose.transform, false);
                 _uiPanelInstance.name = "Mod_FreePoseAnimationControls_BG";
                 _uiPanelInstance.SetActive(true);
 
-                RectTransform modRect = _uiPanelInstance.GetComponent<RectTransform>();
+                // Позиционируем в колонке под туфлёй в Free Pose (X ~ 320px от левого края, Y ~ -110px от центра)
                 RectTransform vanRect = vanillaBgTransform.GetComponent<RectTransform>();
-                modRect.anchorMin = vanRect.anchorMin;
-                modRect.anchorMax = vanRect.anchorMax;
-                modRect.pivot = vanRect.pivot;
-                modRect.sizeDelta = new Vector2(vanRect.sizeDelta.x, vanRect.sizeDelta.y * 0.95f);
+                RectTransform modRect = _uiPanelInstance.GetComponent<RectTransform>();
+                modRect.anchorMin = new Vector2(0f, 0.5f);
+                modRect.anchorMax = new Vector2(0f, 0.5f);
+                modRect.pivot = new Vector2(0.5f, 1f);
+                modRect.sizeDelta = new Vector2(vanRect.sizeDelta.x * 0.85f, 155f);
                 _uiPanelInstance.transform.localScale = vanRect.localScale;
-                modRect.localPosition = new Vector3(vanRect.localPosition.x, vanRect.localPosition.y - 173f, vanRect.localPosition.z);
+                modRect.anchoredPosition = new Vector2(210f, -70f);
 
                 Transform buttonsContainerNew = _uiPanelInstance.transform.Find(vanillaButtonsContainerGo.name);
                 if (buttonsContainerNew == null && _uiPanelInstance.transform.childCount > 0)
@@ -324,14 +335,15 @@ namespace FurnitureAnimationsMod
                 if (buttonsContainerNew == null) return;
                 buttonsContainerNew.name = "Mod_AnimationButtonsContainer";
 
+                // Очищаем скопированные мебельные кнопки
                 Button[] oldButtons = _uiPanelInstance.GetComponentsInChildren<Button>(true);
                 foreach (Button oldBtn in oldButtons) { GameObject.DestroyImmediate(oldBtn.gameObject); }
 
-                Transform btnPrefab = vanillaButtonsContainerGo.transform.GetComponentInChildren<Button>()?.transform;
+                Transform btnPrefab = vanillaButtonsContainerGo.transform.GetComponentInChildren<Button>(true)?.transform;
                 if (btnPrefab != null)
                 {
-                    Vector3 btnPos = Vector3.zero;
-                    float spacing = -45f;
+                    Vector3 btnPos = new Vector3(-30f, 45f, 0f);
+                    float spacing = -46f;
 
                     CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnSpeedPlus", "Speed: ---", btnPos, _iconSpeedPlus, () => {
                         var p = GetLivePlayer();
@@ -357,10 +369,11 @@ namespace FurnitureAnimationsMod
                 }
 
                 UpdateInterfaceStates();
+                Plugin.Log.LogInfo("[UI_FreePose] Мебельная плашка успешно скопирована в Free Pose!");
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogError($"[UI_FreePose] Ошибка создания плашки превью: {ex.Message}");
+                Plugin.Log.LogError($"[UI_FreePose] Ошибка копирования плашки из UIPose: {ex.Message}");
             }
         }
 
