@@ -158,5 +158,26 @@ namespace FurnitureAnimationsMod
                 Plugin.Log.LogError($"[FreePoseBrowser] Ошибка запуска '{animName}': {ex.Message}");
             }
         }
+
+        public static void ReloadAnimationsFromDisk()
+        {
+            if (RM.code != null && RM.code.allFreePoses != null && RM.code.allFreePoses.items != null)
+            {
+                for (int i = RM.code.allFreePoses.items.Count - 1; i >= 0; i--)
+                {
+                    Transform item = RM.code.allFreePoses.items[i] as Transform;
+                    if (item != null && _registeredAnimations.Contains(item.name))
+                    {
+                        RM.code.allFreePoses.items.RemoveAt(i);
+                        UnityEngine.Object.Destroy(item.gameObject);
+                    }
+                }
+            }
+
+            _registeredAnimations.Clear();
+            EnsureAnimationsLoaded();
+            Plugin.Log.LogInfo("[FreePoseBrowser] Reloaded custom animations from disk.");
+        }
+
     }
 }

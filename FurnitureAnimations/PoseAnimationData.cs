@@ -1,34 +1,47 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 
 namespace FurnitureAnimationsMod
 {
+    [Serializable]
     public class PoseAnimationData
     {
         public string name;
-        public float rate = 0.0333f; // Скорость смены дельт в секундах
+        public float rate = 0.025f;
         public bool loop;
         public bool reverse;
+        public EaseMode? easeMode = null;
+
+        // Optional props in hands (prefab/weapon names)
+        public string rightHandProp = null;
+        public string leftHandProp = null;
+
         public float[] startPos = new float[3];
         public float[] startRot = new float[3];
         public Dictionary<string, BoneDelta> boneStartDict = new Dictionary<string, BoneDelta>();
         public List<PoseAnimationDelta> deltas = new List<PoseAnimationDelta>();
     }
 
+    [Serializable]
     public class PoseAnimationDelta
     {
-        public int frames; // Общее число кадров интерполяции внутри дельты
-        public EaseMode? easeMode = null; // Индивидуальное сглаживание перехода (если null — берется глобальное)
+        public int frames;
+        public EaseMode? easeMode = null;
+        public float[] bezier = null; // [x1, y1, x2, y2] - overrides easeMode if present
         public float[] endPosDelta = new float[3];
         public float[] endRotDelta = new float[3];
         public Dictionary<string, BoneDelta> boneDatas = new Dictionary<string, BoneDelta>();
     }
 
+    [Serializable]
     public class BoneDelta
     {
         public float[] startPos = new float[3];
         public float[] endPos = new float[3];
-        public float[] startRot = new float[3];
-        public float[] endRot = new float[3];
+        public float[] startRot = new float[4];
+        public float[] endRot = new float[4];
+        public float[] startScale = null;
+        public float[] endScale = null;
 
         public BoneDelta() { }
 
@@ -44,6 +57,16 @@ namespace FurnitureAnimationsMod
             this.endPos = endPos;
             this.startRot = startRot;
             this.endRot = endRot;
+        }
+
+        public BoneDelta(float[] startPos, float[] endPos, float[] startRot, float[] endRot, float[] startScale, float[] endScale)
+        {
+            this.startPos = startPos;
+            this.endPos = endPos;
+            this.startRot = startRot;
+            this.endRot = endRot;
+            this.startScale = startScale;
+            this.endScale = endScale;
         }
     }
 }

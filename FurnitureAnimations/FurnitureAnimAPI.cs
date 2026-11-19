@@ -161,5 +161,10 @@ namespace FurnitureAnimationsMod
             StopPreview(character);
             FurnitureAnimationPlayer.ApplyStaticPose(character, poseSnapshot);
         }
+
+        public static void ReloadAnimationsFromDisk()
+        {
+            FreePoseBrowserPatch.ReloadAnimationsFromDisk();
+        }
     }
 }
