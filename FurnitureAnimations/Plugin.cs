@@ -14,7 +14,7 @@ namespace FurnitureAnimationsMod
     {
         public const string PluginGuid = "com.lorifel007.furnitureanimations";
         public const string PluginName = "Furniture Animations Mod";
-        public const string PluginVersion = "1.9.0";
+        public const string PluginVersion = "1.9.1";
 
         public static ManualLogSource Log;
         private Harmony harmony;
@@ -40,7 +40,18 @@ namespace FurnitureAnimationsMod
 
                 // Применяем Harmony патчи
                 harmony = new Harmony(PluginGuid);
-                harmony.PatchAll();
+                foreach (var type in System.Reflection.Assembly.GetExecutingAssembly().GetTypes())
+                {
+                    try
+                    {
+                        harmony.CreateClassProcessor(type).Patch();
+                    }
+                    catch (System.Exception ex)
+                    {
+                        Log.LogWarning($"[Harmony] Пропущен патч {type.Name}: {ex.Message}");
+                    }
+                }
+
 
                 Log.LogWarning("[FurnitureMod] Плагин успешно загружен и применил патчи!");
             }
