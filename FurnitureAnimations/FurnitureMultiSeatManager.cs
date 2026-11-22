@@ -25,6 +25,9 @@ namespace FurnitureAnimations
         // Флаг, указывающий, что следующая посадка добавляет персонажа к уже сидящим, а не заменяет их
         public static bool IsAddingOccupant { get; set; }
 
+        // Флаг режима инспекции мебели (Inspect)
+        public static bool IsInspectingFurniture { get; set; }
+
         // Флаг внутренней очистки/высадки, чтобы не зациклить патчи
         public static bool IsInternalQuitting { get; private set; }
 
@@ -110,7 +113,7 @@ namespace FurnitureAnimations
         }
 
         // Регистрирует или обновляет слот персонажа на мебели и создаёт персональный якорь
-        public static SeatSlot RegisterOccupant(Furniture furniture, CharacterCustomization character)
+        public static SeatSlot RegisterOccupant(Furniture furniture, CharacterCustomization character, Vector3? customEnterPos = null)
         {
             if (furniture == null || character == null) return null;
 
@@ -130,9 +133,8 @@ namespace FurnitureAnimations
             var slot = new SeatSlot
             {
                 Character = character,
-                EnterPosition = character.transform.position,
-                SeatAnchor = anchorGo.transform,
-                ActiveVanillaPose = null
+                EnterPosition = customEnterPos ?? character.transform.position,
+                SeatAnchor = anchorGo.transform
             };
 
             slots.Add(slot);
@@ -257,12 +259,16 @@ namespace FurnitureAnimations
                     Object.Destroy(playerComp);
                 }
 
-                character.curInteractionLoc = null;
-                character.interactingObject = null;
+                Vector3 targetExitPos = slot != null ? slot.EnterPosition : character.transform.position;
+                if (Player.code != null && character != Player.code.customization)
+                {
+                    int slotIndex = slot != null ? slots.IndexOf(slot) : 0;
+                    float sideOffset = (slotIndex + 1) * 0.8f;
+                    targetExitPos = Player.code.transform.position + Player.code.transform.right * sideOffset;
+                }
 
                 if (slot != null)
                 {
-                    character.transform.position = slot.EnterPosition;
                     if (slot.SeatAnchor != null)
                     {
                         Object.Destroy(slot.SeatAnchor.gameObject);
@@ -270,11 +276,23 @@ namespace FurnitureAnimations
                     slots.Remove(slot);
                 }
 
+                // Временно подставляем высаживаемого персонажа в furniture.user и вызываем штатный DoQuitInteraction
+                furniture.user = character;
+                var enterPosField = HarmonyLib.AccessTools.Field(typeof(Furniture), "enterPosition");
+                enterPosField?.SetValue(furniture, targetExitPos);
+
+                var doQuitMethod = HarmonyLib.AccessTools.Method(typeof(Furniture), "DoQuitInteraction");
+                doQuitMethod?.Invoke(furniture, null);
+
+                // На случай, если DoQuitInteraction не вернул позицию точно в targetExitPos
+                character.transform.position = targetExitPos;
+
                 if (slots.Count > 0)
                 {
                     var next = slots.First().Character;
                     _activeOccupants[furniture] = next;
                     furniture.user = next;
+                    if (furniture.posesGroup != null) furniture.posesGroup.gameObject.SetActive(true);
                 }
                 else
                 {

@@ -1,7 +1,9 @@
-﻿using System.Linq;
-using HarmonyLib;
+﻿using HarmonyLib;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityStandardAssets.Cameras;
+using UnityStandardAssets.Utility;
 
 namespace FurnitureAnimations
 {
@@ -11,20 +13,28 @@ namespace FurnitureAnimations
         private static Button _btnInspect;
         private static Button _btnClear;
         private static Furniture _inspectedFurniture;
+        private static readonly System.Collections.Generic.Dictionary<CharacterCustomization, Vector3> _preEnterPositions
+    = new System.Collections.Generic.Dictionary<CharacterCustomization, Vector3>();
 
         // 1. Посадка персонажа на мебель (поддержка добавления без высадки предыдущих)
         [HarmonyPatch(typeof(Furniture), nameof(Furniture.InitiateInteract))]
         [HarmonyPrefix]
-        public static bool InitiateInteract_Prefix(Furniture __instance, CharacterCustomization _customization)
+        public static bool InitiateInteract_Prefix(Furniture __instance, CharacterCustomization customization)
         {
-            if (__instance == null || _customization == null) return true;
+            if (__instance == null || customization == null) return true;
+
+            // Запоминаем позицию персонажа ДО того, как игра/мод телепортируют его на мебель
+            _preEnterPositions[customization] = customization.transform.position;
 
             if (FurnitureMultiSeatManager.IsAddingOccupant && FurnitureMultiSeatManager.HasOccupants(__instance))
             {
                 FurnitureMultiSeatManager.IsAddingOccupant = false;
                 FurnitureMultiSeatManager.CurrentUIFurniture = __instance;
 
-                FurnitureMultiSeatManager.RegisterOccupant(__instance, _customization);
+                Vector3? prePos = _preEnterPositions.TryGetValue(customization, out var savedPos) ? savedPos : (Vector3?)null;
+                _preEnterPositions.Remove(customization);
+
+                FurnitureMultiSeatManager.RegisterOccupant(__instance, customization, prePos);
 
                 if (__instance.poses != null && __instance.poses.items != null && __instance.poses.items.Count > 0)
                 {
@@ -35,17 +45,17 @@ namespace FurnitureAnimations
                         FurnitureMultiSeatManager.ApplyPoseToActiveSlot(__instance, firstPose);
                         if (firstPose.loc != null)
                         {
-                            _customization.transform.position = firstPose.loc.transform.position;
-                            _customization.transform.rotation = firstPose.loc.transform.rotation;
+                            customization.transform.position = firstPose.loc.transform.position;
+                            customization.transform.rotation = firstPose.loc.transform.rotation;
                         }
                     }
                 }
 
-                FurnitureMultiSeatManager.SelectOccupant(__instance, _customization);
+                FurnitureMultiSeatManager.SelectOccupant(__instance, customization);
                 return false;
             }
 
-            if (__instance.user != null && __instance.user != _customization && !FurnitureMultiSeatManager.HasOccupants(__instance))
+            if (__instance.user != null && __instance.user != customization && !FurnitureMultiSeatManager.HasOccupants(__instance))
             {
                 FurnitureMultiSeatManager.RegisterOccupant(__instance, __instance.user);
             }
@@ -55,13 +65,17 @@ namespace FurnitureAnimations
 
         [HarmonyPatch(typeof(Furniture), nameof(Furniture.InitiateInteract))]
         [HarmonyPostfix]
-        public static void InitiateInteract_Postfix(Furniture __instance, CharacterCustomization _customization)
+        public static void InitiateInteract_Postfix(Furniture __instance, CharacterCustomization customization)
         {
-            if (__instance == null || _customization == null) return;
+            if (__instance == null || customization == null) return;
 
             FurnitureMultiSeatManager.IsAddingOccupant = false;
             FurnitureMultiSeatManager.CurrentUIFurniture = __instance;
-            FurnitureMultiSeatManager.RegisterOccupant(__instance, _customization);
+
+            Vector3? prePos = _preEnterPositions.TryGetValue(customization, out var savedPos) ? savedPos : (Vector3?)null;
+            _preEnterPositions.Remove(customization);
+
+            FurnitureMultiSeatManager.RegisterOccupant(__instance, customization, prePos);
 
             if (__instance.poses != null && __instance.poses.items != null && __instance.poses.items.Count > 0)
             {
@@ -96,6 +110,12 @@ namespace FurnitureAnimations
             if (FurnitureMultiSeatManager.IsInternalQuitting) return true;
             if (__instance == null || !FurnitureMultiSeatManager.HasOccupants(__instance)) return true;
 
+            if (FurnitureMultiSeatManager.IsInspectingFurniture)
+            {
+                ExitInspectMode();
+                return false;
+            }
+
             var player = FurnitureMultiSeatManager.GetPlayerCustomization();
             if (player != null && FurnitureMultiSeatManager.IsCharacterSeated(__instance, player))
             {
@@ -108,6 +128,14 @@ namespace FurnitureAnimations
             }
 
             return false;
+        }
+
+        [HarmonyPatch(typeof(Global), nameof(Global.ButtonEscape))]
+        [HarmonyPostfix]
+        public static void GlobalButtonEscape_Postfix()
+        {
+            if (!FurnitureMultiSeatManager.IsInspectingFurniture) return;
+            ExitInspectMode();
         }
 
         // 4. Поддержание слотов и настройка меню взаимодействия у занятой компаньонками мебели
@@ -201,6 +229,53 @@ namespace FurnitureAnimations
             SetCustomButtonsVisible(true);
         }
 
+        public static void ExitInspectMode()
+        {
+            FurnitureMultiSeatManager.IsInspectingFurniture = false;
+            var furniture = FurnitureMultiSeatManager.CurrentUIFurniture;
+
+            if (Global.code != null)
+            {
+                if (Global.code.freeCamera != null) Global.code.freeCamera.SetActive(false);
+                if (Global.code.freeCameraCollider != null) Global.code.freeCameraCollider.SetActive(false);
+                if (Global.code.uiPose != null)
+                {
+                    if (Global.code.uiPose.freecameraTips != null)
+                        Global.code.uiPose.freecameraTips.SetActive(false);
+                    if (Global.code.uiPose.gameObject.activeSelf)
+                        Global.code.uiPose.Close();
+                }
+                if (Global.code.uiCombat != null)
+                {
+                    if (Global.code.uiCombat.hud != null) Global.code.uiCombat.hud.SetActive(true);
+                    if (Global.code.uiCombat.buffGroup != null) Global.code.uiCombat.buffGroup.gameObject.SetActive(true);
+                }
+            }
+
+            if (Player.code != null)
+            {
+                Player.code.ResetEmotion();
+                var rotator = Player.code.GetComponent<SimpleMouseRotator>();
+                if (rotator != null)
+                {
+                    rotator.enabled = false;
+                    rotator.resetRotation();
+                }
+            }
+
+            if (furniture != null)
+            {
+                if (!furniture.donthideMainCamera && FreeLookCam.code != null)
+                    FreeLookCam.code.gameObject.SetActive(true);
+                if (furniture.camerasGroup != null)
+                    furniture.camerasGroup.gameObject.SetActive(false);
+            }
+            else if (FreeLookCam.code != null)
+            {
+                FreeLookCam.code.gameObject.SetActive(true);
+            }
+        }
+
         private static void EnsureCustomButtons(UICombat uiCombat)
         {
             if (_btnInspect != null && _btnClear != null) return;
@@ -211,25 +286,53 @@ namespace FurnitureAnimations
 
             var inspectGo = Object.Instantiate(template, parent);
             inspectGo.name = "Btn_FA_Inspect";
+            inspectGo.transform.SetSiblingIndex(0);
             _btnInspect = inspectGo.GetComponent<Button>();
-            SetButtonLabel(inspectGo, "Inspect");
+            SetButtonLabel(inspectGo, "_FA_Inspect_", "Inspect", "Осмотреть");
+            DisablePersistentListeners(_btnInspect);
             _btnInspect.onClick.RemoveAllListeners();
             _btnInspect.onClick.AddListener(OnInspectClicked);
 
             var clearGo = Object.Instantiate(template, parent);
             clearGo.name = "Btn_FA_Clear";
+            clearGo.transform.SetSiblingIndex(1);
             _btnClear = clearGo.GetComponent<Button>();
-            SetButtonLabel(clearGo, "Clear");
+            SetButtonLabel(clearGo, "_FA_Clear_", "Clear", "Освободить");
+            DisablePersistentListeners(_btnClear);
             _btnClear.onClick.RemoveAllListeners();
             _btnClear.onClick.AddListener(OnClearClicked);
         }
 
-        private static void SetButtonLabel(GameObject buttonGo, string label)
+        private static void DisablePersistentListeners(Button button)
         {
+            if (button == null) return;
+            int count = button.onClick.GetPersistentEventCount();
+            for (int i = 0; i < count; i++)
+            {
+                button.onClick.SetPersistentListenerState(i, UnityEngine.Events.UnityEventCallState.Off);
+            }
+        }
+
+        private static void SetButtonLabel(GameObject buttonGo, string key, string enLabel, string ruLabel)
+        {
+            if (!Localization.LocalizationDic.ContainsKey(key))
+            {
+                Localization.LocalizationDic[key] = new System.Collections.Generic.List<string>
+                {
+                    enLabel, enLabel, ruLabel, enLabel
+                };
+            }
+
+            var locText = buttonGo.GetComponentInChildren<LocalizationText>(true);
+            if (locText != null)
+            {
+                locText.KEY = key;
+            }
+
             var text = buttonGo.GetComponentInChildren<Text>(true);
             if (text != null)
             {
-                text.text = label;
+                text.text = Localization.GetContent(key);
             }
         }
 
@@ -255,8 +358,35 @@ namespace FurnitureAnimations
             var active = FurnitureMultiSeatManager.GetActiveOccupant(furniture);
             if (active == null) return;
 
+            FurnitureMultiSeatManager.IsInspectingFurniture = true;
             FurnitureMultiSeatManager.CurrentUIFurniture = furniture;
             furniture.user = active;
+
+            // Переводим камеру и HUD в режим осмотра мебели (зеркально ExitInspectMode)
+            if (uiCombat != null)
+            {
+                if (uiCombat.hud != null) uiCombat.hud.SetActive(false);
+                if (uiCombat.buffGroup != null) uiCombat.buffGroup.gameObject.SetActive(false);
+            }
+
+            if (!furniture.donthideMainCamera && FreeLookCam.code != null)
+            {
+                FreeLookCam.code.gameObject.SetActive(false);
+            }
+
+            if (furniture.camerasGroup != null)
+            {
+                furniture.camerasGroup.gameObject.SetActive(true);
+            }
+
+            if (Player.code != null)
+            {
+                var rotator = Player.code.GetComponent<SimpleMouseRotator>();
+                if (rotator != null)
+                {
+                    rotator.enabled = true;
+                }
+            }
 
             if (Global.code != null && Global.code.uiPose != null)
             {
