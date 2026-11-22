@@ -103,6 +103,7 @@
     <Compile Include="FurnitureInjectorPatch.cs" />
     <Compile Include="FurnitureMultiSeatManager.cs" />
     <Compile Include="FurnitureMultiSeatPatches.cs" />
+    <Compile Include="FurniturePoseSlotsUI.cs" />
     <Compile Include="FurnitureSdkButtonController.cs" />
     <Compile Include="Models.cs" />
     <Compile Include="Plugin.cs" />

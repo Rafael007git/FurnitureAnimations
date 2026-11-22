@@ -52,6 +52,8 @@ namespace FurnitureAnimations
                 }
 
                 FurnitureMultiSeatManager.SelectOccupant(__instance, customization);
+                FurniturePoseSlotsUI.Refresh();
+                FurniturePoseSlotsUI.SyncAnimationPanel();
                 return false;
             }
 
@@ -110,23 +112,40 @@ namespace FurnitureAnimations
             if (FurnitureMultiSeatManager.IsInternalQuitting) return true;
             if (__instance == null || !FurnitureMultiSeatManager.HasOccupants(__instance)) return true;
 
+            var player = FurnitureMultiSeatManager.GetPlayerCustomization();
+            if (player != null && FurnitureMultiSeatManager.IsCharacterSeated(__instance, player))
+            {
+                FurnitureMultiSeatManager.IsInspectingFurniture = false;
+                var slots = FurnitureMultiSeatManager.GetSlots(__instance);
+                if (slots.Count > 1)
+                {
+                    // Если вместе с игроком сидят компаньонки — высаживаем только игрока и возвращаем камеру/управление
+                    FurnitureMultiSeatManager.RemoveOccupant(__instance, player);
+                    ExitInspectMode();
+                    return false;
+                }
+                else
+                {
+                    // Если сидел только сам игрок — очищаем наш слот и отдаём управление штатному Furniture.QuitInteract()
+                    var slot = FurnitureMultiSeatManager.GetSlot(__instance, player);
+                    if (slot != null && slot.SeatAnchor != null)
+                    {
+                        Object.Destroy(slot.SeatAnchor.gameObject);
+                    }
+                    slots.Clear();
+                    __instance.user = player;
+                    return true;
+                }
+            }
+
             if (FurnitureMultiSeatManager.IsInspectingFurniture)
             {
                 ExitInspectMode();
                 return false;
             }
 
-            var player = FurnitureMultiSeatManager.GetPlayerCustomization();
-            if (player != null && FurnitureMultiSeatManager.IsCharacterSeated(__instance, player))
-            {
-                FurnitureMultiSeatManager.RemoveOccupant(__instance, player);
-            }
-
-            if (Global.code != null && Global.code.uiPose != null && Global.code.uiPose.gameObject.activeSelf)
-            {
-                Global.code.uiPose.Close();
-            }
-
+            // Если сидят только компаньонки (без игрока) — оставляем их на мебели и просто закрываем UI
+            ExitInspectMode();
             return false;
         }
 
@@ -153,8 +172,17 @@ namespace FurnitureAnimations
                 ? __instance.focusedInteraction.GetComponent<Furniture>()
                 : null;
 
-            if (furniture != null && FurnitureMultiSeatManager.HasOnlyCompanions(furniture))
+            bool isCompanionSeated = furniture != null &&
+                (FurnitureMultiSeatManager.HasOnlyCompanions(furniture) ||
+                 (furniture.user != null && furniture.user != FurnitureMultiSeatManager.GetPlayerCustomization()));
+
+            if (isCompanionSeated)
             {
+                if (!FurnitureMultiSeatManager.HasOccupants(furniture) && furniture.user != null)
+                {
+                    var slot = FurnitureMultiSeatManager.RegisterOccupant(furniture, furniture.user);
+                    if (slot != null) slot.IsAIControlled = true;
+                }
                 ConfigureOccupiedFurnitureMenu(uiCombat, furniture);
             }
             else
@@ -171,6 +199,11 @@ namespace FurnitureAnimations
             if (!FurnitureMultiSeatManager.IsAddingOccupant) return;
             var furniture = FurnitureMultiSeatManager.CurrentUIFurniture;
             if (furniture == null || __instance == null || __instance.iconHolderSelectionPanel == null || __instance.iconPrefab == null) return;
+
+            if (__instance.iconHolderSelectionPanel != null && __instance.iconHolderSelectionPanel.parent != null)
+            {
+                __instance.iconHolderSelectionPanel.parent.gameObject.SetActive(true);
+            }
 
             int addedCount = 0;
 
@@ -359,6 +392,7 @@ namespace FurnitureAnimations
             if (active == null) return;
 
             FurnitureMultiSeatManager.IsInspectingFurniture = true;
+            FurnitureMultiSeatManager.TakeManualControl(furniture);
             FurnitureMultiSeatManager.CurrentUIFurniture = furniture;
             furniture.user = active;
 

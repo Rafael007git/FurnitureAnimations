@@ -14,7 +14,7 @@ namespace FurnitureAnimationsMod
     {
         public const string PluginGuid = "com.lorifel007.furnitureanimations";
         public const string PluginName = "Furniture Animations Mod";
-        public const string PluginVersion = "1.10.1";
+        public const string PluginVersion = "1.11.0";
 
         public static ManualLogSource Log;
         private Harmony harmony;
@@ -24,6 +24,8 @@ namespace FurnitureAnimationsMod
 
         public static ConfigEntry<bool> EnableDebugRadar;
         public static ConfigEntry<bool> ForceAbsoluteSkeletalReset;
+        public static ConfigEntry<float> SlotsPanelOffsetX;
+        public static ConfigEntry<float> SlotsPanelOffsetY;
 
         // BepInEx ищет именно метод Awake без параметров
         private void Awake()
@@ -74,6 +76,8 @@ namespace FurnitureAnimationsMod
                 "True: Forces all unused bones to reset to zero (prevents pose dependency). False: Enables original additive behavior from Aedenthorn."
             );
 
+            SlotsPanelOffsetX = Config.Bind("MultiSeatUI", "SlotsPanelOffsetX", 650f, "Horizontal offset from screen center for companion portrait slots in UIPose");
+            SlotsPanelOffsetY = Config.Bind("MultiSeatUI", "SlotsPanelOffsetY", 100f, "Vertical offset from screen center for companion portrait slots in UIPose");
 
         }
 

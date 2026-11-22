@@ -14,6 +14,7 @@ namespace FurnitureAnimations
             public Vector3 EnterPosition;
             public Transform SeatAnchor;
             public Pose ActiveVanillaPose;
+            public bool IsAIControlled;
         }
 
         // Реестр всех занятых предметов мебели и их слотов
@@ -213,7 +214,7 @@ namespace FurnitureAnimations
                     continue;
                 }
 
-                slots.RemoveAll(s => s == null || s.Character == null);
+                slots.RemoveAll(s => s == null || s.Character == null || (s.IsAIControlled && s.Character.interactingObject != furniture.transform));
                 if (slots.Count == 0)
                 {
                     if (emptyFurnitures == null) emptyFurnitures = new List<Furniture>();
@@ -223,6 +224,7 @@ namespace FurnitureAnimations
 
                 foreach (var slot in slots)
                 {
+                    if (slot.IsAIControlled) continue;
                     var ch = slot.Character;
                     if (ch.interactingObject != furniture.gameObject)
                         ch.interactingObject = furniture.transform;
@@ -306,6 +308,16 @@ namespace FurnitureAnimations
             finally
             {
                 IsInternalQuitting = false;
+            }
+        }
+
+        // Переводит все слоты мебели под ручной контроль игрока (блокирует таймер выхода CastleAI)
+        public static void TakeManualControl(Furniture furniture)
+        {
+            if (furniture == null) return;
+            foreach (var slot in GetSlots(furniture))
+            {
+                slot.IsAIControlled = false;
             }
         }
 

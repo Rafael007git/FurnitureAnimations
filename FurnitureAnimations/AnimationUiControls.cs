@@ -15,6 +15,7 @@ namespace FurnitureAnimationsMod
         private FurnitureAnimationPlayer _player;
         private Furniture _activeFurnitureInstance;
         private GameObject _uiPanelInstance;
+        private CharacterCustomization _explicitCharacter;
         private bool _lastHadPlayerState = false;
 
         // Light runtime cache parameters
@@ -42,7 +43,7 @@ namespace FurnitureAnimationsMod
 
             // Пытаемся найти живой плеер анимаций на сцене (если запущена динамическая анимация)
             // Если его нет (мы в статической позе) — _player будет null, но кнопка камеры всё равно будет работать!
-            _player = UnityEngine.Object.FindObjectOfType<FurnitureAnimationPlayer>();
+            _player = GetLivePlayer();
 
             // 0. Загружаем иконки из ресурсов DLL
             LoadEmbeddedResources();
@@ -750,13 +751,18 @@ namespace FurnitureAnimationsMod
 
         private FurnitureAnimationPlayer GetLivePlayer()
         {
-            // If we have an active furniture and someone is explicitly sitting in it
-            if (_activeFurnitureInstance != null && _activeFurnitureInstance.user != null)
+            if (_explicitCharacter != null)
+                return _explicitCharacter.gameObject.GetComponent<FurnitureAnimationPlayer>();
+
+            if (_activeFurnitureInstance != null)
             {
-                // Directly grab the player component from the character's game object without searching the scene!
-                return _activeFurnitureInstance.user.gameObject.GetComponent<FurnitureAnimationPlayer>();
+                var targetChar = (Global.code != null && Global.code.uiPose != null && Global.code.uiPose.gameObject.activeInHierarchy && Global.code.uiPose.curCustomization != null)
+                    ? Global.code.uiPose.curCustomization
+                    : _activeFurnitureInstance.user;
+
+                return targetChar != null ? targetChar.gameObject.GetComponent<FurnitureAnimationPlayer>() : null;
             }
-            // В режиме Free Pose мебели нет — берём активный экземпляр превью-плеера
+
             return FurnitureAnimationPlayer.Instance;
         }
 
@@ -812,6 +818,16 @@ namespace FurnitureAnimationsMod
                 b.onClick.RemoveAllListeners();
                 b.onClick.AddListener(() => onClick?.Invoke());
             }
+        }
+
+        public void ForceRefreshForCurrentCharacter(CharacterCustomization target = null)
+        {
+            _explicitCharacter = target;
+            _player = GetLivePlayer();
+            _lastHadPlayerState = (_player != null);
+            _lastEaseModeState = (EaseMode)(-1);
+            _lastSpeedState = -1f;
+            UpdateInterfaceStates();
         }
 
         // === ИСПРАВЛЕНО: ExecuteEaseToggleAction без синглтонов ===
