@@ -101,6 +101,7 @@
     <Compile Include="FurnitureAnimAPI.cs" />
     <Compile Include="FurnitureAnimationPlayer.cs" />
     <Compile Include="FurnitureInjectorPatch.cs" />
+    <Compile Include="FurnitureMultiSeatManager.cs" />
     <Compile Include="FurnitureSdkButtonController.cs" />
     <Compile Include="Models.cs" />
     <Compile Include="Plugin.cs" />
