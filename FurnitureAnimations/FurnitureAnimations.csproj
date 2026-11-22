@@ -123,6 +123,9 @@
     <EmbeddedResource Include="Resources\icon_addCamera.png" />
     <EmbeddedResource Include="Resources\icon_deleteCamera.png" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\icon_Bezier.png" />
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
     <PostBuildEvent>xcopy "$(TargetDir)$(TargetName).dll" "C:\GamesP\SWPT VR\BepInEx\plugins\" /Y /I

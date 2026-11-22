@@ -27,6 +27,7 @@ namespace FurnitureAnimationsMod
         private Texture2D _iconLinear;
         private Texture2D _iconEaseWhole;
         private Texture2D _iconEaseEach;
+        private Texture2D _iconBezier;
         private Texture2D _iconNextAudio;
         private Texture2D _iconSoundOn;
         private Texture2D _iconSoundOff;
@@ -659,6 +660,7 @@ namespace FurnitureAnimationsMod
             _iconLinear = LoadTextureFromDll("FurnitureAnimations.Resources.icon_flowEven.png");
             _iconEaseWhole = LoadTextureFromDll("FurnitureAnimations.Resources.icon_easeInOutWhole.png");
             _iconEaseEach = LoadTextureFromDll("FurnitureAnimations.Resources.icon_easeInOutEach.png");
+            _iconBezier = LoadTextureFromDll("FurnitureAnimations.Resources.icon_Bezier.png");
             _iconNextAudio = LoadTextureFromDll("FurnitureAnimations.Resources.icon_nextAudio.png");
             _iconSoundOn = LoadTextureFromDll("FurnitureAnimations.Resources.icon_soundOn.png");
             _iconSoundOff = LoadTextureFromDll("FurnitureAnimations.Resources.icon_soundOff.png");
@@ -740,6 +742,7 @@ namespace FurnitureAnimationsMod
             {
                 case EaseMode.Global: return _iconEaseWhole;
                 case EaseMode.PerFrame: return _iconEaseEach;
+                case EaseMode.Bezier: return _iconBezier ?? _iconEaseEach;
                 case EaseMode.Linear:
                 default: return _iconLinear;
             }
@@ -769,6 +772,7 @@ namespace FurnitureAnimationsMod
             Texture2D targetIcon = _iconLinear;
             if (currentMode == EaseMode.Global) targetIcon = _iconEaseWhole;
             else if (currentMode == EaseMode.PerFrame) targetIcon = _iconEaseEach;
+            else if (currentMode == EaseMode.Bezier) targetIcon = _iconBezier ?? _iconEaseEach;
 
             // Синхронно обновляем и текст, и картинку в один приход
             UpdateText("Mod_BtnEaseToggle", $"Interpolation: {currentMode}");

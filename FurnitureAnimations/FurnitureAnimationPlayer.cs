@@ -9,7 +9,8 @@ namespace FurnitureAnimationsMod
     {
         Linear,
         Global,
-        PerFrame
+        PerFrame,
+        Bezier
     }
 
     public class FurnitureAnimationPlayer : MonoBehaviour
@@ -235,6 +236,10 @@ namespace FurnitureAnimationsMod
                     {
                         _currentEaseMode = easeSettings.EaseMode;
                     }
+                    else if (HasAnyBezier(_animData))
+                    {
+                        _currentEaseMode = EaseMode.Bezier;
+                    }
                     else
                     {
                         // Применяем временный дефолт Linear только если EaseMode еще не был изменен в этой сессии
@@ -271,7 +276,7 @@ namespace FurnitureAnimationsMod
             _targetFurniture = null;
             _isPreviewMode = true;
             _speedModifier = Mathf.Clamp(speed, 0.1f, 3.0f);
-            _currentEaseMode = EaseMode.Linear;
+            _currentEaseMode = HasAnyBezier(_animData) ? EaseMode.Bezier : EaseMode.Linear;
 
             var existingRadar = _character.gameObject.GetComponent<AnimationRadar>();
             if (existingRadar == null)
@@ -353,7 +358,7 @@ namespace FurnitureAnimationsMod
         public void ToggleEaseMode()
         {
             // 1. Переключаем режим по кругу
-            _currentEaseMode = (EaseMode)(((int)_currentEaseMode + 1) % 3);
+            _currentEaseMode = (EaseMode)(((int)_currentEaseMode + 1) % 4);
             Plugin.Log.LogWarning($"[EaseManager] Режим сглаживания изменен на: {_currentEaseMode}");
 
             // 2. ДОБАВЛЕНО: Мгновенно синхронизируем изменения с нашей ОЗУ-картой памяти! 🧠⚡
@@ -419,31 +424,47 @@ namespace FurnitureAnimationsMod
 
             // Сглаживание фракции (EaseMode)
             float lerpFraction = actualFraction;
-            EaseMode activeTransitionEase = currentTransitionData.easeMode ?? _currentEaseMode;
-            switch (activeTransitionEase)
+            bool allowBezier = (_currentEaseMode == EaseMode.Bezier);
+
+            if (allowBezier && currentTransitionData.bezier != null && currentTransitionData.bezier.Length >= 4)
             {
-                case EaseMode.PerFrame:
-                    lerpFraction = Mathf.SmoothStep(0f, 1f, actualFraction);
-                    break;
-                case EaseMode.Global:
-                    float totalAnimationFrames = 0f;
-                    for (int i = 0; i < totalTransitions; i++) totalAnimationFrames += _animData.deltas[i].frames;
-                    float passedAuthorFrames = 0f;
-                    for (int i = 0; i < _currentTransitionIndex; i++) passedAuthorFrames += _animData.deltas[i].frames;
+                float p1x = currentTransitionData.bezier[0];
+                float p1y = currentTransitionData.bezier[1];
+                float p2x = currentTransitionData.bezier[2];
+                float p2y = currentTransitionData.bezier[3];
+                lerpFraction = EvaluateCubicBezier(actualFraction, p1x, p1y, p2x, p2y);
+            }
+            else
+            {
+                EaseMode activeTransitionEase = (_currentEaseMode == EaseMode.Bezier)
+                    ? (currentTransitionData.easeMode ?? EaseMode.PerFrame)
+                    : (currentTransitionData.easeMode ?? _currentEaseMode);
 
-                    float currentGlobalAuthorFrame = passedAuthorFrames + (actualFraction * _animData.deltas[_currentTransitionIndex].frames);
-                    float globalFraction = Mathf.Clamp01(currentGlobalAuthorFrame / totalAnimationFrames);
-                    float smoothedGlobal = Mathf.SmoothStep(0f, 1f, globalFraction);
+                switch (activeTransitionEase)
+                {
+                    case EaseMode.PerFrame:
+                        lerpFraction = Mathf.SmoothStep(0f, 1f, actualFraction);
+                        break;
+                    case EaseMode.Global:
+                        float totalAnimationFrames = 0f;
+                        for (int i = 0; i < totalTransitions; i++) totalAnimationFrames += _animData.deltas[i].frames;
+                        float passedAuthorFrames = 0f;
+                        for (int i = 0; i < _currentTransitionIndex; i++) passedAuthorFrames += _animData.deltas[i].frames;
 
-                    float currentDeltaStartGlobal = passedAuthorFrames / totalAnimationFrames;
-                    float currentDeltaEndGlobal = (passedAuthorFrames + _animData.deltas[_currentTransitionIndex].frames) / totalAnimationFrames;
-                    float globalDeltaDuration = currentDeltaEndGlobal - currentDeltaStartGlobal;
+                        float currentGlobalAuthorFrame = passedAuthorFrames + (actualFraction * _animData.deltas[_currentTransitionIndex].frames);
+                        float globalFraction = Mathf.Clamp01(currentGlobalAuthorFrame / totalAnimationFrames);
+                        float smoothedGlobal = Mathf.SmoothStep(0f, 1f, globalFraction);
 
-                    lerpFraction = globalDeltaDuration > 0 ? Mathf.Clamp01((smoothedGlobal - currentDeltaStartGlobal) / globalDeltaDuration) : 1f;
-                    break;
-                case EaseMode.Linear:
-                default:
-                    break;
+                        float currentDeltaStartGlobal = passedAuthorFrames / totalAnimationFrames;
+                        float currentDeltaEndGlobal = (passedAuthorFrames + _animData.deltas[_currentTransitionIndex].frames) / totalAnimationFrames;
+                        float globalDeltaDuration = currentDeltaEndGlobal - currentDeltaStartGlobal;
+
+                        lerpFraction = globalDeltaDuration > 0 ? Mathf.Clamp01((smoothedGlobal - currentDeltaStartGlobal) / globalDeltaDuration) : 1f;
+                        break;
+                    case EaseMode.Linear:
+                    default:
+                        break;
+                }
             }
 
             // =========================================================================
@@ -474,8 +495,8 @@ namespace FurnitureAnimationsMod
                 Quaternion endLocalRot = _localBaseRot * Quaternion.Euler(ArrayToVector3(currentTransitionData.endRotDelta));
 
                 // 3. ИНТЕРПОЛЯЦИЯ И ФИНАЛЬНАЯ ПРОЕКЦИЯ В МИР UNITY
-                Vector3 targetLocalPos = Vector3.Lerp(startLocalPos, endLocalPos, lerpFraction);
-                Quaternion targetLocalRot = Quaternion.Slerp(startLocalRot, endLocalRot, lerpFraction);
+                Vector3 targetLocalPos = Vector3.LerpUnclamped(startLocalPos, endLocalPos, lerpFraction);
+                Quaternion targetLocalRot = Quaternion.SlerpUnclamped(startLocalRot, endLocalRot, lerpFraction);
 
                 if (_isPreviewMode)
                 {
@@ -505,8 +526,8 @@ namespace FurnitureAnimationsMod
                             Quaternion boneStartRot = Quaternion.Euler(ArrayToVector3(kp.Value.startRot));
                             Quaternion boneEndRot = Quaternion.Euler(ArrayToVector3(kp.Value.endRot));
 
-                            boneTransform.localPosition = Vector3.Lerp(boneStartPos, boneEndPos, lerpFraction);
-                            boneTransform.localRotation = Quaternion.Slerp(boneStartRot, boneEndRot, lerpFraction);
+                            boneTransform.localPosition = Vector3.LerpUnclamped(boneStartPos, boneEndPos, lerpFraction);
+                            boneTransform.localRotation = Quaternion.SlerpUnclamped(boneStartRot, boneEndRot, lerpFraction);
                         }
                     }
                 }
@@ -575,7 +596,7 @@ namespace FurnitureAnimationsMod
 
         private void AbsoluteSkeletalReset(Dictionary<string, BoneDelta> boneStartDict)
         {
-            if (Plugin.ForceAbsoluteSkeletalReset != null && !Plugin.ForceAbsoluteSkeletalReset.Value)
+            if (!_isPreviewMode && Plugin.ForceAbsoluteSkeletalReset != null && !Plugin.ForceAbsoluteSkeletalReset.Value)
                 return;
 
             if (_character == null) return;
@@ -683,6 +704,67 @@ namespace FurnitureAnimationsMod
                 _character.anim.speed = 1f;
             }
             Plugin.Log.LogWarning("[LocalPlayer] Animation engine deactivated, control returned to native Unity.");
+        }
+
+        private static bool HasAnyBezier(PoseAnimationData data)
+        {
+            if (data == null) return false;
+            if (data.easeMode == EaseMode.Bezier) return true;
+            if (data.deltas != null)
+            {
+                for (int i = 0; i < data.deltas.Count; i++)
+                {
+                    if (data.deltas[i] != null && data.deltas[i].bezier != null && data.deltas[i].bezier.Length >= 4)
+                        return true;
+                }
+            }
+            return false;
+        }
+
+        private static float EvaluateCubicBezier(float t, float x1, float y1, float x2, float y2)
+        {
+            if (t <= 0f) return 0f;
+            if (t >= 1f) return 1f;
+
+            x1 = Mathf.Clamp01(x1);
+            x2 = Mathf.Clamp01(x2);
+
+            float cx = 3f * x1;
+            float bx = 3f * (x2 - x1) - cx;
+            float ax = 1f - cx - bx;
+
+            float cy = 3f * y1;
+            float by = 3f * (y2 - y1) - cy;
+            float ay = 1f - cy - by;
+
+            // 1. Метод Ньютона-Рафсона для быстрого нахождения параметра u по X(u) = t
+            float u = t;
+            for (int i = 0; i < 6; i++)
+            {
+                float xEst = ((ax * u + bx) * u + cx) * u - t;
+                if (Mathf.Abs(xEst) < 1e-5f) break;
+                float dx = (3f * ax * u + 2f * bx) * u + cx;
+                if (Mathf.Abs(dx) < 1e-5f) break;
+                u -= xEst / dx;
+            }
+
+            // 2. Фолбэк бинарным поиском, если касательная была слишком крутой
+            if (u < 0f || u > 1f)
+            {
+                float low = 0f, high = 1f;
+                u = t;
+                for (int i = 0; i < 12; i++)
+                {
+                    float xEst = ((ax * u + bx) * u + cx) * u;
+                    if (Mathf.Abs(xEst - t) < 1e-5f) break;
+                    if (xEst < t) low = u;
+                    else high = u;
+                    u = 0.5f * (low + high);
+                }
+            }
+
+            u = Mathf.Clamp01(u);
+            return ((ay * u + by) * u + cy) * u;
         }
 
     }
