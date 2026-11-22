@@ -28,6 +28,9 @@ namespace FurnitureAnimations
         // Флаг внутренней очистки/высадки, чтобы не зациклить патчи
         public static bool IsInternalQuitting { get; private set; }
 
+        // Чтобы все части UI всегда знали, с какой мебелью мы сейчас работаем
+        public static Furniture CurrentUIFurniture { get; set; }
+
         // Возвращает CharacterCustomization главного героя
         public static CharacterCustomization GetPlayerCustomization()
         {
