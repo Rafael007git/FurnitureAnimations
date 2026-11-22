@@ -767,5 +767,34 @@ namespace FurnitureAnimationsMod
             return ((ay * u + by) * u + cy) * u;
         }
 
+        public void RestartFromBeginning()
+        {
+            if (_animData == null) return;
+
+            _currentTransitionIndex = 0;
+            _gameFrameCounter = 0;
+            _totalTargetFrames = 0;
+            _reversing = false;
+
+            if (_animData.boneStartDict != null)
+            {
+                AbsoluteSkeletalReset(_animData.boneStartDict);
+            }
+
+            if (_character != null)
+            {
+                if (_isPreviewMode)
+                {
+                    _character.transform.position = _localBasePos;
+                    _character.transform.rotation = _localBaseRot;
+                }
+                else if (_targetFurniture != null)
+                {
+                    _character.transform.position = _targetFurniture.transform.TransformPoint(_localBasePos);
+                    _character.transform.rotation = _targetFurniture.transform.rotation * _localBaseRot;
+                }
+            }
+        }
+
     }
 }

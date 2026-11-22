@@ -129,6 +129,9 @@
   <ItemGroup>
     <EmbeddedResource Include="Resources\icon_Bezier.png" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\icon_syncAnimations.png" />
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
     <PostBuildEvent>xcopy "$(TargetDir)$(TargetName).dll" "C:\GamesP\SWPT VR\BepInEx\plugins\" /Y /I

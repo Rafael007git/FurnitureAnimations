@@ -1,4 +1,5 @@
-﻿using System;
+﻿using FurnitureAnimations;
+using System;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
@@ -29,6 +30,7 @@ namespace FurnitureAnimationsMod
         private Texture2D _iconEaseWhole;
         private Texture2D _iconEaseEach;
         private Texture2D _iconBezier;
+        private Texture2D _iconSyncAnimations;
         private Texture2D _iconNextAudio;
         private Texture2D _iconSoundOn;
         private Texture2D _iconSoundOff;
@@ -82,6 +84,10 @@ namespace FurnitureAnimationsMod
                                     p.ToggleEaseMode();
                                     UpdateEaseButton();
                                 }
+                            });
+                            RebindButtonAction(buttonsContainer, "Mod_BtnSyncAnimations", () =>
+                            {
+                                SyncAllOccupantsOnFurniture();
                             });
                         }
 
@@ -239,6 +245,12 @@ namespace FurnitureAnimationsMod
                             p.ToggleEaseMode();
                             UpdateEaseButton();
                         }
+                    });
+                    btnPos.y += spacing;
+
+                    // Кнопка синхронизации анимаций актёров
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnSyncAnimations", "Sync", btnPos, _iconSyncAnimations, () => {
+                        SyncAllOccupantsOnFurniture();
                     });
                     btnPos.y += spacing;
 
@@ -550,6 +562,32 @@ namespace FurnitureAnimationsMod
                 }
             }
 
+            // Г) УПРАВЛЕНИЕ КНОПКОЙ СИНХРОНИЗАЦИИ АНИМАЦИЙ АКТЁРОВ
+            Transform syncBtnTrans = container.Find("Mod_BtnSyncAnimations");
+            if (syncBtnTrans != null)
+            {
+                GameObject syncGo = syncBtnTrans.gameObject;
+                syncGo.SetActive(true);
+
+                int animatedCount = 0;
+                Furniture targetFurn = _activeFurnitureInstance ?? currentFurniture;
+                if (targetFurn != null)
+                {
+                    foreach (var slot in FurnitureMultiSeatManager.GetSlots(targetFurn))
+                    {
+                        if (slot?.Character != null && slot.Character.GetComponent<FurnitureAnimationPlayer>() != null)
+                            animatedCount++;
+                    }
+                }
+
+                bool canSync = animatedCount >= 2;
+                Button b = syncGo.GetComponent<Button>();
+                RawImage ri = syncGo.GetComponent<RawImage>();
+
+                if (b != null) b.interactable = canSync;
+                if (ri != null) ri.color = canSync ? Color.white : new Color(1f, 1f, 1f, 0.3f);
+            }
+
             // Финальный безусловный рефреш uGUI (сработает идеально, так как ссылка жива)
             UpdateSpeedButtonsText();
             UpdateEaseButton();
@@ -662,6 +700,7 @@ namespace FurnitureAnimationsMod
             _iconEaseWhole = LoadTextureFromDll("FurnitureAnimations.Resources.icon_easeInOutWhole.png");
             _iconEaseEach = LoadTextureFromDll("FurnitureAnimations.Resources.icon_easeInOutEach.png");
             _iconBezier = LoadTextureFromDll("FurnitureAnimations.Resources.icon_Bezier.png");
+            _iconSyncAnimations = LoadTextureFromDll("FurnitureAnimations.Resources.icon_syncAnimations.png");
             _iconNextAudio = LoadTextureFromDll("FurnitureAnimations.Resources.icon_nextAudio.png");
             _iconSoundOn = LoadTextureFromDll("FurnitureAnimations.Resources.icon_soundOn.png");
             _iconSoundOff = LoadTextureFromDll("FurnitureAnimations.Resources.icon_soundOff.png");
@@ -764,6 +803,30 @@ namespace FurnitureAnimationsMod
             }
 
             return FurnitureAnimationPlayer.Instance;
+        }
+
+        private void SyncAllOccupantsOnFurniture()
+        {
+            if (_activeFurnitureInstance == null) return;
+
+            var slots = FurnitureMultiSeatManager.GetSlots(_activeFurnitureInstance);
+            int syncedCount = 0;
+
+            foreach (var slot in slots)
+            {
+                if (slot?.Character == null) continue;
+                var player = slot.Character.GetComponent<FurnitureAnimationPlayer>();
+                if (player != null)
+                {
+                    player.RestartFromBeginning();
+                    syncedCount++;
+                }
+            }
+
+            if (syncedCount > 0)
+            {
+                Plugin.Log?.LogInfo($"[Sync] Restarted {syncedCount} animation(s) on '{_activeFurnitureInstance.name}'.");
+            }
         }
 
         private void UpdateEaseButton()
