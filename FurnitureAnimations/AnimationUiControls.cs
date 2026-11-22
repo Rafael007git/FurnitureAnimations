@@ -194,7 +194,7 @@ namespace FurnitureAnimationsMod
                     // ==========================================================
                     // А) ЕДИНСТВЕННАЯ КОНТЕКСТНАЯ КНОПКА КАМЕРЫ (ТЕПЕРЬ ПЕРВАЯ) 📸🌟
                     // ==========================================================
-                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnContextCamera", "Camera Control", btnPos, _iconAddCamera, () =>
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnContextCamera", "", btnPos, _iconAddCamera, () =>
                     {
                         UIPose up = GameObject.FindObjectOfType<UIPose>();
                         Furniture cf = up != null ? up.curFurniture : null;
@@ -223,21 +223,21 @@ namespace FurnitureAnimationsMod
                     // ==========================================================
 
                     // --- КНОПКА СКОРОСТЬ + ---
-                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnSpeedPlus", "Speed: ---", btnPos, _iconSpeedPlus, () => {
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnSpeedPlus", "", btnPos, _iconSpeedPlus, () => {
                         var p = UnityEngine.Object.FindObjectOfType<FurnitureAnimationPlayer>();
                         if (p != null) { p.ChangeSpeed(0.1f); UpdateSpeedButtonsText(); }
                     });
                     btnPos.y += spacing;
 
                     // --- КНОПКА СКОРОСТЬ - ---
-                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnSpeedMinus", "Speed: ---", btnPos, _iconSpeedMinus, () => {
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnSpeedMinus", "", btnPos, _iconSpeedMinus, () => {
                         var p = UnityEngine.Object.FindObjectOfType<FurnitureAnimationPlayer>();
                         if (p != null) { p.ChangeSpeed(-0.1f); UpdateSpeedButtonsText(); }
                     });
                     btnPos.y += spacing;
 
                     // Кнопка Сглаживания
-                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnEaseToggle", "Interpolation: ", btnPos, GetCurrentEaseSprite(), () => {
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnEaseToggle", "", btnPos, GetCurrentEaseSprite(), () => {
                         var p = UnityEngine.Object.FindObjectOfType<FurnitureAnimationPlayer>();
                         if (p != null)
                         {
@@ -249,14 +249,14 @@ namespace FurnitureAnimationsMod
                     btnPos.y += spacing;
 
                     // Кнопка синхронизации анимаций актёров
-                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnSyncAnimations", "Sync", btnPos, _iconSyncAnimations, () => {
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnSyncAnimations", "", btnPos, _iconSyncAnimations, () => {
                         SyncAllOccupantsOnFurniture();
                     });
                     btnPos.y += spacing;
 
                     // === ТОЧЕЧНЫЙ ФИКС: Контекстное создание аудио-кнопок ===
                     // Кнопка: Следующий трек
-                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnNextAudio", "Next Audio", btnPos, _iconNextAudio, () =>
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnNextAudio", "", btnPos, _iconNextAudio, () =>
                     {
                         if (_activeFurnitureInstance != null && _activeFurnitureInstance.user != null)
                         {
@@ -274,7 +274,7 @@ namespace FurnitureAnimationsMod
                         if (audio != null && audio.IsMuted()) currentSoundIcon = _iconSoundOff;
                     }
 
-                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnMuteToggle", "Sound: ON", btnPos, currentSoundIcon, () =>
+                    CreateUiButton(buttonsContainerNew, btnPrefab, "Mod_BtnMuteToggle", "", btnPos, currentSoundIcon, () =>
                     {
                         if (_activeFurnitureInstance != null && _activeFurnitureInstance.user != null)
                         {
@@ -531,14 +531,14 @@ namespace FurnitureAnimationsMod
                     btnGo.SetActive(true);
                     if (isTheOnlyPhysicalCameraLeft)
                     {
-                        UpdateText("Mod_BtnContextCamera", "Cannot delete last cam");
+                        UpdateText("Mod_BtnContextCamera", "");
                         UpdateImageSprite("Mod_BtnContextCamera", _iconDeleteCamera);
                         if (b != null) b.interactable = false;
                         if (ri != null) ri.color = new Color(1f, 1f, 1f, 0.3f);
                     }
                     else
                     {
-                        UpdateText("Mod_BtnContextCamera", $"Delete: {currentSelectedCamName}");
+                        UpdateText("Mod_BtnContextCamera", "");
                         UpdateImageSprite("Mod_BtnContextCamera", _iconDeleteCamera);
                         if (b != null) b.interactable = true;
                         if (ri != null) ri.color = Color.white;
@@ -547,7 +547,7 @@ namespace FurnitureAnimationsMod
                 else if (isFreeCamActive && hasVacantSlots)
                 {
                     btnGo.SetActive(true);
-                    UpdateText("Mod_BtnContextCamera", $"Add camera {nextVacantNum}");
+                    UpdateText("Mod_BtnContextCamera", "");
                     UpdateImageSprite("Mod_BtnContextCamera", _iconAddCamera);
                     if (b != null) b.interactable = true;
                     if (ri != null) ri.color = Color.white;
@@ -555,7 +555,7 @@ namespace FurnitureAnimationsMod
                 else
                 {
                     btnGo.SetActive(true);
-                    UpdateText("Mod_BtnContextCamera", "Vanilla Camera");
+                    UpdateText("Mod_BtnContextCamera", "");
                     UpdateImageSprite("Mod_BtnContextCamera", _iconAddCamera);
                     if (b != null) b.interactable = false;
                     if (ri != null) ri.color = new Color(1f, 1f, 1f, 0.3f);
@@ -771,8 +771,8 @@ namespace FurnitureAnimationsMod
             if (_player == null) return;
 
             int percent = Mathf.RoundToInt(_player.GetSpeed() * 100);
-            UpdateText("Mod_BtnSpeedMinus", $"Speed: {percent}% (-10)");
-            UpdateText("Mod_BtnSpeedPlus", $"Speed: {percent}% (+10)");
+            UpdateText("Mod_BtnSpeedMinus", "");
+            UpdateText("Mod_BtnSpeedPlus", "");
         }
 
         private Texture2D GetCurrentEaseSprite()
@@ -844,7 +844,7 @@ namespace FurnitureAnimationsMod
             else if (currentMode == EaseMode.Bezier) targetIcon = _iconBezier ?? _iconEaseEach;
 
             // Синхронно обновляем и текст, и картинку в один приход
-            UpdateText("Mod_BtnEaseToggle", $"Interpolation: {currentMode}");
+            UpdateText("Mod_BtnEaseToggle", "");
             UpdateImageSprite("Mod_BtnEaseToggle", targetIcon);
         }
 
@@ -858,7 +858,7 @@ namespace FurnitureAnimationsMod
                 if (audio != null) isMuted = audio.IsMuted();
             }
 
-            UpdateText("Mod_BtnMuteToggle", isMuted ? "Sound: MUTED" : "Sound: ON");
+            UpdateText("Mod_BtnMuteToggle", "");
             UpdateImageSprite("Mod_BtnMuteToggle", isMuted ? _iconSoundOff : _iconSoundOn);
         }
 
