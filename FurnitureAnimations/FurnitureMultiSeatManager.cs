@@ -116,7 +116,7 @@ namespace FurnitureAnimations
         // Регистрирует или обновляет слот персонажа на мебели и создаёт персональный якорь
         public static SeatSlot RegisterOccupant(Furniture furniture, CharacterCustomization character, Vector3? customEnterPos = null)
         {
-            if (furniture == null || character == null) return null;
+            if (!IsWorldFurniture(furniture) || character == null) return null;
 
             var slots = GetSlots(furniture);
             var existing = slots.Find(s => s.Character == character);
@@ -151,7 +151,7 @@ namespace FurnitureAnimations
         // Обновляет якорь активного слота под выбранную ванильную позу, не сбивая позы соседей
         public static void ApplyPoseToActiveSlot(Furniture furniture, Pose pose)
         {
-            if (furniture == null || pose == null) return;
+            if (!IsWorldFurniture(furniture) || pose == null) return;
 
             var active = GetActiveOccupant(furniture);
             var slot = GetSlot(furniture, active);
@@ -198,7 +198,7 @@ namespace FurnitureAnimations
         // Поддерживает корректную привязку всех сидящих персонажей (защита от срыва AI)
         public static void MaintainAllOccupants()
         {
-            if (_furnitureSlots.Count == 0) return;
+            if (_furnitureSlots.Count == 0 || IsAnyCharacterScreenOpen()) return;
 
             List<Furniture> emptyFurnitures = null;
 
@@ -341,5 +341,52 @@ namespace FurnitureAnimations
 
             Plugin.Log?.LogInfo($"[MultiSeat] Cleared all occupants from '{furniture.name}'.");
         }
+
+        // Проверяет, открыт ли полноэкранный UI персонажа (кастомизация, гардероб, макияж, инвентарь)
+        public static bool IsAnyCharacterScreenOpen()
+        {
+            if (Global.code == null) return false;
+            if (Global.code.uiCustomization != null && Global.code.uiCustomization.gameObject.activeInHierarchy) return true;
+            if (Global.code.uiCloset != null && Global.code.uiCloset.gameObject.activeInHierarchy) return true;
+            if (Global.code.uiMakeup != null && Global.code.uiMakeup.gameObject.activeInHierarchy) return true;
+            if (Global.code.uiCharacter != null && Global.code.uiCharacter.gameObject.activeInHierarchy) return true;
+            if (Global.code.uiInventory != null && Global.code.uiInventory.gameObject.activeInHierarchy) return true;
+            return false;
+        }
+
+        // Отличает реальную мебель в замке от служебных UI-подиумов (кастомизация, макияж, гардероб)
+        public static bool IsWorldFurniture(Furniture furniture)
+        {
+            if (furniture == null) return false;
+            if (IsAnyCharacterScreenOpen()) return false;
+
+            if (furniture.GetComponent<MakeupTable>() != null)
+                return false;
+
+            if (Global.code != null)
+            {
+                if (furniture.transform == Global.code.GetCustomizationFurniture() ||
+                    furniture.transform == Global.code.GetMakeupTable())
+                {
+                    return false;
+                }
+
+                if (Global.code.uiCloset != null && Global.code.uiCloset.lingerieShop != null)
+                {
+                    var shop = Global.code.uiCloset.lingerieShop;
+                    if (furniture.transform == shop.brafurniture ||
+                        furniture.transform == shop.pantiesfurniture ||
+                        furniture.transform == shop.stockingfurniture ||
+                        furniture.transform == shop.heelsfurniture ||
+                        furniture.transform == shop.allfurniture)
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
+        }
+
     }
 }

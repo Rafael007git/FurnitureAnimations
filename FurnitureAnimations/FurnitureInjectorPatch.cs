@@ -1,4 +1,5 @@
-﻿using HarmonyLib;
+﻿using FurnitureAnimations;
+using HarmonyLib;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
@@ -397,7 +398,7 @@ namespace FurnitureAnimationsMod
         [HarmonyPostfix]
         public static void Postfix(UIPose __instance, Furniture furniture)
         {
-            if (__instance == null || furniture == null) return;
+            if (__instance == null || !FurnitureMultiSeatManager.IsWorldFurniture(furniture)) return;
 
             // Автономная замена функционала CustomizationFix: всегда показываем панель одежды на мебели
             if (__instance.panelTakeOffClothes != null)

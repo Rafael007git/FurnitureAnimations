@@ -21,7 +21,7 @@ namespace FurnitureAnimations
         [HarmonyPrefix]
         public static bool InitiateInteract_Prefix(Furniture __instance, CharacterCustomization customization)
         {
-            if (__instance == null || customization == null) return true;
+            if (!FurnitureMultiSeatManager.IsWorldFurniture(__instance) || customization == null) return true;
 
             // Запоминаем позицию персонажа ДО того, как игра/мод телепортируют его на мебель
             _preEnterPositions[customization] = customization.transform.position;
@@ -69,7 +69,7 @@ namespace FurnitureAnimations
         [HarmonyPostfix]
         public static void InitiateInteract_Postfix(Furniture __instance, CharacterCustomization customization)
         {
-            if (__instance == null || customization == null) return;
+            if (!FurnitureMultiSeatManager.IsWorldFurniture(__instance) || customization == null) return;
 
             FurnitureMultiSeatManager.IsAddingOccupant = false;
             FurnitureMultiSeatManager.CurrentUIFurniture = __instance;
@@ -110,7 +110,7 @@ namespace FurnitureAnimations
         public static bool DoQuitInteraction_Prefix(Furniture __instance)
         {
             if (FurnitureMultiSeatManager.IsInternalQuitting) return true;
-            if (__instance == null || !FurnitureMultiSeatManager.HasOccupants(__instance)) return true;
+            if (!FurnitureMultiSeatManager.IsWorldFurniture(__instance) || !FurnitureMultiSeatManager.HasOccupants(__instance)) return true;
 
             var player = FurnitureMultiSeatManager.GetPlayerCustomization();
             if (player != null && FurnitureMultiSeatManager.IsCharacterSeated(__instance, player))

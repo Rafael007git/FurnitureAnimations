@@ -19,7 +19,11 @@ namespace FurnitureAnimations
         [HarmonyPostfix]
         public static void UIPoseOpen_Postfix(UIPose __instance, Furniture furniture, CharacterCustomization customization)
         {
-            if (__instance == null || furniture == null) return;
+            if (__instance == null || !FurnitureMultiSeatManager.IsWorldFurniture(furniture))
+            {
+                if (_slotsContainer != null) _slotsContainer.gameObject.SetActive(false);
+                return;
+            }
 
             FurnitureMultiSeatManager.CurrentUIFurniture = furniture;
             if (customization != null)
@@ -79,7 +83,11 @@ namespace FurnitureAnimations
             if (uiPose == null || !uiPose.gameObject.activeInHierarchy) return;
 
             var furniture = uiPose.curFurniture ?? FurnitureMultiSeatManager.CurrentUIFurniture;
-            if (furniture == null) return;
+            if (!FurnitureMultiSeatManager.IsWorldFurniture(furniture))
+            {
+                if (_slotsContainer != null) _slotsContainer.gameObject.SetActive(false);
+                return;
+            }
 
             EnsureSlotsContainer(uiPose);
             if (_slotsContainer == null) return;
