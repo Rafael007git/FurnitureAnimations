@@ -59,9 +59,7 @@ namespace FurnitureAnimationsMod
             _character = character;
             _isPreviewMode = false;
 
-            // === TEMPORARY RUNTIME SPEED DEBUG SPY ===
-            string trace = Environment.StackTrace;
-            Plugin.Log.LogWarning($"[SPEED_BUG_DEBUG] Play() forcefully invoked! Current StackTrace:\n{trace}");
+            CharacterStateHelper.SetLastAnimatedClip(character, animationName);
 
             // --- СВЕРХТОЧНЫЙ ПЕРЕХВАТ И ОЖИВЛЕНИЕ РАДАРА ---
             var existingRadar = _character.gameObject.GetComponent<AnimationRadar>();
@@ -81,14 +79,14 @@ namespace FurnitureAnimationsMod
                     field.SetValue(existingRadar, this);
                 }
 
-                Plugin.Log.LogWarning("[Engine] Существующий радар успешно перехвачен и привязан к новой анимации!");
+                Plugin.Log.LogInfo("[Engine] Существующий радар успешно перехвачен и привязан к новой анимации!");
             }
             // -------------------------------------------------------------------------
 
             string assetPath = Path.Combine(BepInEx.Paths.PluginPath, "PoseAnimations", $"{animationName}.json");
             if (!File.Exists(assetPath))
             {
-                Plugin.Log.LogError($"[LocalPlayer] Анимация на диске не найдена: {assetPath}");
+                Plugin.Log.LogWarning($"[LocalPlayer] Animation file not found on disk: {assetPath}");
                 Destroy(this);
                 return;
             }
@@ -359,7 +357,7 @@ namespace FurnitureAnimationsMod
         {
             // 1. Переключаем режим по кругу
             _currentEaseMode = (EaseMode)(((int)_currentEaseMode + 1) % 4);
-            Plugin.Log.LogWarning($"[EaseManager] Режим сглаживания изменен на: {_currentEaseMode}");
+            Plugin.Log.LogInfo($"[EaseManager] Smoothing mode changed to: {_currentEaseMode}");
 
             // 2. ДОБАВЛЕНО: Мгновенно синхронизируем изменения с нашей ОЗУ-картой памяти! 🧠⚡
             if (_targetFurniture != null)
@@ -392,7 +390,7 @@ namespace FurnitureAnimationsMod
             // This means another system explicitly requested to take over the character's bones!
             if (_character.anim != null && _character.anim.enabled)
             {
-                Plugin.Log.LogWarning($"[Engine_Sanity] Native animator was forced ON for '{_character.name}'. Self-destructing custom loop player.");
+                Plugin.Log.LogInfo($"[Engine_Sanity] Native animator was forced ON for '{_character.name}'. Stopping custom loop player.");
                 // This safely triggers OnDestroy(), enabling native speed and cleaning up audio
                 Destroy(this);
                 return;
@@ -702,7 +700,7 @@ namespace FurnitureAnimationsMod
                 _character.anim.enabled = true;
                 _character.anim.speed = 1f;
             }
-            Plugin.Log.LogWarning("[LocalPlayer] Animation engine deactivated, control returned to native Unity.");
+            Plugin.Log.LogInfo("[LocalPlayer] Animation engine deactivated, control returned to native Unity.");
         }
 
         private static bool HasAnyBezier(PoseAnimationData data)

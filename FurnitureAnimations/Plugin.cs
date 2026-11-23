@@ -14,7 +14,7 @@ namespace FurnitureAnimationsMod
     {
         public const string PluginGuid = "com.lorifel007.furnitureanimations";
         public const string PluginName = "Furniture Animations Mod";
-        public const string PluginVersion = "1.12.2";
+        public const string PluginVersion = "1.12.3";
 
         public static ManualLogSource Log;
         private Harmony harmony;
@@ -31,7 +31,7 @@ namespace FurnitureAnimationsMod
         private void Awake()
         {
             Log = Logger;
-            Log.LogWarning("[FurnitureMod] Старт инициализации плагина...");
+            Log.LogInfo("[FurnitureMod] Initializing plugin...");
 
             EditorUiManager.Initialize();
 
@@ -50,12 +50,12 @@ namespace FurnitureAnimationsMod
                     }
                     catch (System.Exception ex)
                     {
-                        Log.LogWarning($"[Harmony] Пропущен патч {type.Name}: {ex.Message}");
+                        Log.LogWarning($"[Harmony] Skipped patch {type.Name}: {ex.Message}");
                     }
                 }
 
+                Log.LogInfo("[FurnitureMod] Plugin successfully loaded and applied patches!");
 
-                Log.LogWarning("[FurnitureMod] Плагин успешно загружен и применил патчи!");
             }
             catch (System.Exception ex)
             {

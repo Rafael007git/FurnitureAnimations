@@ -321,7 +321,7 @@ namespace FurnitureAnimationsMod
                 GameObject vanillaButtonsContainerGo = uiPose != null ? uiPose.panelTakeOffClothes : null;
                 if (vanillaButtonsContainerGo == null || vanillaButtonsContainerGo.transform.parent == null)
                 {
-                    Plugin.Log.LogWarning("[UI_FreePose] Не найден шаблон плашки в UIPose.");
+                    Plugin.Log.LogWarning("[UI_FreePose] Pose slot template not found in UIPose.");
                     return;
                 }
 
@@ -922,7 +922,7 @@ namespace FurnitureAnimationsMod
             }
             else
             {
-                Plugin.Log.LogError("[UI_Action] Failed to change interpolation: active player is missing!");
+                Plugin.Log.LogWarning("[UI_Action] Failed to change interpolation: active player is missing!");
             }
         }
         #endregion

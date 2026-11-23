@@ -32,7 +32,7 @@ namespace FurnitureAnimationsMod
             // Ищем, есть ли для этой мебели конфигурация в нашем моде
             if (ConfigManager.LoadedConfigs.TryGetValue(furnitureName, out FurnitureConfig config))
             {
-                Plugin.Log.LogWarning($"[Injector] Инжекция кастомных поз для мебели: {furnitureName} (Ванильные позы БУДУТ сохранены!)");
+                Plugin.Log.LogInfo($"[Injector] Injecting custom poses for furniture: {furnitureName} (vanilla poses preserved).");
 
                 // --- КРИТИЧЕСКИЙ ФИКС №1: БОЛЬШЕ НЕ УНИЧТОЖАЕМ "posesGroup" И НЕ ОЧИЩАЕМ СПИСКИ КАМЕР/ПОЗ ИГРЫ! ---
                 // Если у мебели почему-то нет инициализированных списков — создаем их (защита от краша)
@@ -306,7 +306,7 @@ namespace FurnitureAnimationsMod
                     Global.code.interactableFurnitures.AddItemDifferentObject(__instance.transform);
                 }
 
-                Plugin.Log.LogWarning($"[Injector] Слияние завершено! Всего доступных поз для {furnitureName}: {__instance.poses.items.Count} (включая ванильные и кастомные).");
+                Plugin.Log.LogInfo($"[Injector] Merge complete! Total poses for {furnitureName}: {__instance.poses.items.Count} (vanilla + custom).");
             }
         }
 
@@ -498,7 +498,7 @@ namespace FurnitureAnimationsMod
             string uiPoseName = __instance.pose.name ?? "NULL";
             string uiCtrlName = __instance.pose.controller != null ? __instance.pose.controller.name : "NULL";
 
-            Plugin.Log.LogWarning($"[SDK_Icon] Клик зафиксирован! Поза: '{uiPoseName}' | Контроллер: '{uiCtrlName}'");
+            Plugin.Log.LogInfo($"[SDK_Icon] Click captured! Pose: '{uiPoseName}' | Controller: '{uiCtrlName}'");
 
             Furniture parentFurniture = __instance.GetComponentInParent<Furniture>() ?? __instance.pose.GetComponentInParent<Furniture>();
 
@@ -583,7 +583,7 @@ namespace FurnitureAnimationsMod
                     if (currentPoseData.Type.Equals("PoseAnimationsMod", StringComparison.OrdinalIgnoreCase) &&
                         currentPoseData.ControllerName == currentlyPlayingAnim)
                     {
-                        Plugin.Log.LogWarning($"[SDK_Icon] Клик по той же анимации '{currentlyPlayingAnim}'. Останавливаем плеер.");
+                        Plugin.Log.LogInfo($"[SDK_Icon] Clicked on currently playing animation '{currentlyPlayingAnim}'. Stopping player.");
                         UnityEngine.Object.DestroyImmediate(activePlayer);
 
                         // === ИСПРАВЛЕНО: Гасим локальный аудиоменеджер персонажа ===
@@ -596,7 +596,7 @@ namespace FurnitureAnimationsMod
                     }
 
                     // ЕСЛИ КЛИКНУЛИ ПО ЛЮБОЙ ДРУГОЙ ИКОНКЕ -> Сносим старый плеер
-                    Plugin.Log.LogWarning($"[SDK_Icon] Переключение! Удаляем старую анимацию '{currentlyPlayingAnim}' перед запуском нового режима.");
+                    Plugin.Log.LogInfo($"[SDK_Icon] Switching! Stopping previous animation '{currentlyPlayingAnim}' before starting new mode.");
                     UnityEngine.Object.DestroyImmediate(activePlayer);
 
                     // === ИСПРАВЛЕНО: Гасим старый трек у этого персонажа ===
@@ -614,7 +614,7 @@ namespace FurnitureAnimationsMod
                 // Логика запуска внешней JSON-анимации мода
                 if (currentPoseData.Type.Equals("PoseAnimationsMod", StringComparison.OrdinalIgnoreCase))
                 {
-                    Plugin.Log.LogWarning($"[SDK_Icon] Активирован локальный встроенный плеер для анимации: {currentPoseData.ControllerName}");
+                    Plugin.Log.LogInfo($"[SDK_Icon] Local built-in player activated for animation: {currentPoseData.ControllerName}");
 
                     // === ИСПРАВЛЕНО: Ковровая зачистка старых компонентов аудио на кукле перед стартом ===
                     var zombieAudios = characterComp.gameObject.GetComponents<AnimationAudioManager>();
@@ -641,7 +641,7 @@ namespace FurnitureAnimationsMod
                 // Логика Диорамы
                 if (currentPoseData.Type.Equals("CustomJSON", StringComparison.OrdinalIgnoreCase))
                 {
-                    Plugin.Log.LogWarning($"[SDK_Icon] Целевой файл Диорамы найден: {currentPoseData.JsonFileName}. Запускаем отложенный поток...");
+                    Plugin.Log.LogInfo($"[SDK_Icon] Target Diorama file found: {currentPoseData.JsonFileName}. Starting deferred routine...");
                     if (Global.code != null)
                     {
                         Global.code.StartCoroutine(ExecuteBonesInjectionDelayed(characterComp, currentPoseData.JsonFileName));
@@ -674,7 +674,7 @@ namespace FurnitureAnimationsMod
 
                 if (rawBonesData != null)
                 {
-                    Plugin.Log.LogWarning($"[SDK_Coroutine] Кадры ожидания прошли! Раскатываем {rawBonesData.Count} элементов Диорамы на скелет...");
+                    Plugin.Log.LogInfo($"[SDK_Coroutine] Wait frames elapsed! Applying {rawBonesData.Count} Diorama bone transforms to skeleton...");
 
                     Transform FindChildRecursive(Transform parent, string name)
                     {
@@ -719,7 +719,7 @@ namespace FurnitureAnimationsMod
                 characterComp.anim.speed = 0f;
                 characterComp.anim.enabled = false;
 
-                Plugin.Log.LogWarning($"[SDK_Coroutine] Скелет Диорамы из файла {jsonFileName} успешно зафиксирован поверх А-позы!");
+                Plugin.Log.LogInfo($"[SDK_Coroutine] Diorama skeleton from '{jsonFileName}' successfully applied over A-pose.");
             }
             catch (Exception ex)
             {
@@ -772,7 +772,7 @@ namespace FurnitureAnimationsMod
 
                             if (isMainHero)
                             {
-                                Plugin.Log.LogWarning($"[SafetyCleanup] Main player is leaving furniture. Destroying stuck animation player for '{stuckPlayer.GetPlayingAnimationName()}'.");
+                                Plugin.Log.LogInfo($"[SafetyCleanup] Main player is leaving furniture. Destroying animation player for '{stuckPlayer.GetPlayingAnimationName()}'.");
 
                                 UnityEngine.Object.DestroyImmediate(stuckPlayer);
 
@@ -800,7 +800,7 @@ namespace FurnitureAnimationsMod
 
             if (__instance.user == null)
             {
-                Plugin.Log.LogWarning("[SafetyPatch] Safe quit from empty interaction.");
+                Plugin.Log.LogInfo("[SafetyCleanup] Safe quit from empty interaction.");
                 var playerComp = UnityEngine.Object.FindObjectOfType<CharacterCustomization>();
                 if (playerComp != null)
                 {
@@ -825,7 +825,7 @@ namespace FurnitureAnimationsMod
             Transform existingBtn = __instance.transform.Find("Button_SaveInteract");
             if (existingBtn != null) return;
 
-            Plugin.Log.LogWarning("[UI_Patch] ... Меню открыто. Запуск рокировки ...");
+            Plugin.Log.LogInfo("[UI_Patch] Menu opened. Starting layout swap...");
 
             Transform vanillaSaveBtn = __instance.transform.Find("Button Save");
             Transform vanillaLoadBtn = __instance.transform.Find("Button Load");

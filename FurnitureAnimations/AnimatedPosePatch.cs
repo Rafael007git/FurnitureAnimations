@@ -17,7 +17,7 @@ namespace FurnitureAnimations
             {
                 if (string.IsNullOrEmpty(name) || character == null) return;
 
-                Plugin.Log.LogWarning($"[HARMONY_OVERTAKE] Поймали активацию танца: '{name}' на персонаже {character.name}");
+                Plugin.Log.LogInfo($"[HARMONY_OVERTAKE] Animation '{name}' triggered on character '{character.name}'.");
 
                 // 1. Находим объект позы в каталоге игры, чтобы забрать легальную иконку мода
                 if (RM.code != null && RM.code.allFreePoses != null)

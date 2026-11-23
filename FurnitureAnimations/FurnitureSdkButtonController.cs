@@ -88,7 +88,7 @@ namespace FurnitureAnimationsMod
                                 currentPoseData.Type.Equals("CustomJSON", StringComparison.OrdinalIgnoreCase) &&
                                 characterComp.anim.enabled == true)
                             {
-                                Plugin.Log.LogWarning($"[SDK_Mono_Bypass] Обнаружена А-поза для '{activePoseNameInUi}'. Исправляем скелет напрямую из MonoBehaviour...");
+                                Plugin.Log.LogWarning($"[SDK_Mono_Bypass] A-pose detected for '{activePoseNameInUi}'. Fixing skeleton directly from MonoBehaviour...");
                                 ApplyCustomBonesDirect(characterComp.gameObject, currentPoseData.JsonFileName);
                             }
                         }
@@ -211,7 +211,7 @@ namespace FurnitureAnimationsMod
                     anim.speed = 0f;
                     anim.enabled = false; // Усыпляем А-позу намертво!
                 }
-                Plugin.Log.LogWarning($"[SDK_Mono_Bypass] Кастомный скелет из файла {jsonFileName} успешно раскатан БЕЗ микрофризов процессора!");
+                Plugin.Log.LogInfo($"[SDK_Mono_Bypass] Custom skeleton from '{jsonFileName}' applied cleanly.");
             }
             catch (Exception ex)
             {

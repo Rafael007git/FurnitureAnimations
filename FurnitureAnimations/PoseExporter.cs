@@ -38,8 +38,8 @@ namespace FurnitureAnimationsMod
             string typeText = "Pose/Animation from the game";
             bool isCustomBakeMode = false;
 
-            Plugin.Log.LogWarning($"[DEBUG_ICON] === СТАРТ ТРАССИРОВКИ ИКОНКИ (ОБНОВЛЕННЫЙ) ===");
-            Plugin.Log.LogInfo($"[DEBUG_ICON] Вычисленное состояние куклы: {currentState}");
+            Plugin.Log.LogInfo("[DEBUG_ICON] === STARTING ICON CAPTURE ===");
+            Plugin.Log.LogInfo($"[DEBUG_ICON] Current state of the doll: {currentState}");
 
             switch (currentState)
             {
@@ -52,7 +52,7 @@ namespace FurnitureAnimationsMod
                     buttonText = "Link Animated Pose for Furniture";
                     typeText = "External Mod Animation (AnimatedPose)";
 
-                    Plugin.Log.LogWarning($"[PoseExporter] Детектор: Поймали JSON-анимацию '{controllerName}'! Делаем скриншот с наложением иконки.");
+                    Plugin.Log.LogInfo($"[PoseExporter] Detected JSON animation '{controllerName}'. Capturing screenshot with watermark.");
 
                     // 1. Делаем базовый скisting скриншот куклы в движении
                     Texture2D rawScreenshot = null;
@@ -100,7 +100,7 @@ namespace FurnitureAnimationsMod
                     buttonText = "Link Preset Pose for Furniture";
                     typeText = "Pose/Animation from the game";
 
-                    Plugin.Log.LogWarning($"[DEBUG_ICON] Запуск Сценария А (Preset Link). Целевое имя контроллера: '{controllerName}'");
+                    Plugin.Log.LogInfo($"[DEBUG_ICON] Running Scenario A (Preset Link). Target controller: '{controllerName}'");
 
                     if (RM.code == null) Plugin.Log.LogError("[DEBUG_ICON] Ошибка: RM.code равен null!");
                     else if (RM.code.allFreePoses == null) Plugin.Log.LogError("[DEBUG_ICON] Ошибка: RM.code.allFreePoses равен null!");
@@ -127,7 +127,7 @@ namespace FurnitureAnimationsMod
 
                             if (p.controller != null && p.controller.name == controllerName)
                             {
-                                Plugin.Log.LogWarning($"[DEBUG_ICON] СОВПАДЕНИЕ 🎉 НАЙДЕНО! Поза: '{currentPoseName}'. Извлекаем родную иконку...");
+                                Plugin.Log.LogInfo($"[DEBUG_ICON] Match found! Pose: '{currentPoseName}'. Extracting native icon...");
                                 _lastCapturedIcon = p.icon;
                                 foundMatch = true;
                                 break;
@@ -136,7 +136,7 @@ namespace FurnitureAnimationsMod
 
                         if (!foundMatch)
                         {
-                            Plugin.Log.LogError($"[DEBUG_ICON] Сбой: Ни один контроллер в игре не совпал с целевым '{controllerName}'!");
+                            Plugin.Log.LogWarning($"[DEBUG_ICON] Сбой: Ни один контроллер в игре не совпал с целевым '{controllerName}'!");
                         }
                     }
                     break;
@@ -150,7 +150,7 @@ namespace FurnitureAnimationsMod
                     buttonText = "Save Custom Pose for Furniture";
                     typeText = "User-made Custom Pose";
 
-                    Plugin.Log.LogWarning("[PoseExporter] Запуск Сценария Б (Режим Гизмо). Сейчас будет скриншот!");
+                    Plugin.Log.LogInfo("[PoseExporter] Running Scenario B (Gizmo Mode). Capturing screenshot.");
 
                     var photoComp = uiInstance.GetComponent<TakePhotos>();
                     if (photoComp != null && Global.code != null && Global.code.freeCamera != null)
@@ -305,7 +305,7 @@ namespace FurnitureAnimationsMod
                     else if (vacantNumber == -1)
                     {
                         // Если слотов больше нет, мы не крашим экспорт, а просто сохраняем позу и мягко предупреждаем в лог
-                        Plugin.Log.LogWarning($"[Exporter_Camera] Поза сохранена, но лимит Custom-камер для этой мебели уже исчерпан. Запись пропущена.");
+                        Plugin.Log.LogInfo("[Exporter_Camera] Pose saved, but custom camera limit reached for this furniture. Camera entry skipped.");
                     }
                 }
                 // =========================================================================
@@ -370,7 +370,7 @@ namespace FurnitureAnimationsMod
                     {
                         byte[] pngBytes = UnityEngine.ImageConversion.EncodeToPNG(_lastCapturedIcon);
                         File.WriteAllBytes(iconFullPath, pngBytes);
-                        Plugin.Log.LogWarning($"[PoseExporter] Иконка успешно сохранена на диск: {iconFullPath}");
+                        Plugin.Log.LogInfo($"[PoseExporter] Icon successfully saved to disk: {iconFullPath}");
                     }
                 }
 
@@ -386,7 +386,7 @@ namespace FurnitureAnimationsMod
                 if (currentPropOnScene != null)
                 {
                     FurnitureInjectorPatch.RebuildFurniturePoses(currentPropOnScene);
-                    Plugin.Log.LogWarning($"[PoseExporter] Рантайм-рефреш меню интерактива для {furnitureName} выполнен успешно!");
+                    Plugin.Log.LogInfo($"[PoseExporter] Runtime refresh of interaction menu for '{furnitureName}' completed.");
                 }
 
                 if (Global.code != null && Global.code.uiCombat != null)
@@ -394,7 +394,7 @@ namespace FurnitureAnimationsMod
             }
             catch (Exception ex)
             {
-                Plugin.Log.LogError($"[PoseExporter] Критическая ошибка записи: {ex.Message}");
+                Plugin.Log.LogError($"[PoseExporter] Critical write error: {ex.Message}");
             }
         }
                 

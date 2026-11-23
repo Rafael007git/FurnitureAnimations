@@ -200,7 +200,7 @@ namespace FurnitureAnimationsMod
                 UnityEngine.UI.Button myButtonComp = customBtnGo.GetComponent<UnityEngine.UI.Button>();
                 myButtonComp.onClick.AddListener(() =>
                 {
-                    Plugin.Log.LogWarning("[EditorUiManager] Клик по широкой наложенной кнопке зафиксирован!");
+                    Plugin.Log.LogInfo("[EditorUiManager] Click on overlaid button captured.");
                     onConfirm?.Invoke(); // Вызов цепочки экспорта из PoseExporter
 
                     // --- КРИТИЧЕСКИЙ ФИКС №3: Принудительная чистка памяти при подтверждении ---

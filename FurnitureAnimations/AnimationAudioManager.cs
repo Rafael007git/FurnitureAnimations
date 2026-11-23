@@ -219,7 +219,7 @@ namespace FurnitureAnimationsMod
                     {
                         // Б) Включили дефолт, ОЗУ не засоряем
                         activePlayer.ChangeSpeed(1.5f - activePlayer.GetSpeed());
-                        Plugin.Log.LogWarning($"[Автомат_ОЗУ_ФАНТОМ] Для пары [{sessionKey}] применен временный дефолт.");
+                        Plugin.Log.LogInfo($"[AudioRAM] Applied temporary default profile for pair '{sessionKey}'.");
                     }
 
                     // --- ВОТ ЭТА СТРОЧКА (В самом низу, после всего ОЗУ-выбора) --- 🎼🚀🎨
@@ -283,7 +283,7 @@ namespace FurnitureAnimationsMod
                             // Усыпляем корутину ровно на длину трека
                             yield return new UnityEngine.WaitForSeconds(clip.length);
 
-                            Plugin.Log.LogWarning($"[AudioDebug] Alarm triggered naturally for '{Path.GetFileName(filePath)}'. Advancing to next track!");
+                            Plugin.Log.LogInfo($"[AudioEngine] Track '{Path.GetFileName(filePath)}' finished naturally. Advancing to next track.");
                             PlayNextTrack();
                         }
                         else

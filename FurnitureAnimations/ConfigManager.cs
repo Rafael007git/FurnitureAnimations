@@ -37,9 +37,9 @@ namespace FurnitureAnimationsMod
                 if (!Directory.Exists(IconsPath)) Directory.CreateDirectory(IconsPath);
 
                 // Запускаем диагностику: смотрим, какие моды внедрились в мебель!
-                CheckDoPoseInterceptors();
+                // CheckDoPoseInterceptors();
 
-                Plugin.Log.LogWarning($"[ConfigManager] Истинные пути SDK мода установлены: {PluginDirectory}");
+                Plugin.Log.LogInfo($"[ConfigManager] Истинные пути SDK мода установлены: {PluginDirectory}");
 
                 LoadAllConfigs();
             }
@@ -80,9 +80,10 @@ namespace FurnitureAnimationsMod
                     Plugin.Log.LogError($"[ConfigManager] Ошибка чтения файла {Path.GetFileName(file)}: {ex.Message}");
                 }
             }
-            Plugin.Log.LogWarning($"[ConfigManager] Всего проиндексировано префабов мебели в памяти: {LoadedConfigs.Count}");
+            Plugin.Log.LogInfo($"[ConfigManager] Indexed furniture prefabs in memory: {LoadedConfigs.Count}");
         }
 
+        // Отладочный метод. Кандидат на удаление.
         public static void CheckDoPoseInterceptors()
         {
             try
@@ -231,7 +232,7 @@ namespace FurnitureAnimationsMod
             // Находим конфиг мебели в глобальном ОЗУ-реестре
             if (!LoadedConfigs.TryGetValue(cleanFurnName, out FurnitureConfig config) || config == null)
             {
-                Plugin.Log.LogWarning($"[RAM_Init] Конфиг для мебели {cleanFurnName} не найден в LoadedConfigs. Пропуск.");
+                Plugin.Log.LogWarning($"[RAM_Init] Config for furniture '{cleanFurnName}' not found in LoadedConfigs. Skipping.");
                 return;
             }
 
@@ -337,7 +338,7 @@ namespace FurnitureAnimationsMod
 
             if (!LoadedConfigs.TryGetValue(cleanName, out FurnitureConfig config) || config == null)
             {
-                Plugin.Log.LogWarning($"[JSON_Запись] Не найден конфиг в ОЗУ для {cleanName}. Сохранение отменено.");
+                Plugin.Log.LogWarning($"[JSON_Write] Config not found in RAM for '{cleanName}'. Save cancelled.");
                 return;
             }
 
