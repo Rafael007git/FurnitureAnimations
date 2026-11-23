@@ -884,31 +884,6 @@ namespace FurnitureAnimationsMod
         }
     }
 
-    /*
-    [HarmonyPatch(typeof(UIFreePose), "SelectPose")]
-    public class UIFreePoseSelectPoseTracker
-    {
-        [HarmonyPostfix]
-        public static void Postfix()
-        {
-            Plugin.IsAnyPoseSelected = true;
-            Plugin.IsCustomPoseActive = false;
-            Plugin.Log.LogInfo("[SDK_Tracker] Выбрана готовая ванильная поза из списка.");
-        }
-    }
-    */
-
-    [HarmonyPatch(typeof(UIFreePose), "ToggleCustomPoseMode")]
-    public class UIFreePoseToggleModeTracker
-    {
-        [HarmonyPostfix]
-        public static void Postfix(UIFreePose __instance)
-        {
-            Plugin.IsCustomPoseActive = __instance.isCustomPoseMode;
-            Plugin.Log.LogInfo($"[SDK_Tracker] Переключение режима ручной правки костей: {Plugin.IsCustomPoseActive}");
-        }
-    }
-
     [HarmonyPatch(typeof(UIFreePose), "Close")]
     public class UIFreePoseCloseTracker
     {
@@ -916,7 +891,6 @@ namespace FurnitureAnimationsMod
         public static void Postfix()
         {
             Plugin.IsAnyPoseSelected = false;
-            Plugin.IsCustomPoseActive = false;
             Plugin.Log.LogInfo("[SDK_Tracker] ... Меню закрыто, флаги сброшены ...");
         }
     }

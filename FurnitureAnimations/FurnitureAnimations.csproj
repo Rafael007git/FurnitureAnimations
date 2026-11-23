@@ -86,7 +86,6 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="AnimatedPosePatch.cs" />
     <Compile Include="AnimationAudioManager.cs" />
     <Compile Include="AnimationRadar.cs" />
     <Compile Include="AnimationUiControls.cs" />

@@ -18,9 +18,7 @@ namespace FurnitureAnimationsMod
 
         public static ManualLogSource Log;
         private Harmony harmony;
-
         public static bool IsAnyPoseSelected = false;
-        public static bool IsCustomPoseActive = false;
 
         public static ConfigEntry<bool> EnableDebugRadar;
         public static ConfigEntry<bool> ForceAbsoluteSkeletalReset;
