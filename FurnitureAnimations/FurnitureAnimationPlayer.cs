@@ -273,6 +273,7 @@ namespace FurnitureAnimationsMod
             Instance = this;
             _character = character;
             _animData = rawData;
+            CharacterStateHelper.SetLastAnimatedClip(character, rawData.name);
             _targetFurniture = null;
             _isPreviewMode = true;
             _speedModifier = Mathf.Clamp(speed, 0.1f, 3.0f);
@@ -315,7 +316,6 @@ namespace FurnitureAnimationsMod
 
             Plugin.Log.LogInfo($"[PreviewPlayer] Запущен предпросмотр '{rawData.name ?? "Unsaved"}' (скорость {_speedModifier * 100:F0}%).");
         }
-
 
         public void ChangeSpeed(float delta)
         {
@@ -644,7 +644,6 @@ namespace FurnitureAnimationsMod
                 }
             }
         }
-
 
         private void CacheSkeletonRecursive(Transform parent)
         {

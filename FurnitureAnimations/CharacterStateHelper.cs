@@ -1,8 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 using RuntimeGizmos;
-using BepInEx.Bootstrap;
 
 namespace FurnitureAnimationsMod
 {
@@ -15,11 +13,35 @@ namespace FurnitureAnimationsMod
 
     public static class CharacterStateHelper
     {
-        public static readonly bool IsPoseAnimationsInstalled;
+        private static CharacterCustomization _cachedChar;
+        private static FurnitureAnimationPlayer _cachedPlayer;
 
-        static CharacterStateHelper()
+        // Запоминаем имя последней запущенной JSON-анимации для персонажа (чтобы кнопка работала и на паузе)
+        private static readonly Dictionary<CharacterCustomization, string> _lastAnimatedClipByChar =
+            new Dictionary<CharacterCustomization, string>();
+
+        private static FurnitureAnimationPlayer GetCachedPlayer(CharacterCustomization character)
         {
-            IsPoseAnimationsInstalled = Chainloader.PluginInfos.ContainsKey("aedenthorn.PoseAnimations");
+            if (character == null) return null;
+
+            if (_cachedChar != character || _cachedPlayer == null)
+            {
+                _cachedChar = character;
+                _cachedPlayer = character.GetComponent<FurnitureAnimationPlayer>();
+            }
+            return _cachedPlayer;
+        }
+
+        public static void SetLastAnimatedClip(CharacterCustomization character, string clipName)
+        {
+            if (character != null && !string.IsNullOrEmpty(clipName))
+                _lastAnimatedClipByChar[character] = clipName;
+        }
+
+        public static void ClearCachedAnimation(CharacterCustomization character)
+        {
+            if (character != null)
+                _lastAnimatedClipByChar.Remove(character);
         }
 
         public static CharacterPoseState GetCurrentState(CharacterCustomization character)
@@ -27,27 +49,37 @@ namespace FurnitureAnimationsMod
             if (character == null || character.anim == null)
                 return CharacterPoseState.CustomPoseJSON;
 
-            if (IsPoseAnimationsInstalled && PoseAnimationsBridge.IsModActiveAndPosing(character))
+            // 1. Активный плеер в реальном времени
+            var player = GetCachedPlayer(character);
+            if (player != null)
             {
-                return CharacterPoseState.PoseAnimationsModActive;
+                string playingName = player.GetPlayingAnimationName();
+                if (!string.IsNullOrEmpty(playingName))
+                {
+                    _lastAnimatedClipByChar[character] = playingName;
+                    return CharacterPoseState.PoseAnimationsModActive;
+                }
             }
 
+            // 2. Проверяем, не включена ли ванильная поза игры (если да — сбрасываем память о JSON-анимации)
             string currentCtrlName = (character.anim.runtimeAnimatorController?.name ?? "").ToLower();
-            bool isGizmoActive = TransformGizmo.transformGizmo_ != null &&
-                                 TransformGizmo.transformGizmo_.runTransformGizmo;
-
-            if (character.anim.enabled == false || currentCtrlName.Contains("custom") || isGizmoActive)
-            {
-                return CharacterPoseState.CustomPoseJSON;
-            }
-
             bool isDefaultIdle = currentCtrlName.Contains("idle") ||
                                  currentCtrlName.Contains("unarmed") ||
                                  string.IsNullOrEmpty(currentCtrlName);
 
-            if (!isDefaultIdle)
+            bool isGizmoActive = TransformGizmo.transformGizmo_ != null &&
+                                 TransformGizmo.transformGizmo_.runTransformGizmo;
+
+            if (!isDefaultIdle && !currentCtrlName.Contains("custom") && character.anim.enabled && !isGizmoActive)
             {
+                _lastAnimatedClipByChar.Remove(character);
                 return CharacterPoseState.GameAnimatorActive;
+            }
+
+            // 3. Если персонаж стоит на паузе после JSON-анимации (и не включено ручное редактирование гизмо)
+            if (!isGizmoActive && _lastAnimatedClipByChar.ContainsKey(character))
+            {
+                return CharacterPoseState.PoseAnimationsModActive;
             }
 
             return CharacterPoseState.CustomPoseJSON;
@@ -55,91 +87,20 @@ namespace FurnitureAnimationsMod
 
         public static string GetActiveModAnimationName(CharacterCustomization character)
         {
-            if (!IsPoseAnimationsInstalled) return "UnknownModAnimation";
-            return PoseAnimationsBridge.GetAnimName(character);
-        }
-    }
-
-    internal static class PoseAnimationsBridge
-    {
-        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-        public static bool IsModActiveAndPosing(CharacterCustomization character)
-        {
-            try
+            var player = GetCachedPlayer(character);
+            if (player != null)
             {
-                if (PoseAnimations.BepInExPlugin.modEnabled != null &&
-                    PoseAnimations.BepInExPlugin.modEnabled.Value &&
-                    PoseAnimations.BepInExPlugin.started)
-                {
-                    if (PoseAnimations.BepInExPlugin.currentlyPosing != null &&
-                        PoseAnimations.BepInExPlugin.currentlyPosing.TryGetValue(character, out var instance))
-                    {
-                        return instance != null && instance.data != null;
-                    }
-                }
+                string animName = player.GetPlayingAnimationName();
+                if (!string.IsNullOrEmpty(animName))
+                    return animName;
             }
-            catch { }
-            return false;
-        }
 
-        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-        public static string GetAnimName(CharacterCustomization character)
-        {
-            try
+            if (character != null && _lastAnimatedClipByChar.TryGetValue(character, out string cachedName) && !string.IsNullOrEmpty(cachedName))
             {
-                if (PoseAnimations.BepInExPlugin.currentlyPosing != null &&
-                    PoseAnimations.BepInExPlugin.currentlyPosing.TryGetValue(character, out var instance))
-                {
-                    return instance?.data?.name ?? "UnknownModAnimation";
-                }
+                return cachedName;
             }
-            catch { }
+
             return "UnknownModAnimation";
         }
-
-        // ИСПРАВЛЕНИЕ В CHARACTERSTATEHELPER.CS (внутри класса PoseAnimationsBridge):
-
-        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-        public static void PlayExternalAnimation(CharacterCustomization character, string animationName)
-        {
-            try
-            {
-                // 1. Проверяем наличие анимации в базе данных оригинального мода
-                if (PoseAnimations.BepInExPlugin.animationDict != null &&
-                    PoseAnimations.BepInExPlugin.animationDict.TryGetValue(animationName, out var animData))
-                {
-                    Plugin.Log.LogWarning($"[PoseBridge] Запуск анимации '{animationName}' через динамический вызов конструктора...");
-
-                    if (PoseAnimations.BepInExPlugin.currentlyPosing != null)
-                    {
-                        if (PoseAnimations.BepInExPlugin.currentlyPosing.ContainsKey(character))
-                        {
-                            PoseAnimations.BepInExPlugin.currentlyPosing.Remove(character);
-                        }
-
-                        // 2. ОБХОД ОШИБКИ CS1729 ЧЕРЕЗ АКТИВАТОР:
-                        // Динамически создаем объект PoseAnimationInstance в рантайме.
-                        // Если декомпилятор ошибся со структурой, активатор сам найдет конструктор (character, animData).
-                        object instance = Activator.CreateInstance(typeof(PoseAnimations.PoseAnimationInstance), new object[] { character, animData });
-
-                        if (instance != null)
-                        {
-                            // Кладим созданный объект в статический словарь оригинального мода
-                            PoseAnimations.BepInExPlugin.currentlyPosing[character] = (PoseAnimations.PoseAnimationInstance)instance;
-                            Plugin.Log.LogInfo($"[PoseBridge] Персонаж {character.name} успешно запущен через Активатор!");
-                        }
-                    }
-                }
-                else
-                {
-                    Plugin.Log.LogError($"[PoseBridge] Сбой: Анимация '{animationName}' отсутствует в базе мода!");
-                }
-            }
-            catch (Exception ex)
-            {
-                Plugin.Log.LogError($"[PoseBridge] Критический краш создания PoseAnimationInstance: {ex.Message}");
-            }
-        }
-
     }
 }
