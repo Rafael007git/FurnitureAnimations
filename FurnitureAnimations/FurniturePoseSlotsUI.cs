@@ -197,11 +197,25 @@ namespace FurnitureAnimations
             var uiFreePose = Global.code != null ? Global.code.uiFreePose : null;
             if (uiFreePose == null || uiFreePose.companionIconHolder == null) return;
 
-            if (_addSlotTemplate == null && uiFreePose.companionIconHolder.childCount > 1)
+            if (_addSlotTemplate == null)
             {
-                _addSlotTemplate = Object.Instantiate(uiFreePose.companionIconHolder.GetChild(1).gameObject, uiPose.transform);
-                _addSlotTemplate.name = "FA_AddSlotTemplate";
-                _addSlotTemplate.SetActive(false);
+                Transform plusChild = null;
+                for (int i = uiFreePose.companionIconHolder.childCount - 1; i >= 0; i--)
+                {
+                    var child = uiFreePose.companionIconHolder.GetChild(i);
+                    if (child != null && child.GetComponent<FreeposeCompanionIcon>() == null)
+                    {
+                        plusChild = child;
+                        break;
+                    }
+                }
+
+                if (plusChild != null)
+                {
+                    _addSlotTemplate = Object.Instantiate(plusChild.gameObject, uiPose.transform);
+                    _addSlotTemplate.name = "FA_AddSlotTemplate";
+                    _addSlotTemplate.SetActive(false);
+                }
             }
 
             var clonedHolder = Object.Instantiate(uiFreePose.companionIconHolder.gameObject, uiPose.transform);
