@@ -346,6 +346,7 @@ namespace FurnitureAnimations
         public static bool IsAnyCharacterScreenOpen()
         {
             if (Global.code == null) return false;
+            if (Global.code.uiFreePose != null && Global.code.uiFreePose.gameObject.activeInHierarchy) return true;
             if (Global.code.uiCustomization != null && Global.code.uiCustomization.gameObject.activeInHierarchy) return true;
             if (Global.code.uiCloset != null && Global.code.uiCloset.gameObject.activeInHierarchy) return true;
             if (Global.code.uiMakeup != null && Global.code.uiMakeup.gameObject.activeInHierarchy) return true;

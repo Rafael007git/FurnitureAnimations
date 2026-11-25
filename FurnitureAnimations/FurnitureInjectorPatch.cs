@@ -895,4 +895,21 @@ namespace FurnitureAnimationsMod
         }
     }
 
+    // === Блокируем посадку компаньонок в мебель, если открыт режим Free Pose ===
+    [HarmonyPatch(typeof(Furniture), "InitiateInteract")]
+    public class BlockFurnitureInitiateInteractInFreePosePatch
+    {
+        [HarmonyPrefix]
+        public static bool Prefix()
+        {
+            if (Global.code != null &&
+                Global.code.uiFreePose != null &&
+                Global.code.uiFreePose.gameObject.activeInHierarchy)
+            {
+                return false;
+            }
+            return true;
+        }
+    }
+
 }
