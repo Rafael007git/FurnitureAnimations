@@ -242,6 +242,8 @@ namespace FurnitureAnimations
                     _activeOccupants.Remove(f);
                 }
             }
+
+            LoveKinematicTracker.Tick(_furnitureSlots);
         }
 
         // Высаживает одного конкретного персонажа с мебели
