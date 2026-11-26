@@ -30,7 +30,7 @@ namespace FurnitureAnimationsMod
         private void Update()
         {
             LoveKinematicTracker.TickFreePose();
-            LoveSceneDiagnostics.CheckHotkey();
+            // LoveSceneDiagnostics.CheckHotkey();  // Диагностика положений и расстояний
 
             if (_uiInstance == null || _mainButton == null || _buttonText == null) return;
 

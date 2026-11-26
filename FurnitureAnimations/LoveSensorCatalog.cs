@@ -22,7 +22,8 @@ namespace FurnitureAnimations
             new KinematicZonePair("Mouth", "Mouth"),
             new KinematicZonePair("Mouth", "Vagina"),
             new KinematicZonePair("Hands", "Pectorals"),
-            new KinematicZonePair("Hands", "Thighs")
+            new KinematicZonePair("Hands", "Thighs"),
+            new KinematicZonePair("Clitoris", "Vagina")
         };
     }
 }

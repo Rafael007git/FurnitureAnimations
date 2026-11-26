@@ -6,6 +6,7 @@ namespace FurnitureAnimations
 {
     public static class LoveKinematicBridge
     {
+        // source, sourceZone, target, targetZone, distance, relativeSpeed
         public static event Action<CharacterCustomization, string, CharacterCustomization, string, float, float> OnProximitySample;
 
         internal static void RaiseSample(
@@ -14,9 +15,9 @@ namespace FurnitureAnimations
             CharacterCustomization target,
             string targetZone,
             float distance,
-            float approachSpeed)
+            float relativeSpeed)
         {
-            OnProximitySample?.Invoke(source, sourceZone, target, targetZone, distance, approachSpeed);
+            OnProximitySample?.Invoke(source, sourceZone, target, targetZone, distance, relativeSpeed);
         }
     }
 
@@ -35,8 +36,8 @@ namespace FurnitureAnimations
         private static readonly Dictionary<CharacterCustomization, CharacterRigCache> _rigCache =
             new Dictionary<CharacterCustomization, CharacterRigCache>();
 
-        private static readonly Dictionary<string, float> _prevDistances =
-            new Dictionary<string, float>();
+        private static readonly Dictionary<string, Vector3> _prevRelVectors =
+            new Dictionary<string, Vector3>();
 
         private static readonly List<CharacterCustomization> _freePoseBuffer =
             new List<CharacterCustomization>();
@@ -44,7 +45,7 @@ namespace FurnitureAnimations
         private static float _nextFurnitureSampleTime;
         private static float _nextFreePoseSampleTime;
         private const float SampleInterval = 0.05f; // 20 Гц
-        private const float MaxScanDistance = 0.40f;
+        private const float MaxScanDistance = 0.45f;
 
         public static void Tick(Dictionary<Furniture, List<FurnitureMultiSeatManager.SeatSlot>> furnitureSlots)
         {
@@ -139,16 +140,18 @@ namespace FurnitureAnimations
 
                 if (!srcPos.HasValue || !tgtPos.HasValue) continue;
 
-                float dist = Vector3.Distance(srcPos.Value, tgtPos.Value);
+                Vector3 relVec = srcPos.Value - tgtPos.Value;
+                float dist = relVec.magnitude;
                 string key = $"{src.GetInstanceID()}_{pair.SourceZone}_{tgt.GetInstanceID()}_{pair.TargetZone}";
 
-                float prevDist = _prevDistances.TryGetValue(key, out float d) ? d : dist;
-                _prevDistances[key] = dist;
+                Vector3 prevRel = _prevRelVectors.TryGetValue(key, out Vector3 v) ? v : relVec;
+                _prevRelVectors[key] = relVec;
+                float prevDist = prevRel.magnitude;
 
                 if (dist <= MaxScanDistance || prevDist <= MaxScanDistance)
                 {
-                    float approachSpeed = (prevDist - dist) / dt;
-                    LoveKinematicBridge.RaiseSample(src, pair.SourceZone, tgt, pair.TargetZone, dist, approachSpeed);
+                    float relativeSpeed = Vector3.Distance(relVec, prevRel) / dt;
+                    LoveKinematicBridge.RaiseSample(src, pair.SourceZone, tgt, pair.TargetZone, dist, relativeSpeed);
                 }
             }
         }
@@ -173,9 +176,12 @@ namespace FurnitureAnimations
                         refPos);
 
                 case "Pectorals":
+                    Vector3 fwd = r.Pelvis != null ? r.Pelvis.forward : Vector3.forward;
+                    Vector3 up = r.Pelvis != null ? r.Pelvis.up : Vector3.up;
+                    Vector3 breastOffset = fwd * 0.07f - up * 0.02f;
                     return PickNearest(
-                        r.LeftPectoral != null ? (Vector3?)(r.LeftPectoral.position + r.LeftPectoral.forward * 0.05f) : null,
-                        r.RightPectoral != null ? (Vector3?)(r.RightPectoral.position + r.RightPectoral.forward * 0.05f) : null,
+                        r.LeftPectoral != null ? (Vector3?)(r.LeftPectoral.position + breastOffset) : null,
+                        r.RightPectoral != null ? (Vector3?)(r.RightPectoral.position + breastOffset) : null,
                         refPos);
 
                 case "Thighs":
@@ -223,7 +229,6 @@ namespace FurnitureAnimations
             var rig = new CharacterRigCache();
             Transform liveHip = null;
 
-            // 1. Берём живые кости исключительно из нативного массива cc.bonesNeedSave
             if (cc.bonesNeedSave != null)
             {
                 foreach (Transform t in cc.bonesNeedSave)
@@ -245,9 +250,8 @@ namespace FurnitureAnimations
                     else if (n.EndsWith("rShin")) rig.RightShin = t;
                 }
             }
-            // 2. Интимные кости (Vagina / Clitoris) ищем строго внутри живого liveHip
             Transform searchRoot = liveHip != null ? liveHip : (cc.transform.childCount > 0 ? cc.transform.GetChild(0) : cc.transform);
-            foreach (Transform t in searchRoot.GetComponentsInChildren<Transform>(true))
+            foreach (Transform t in searchRoot.GetComponentsInChildren(typeof(Transform), true))
             {
                 if (t == null) continue;
                 string n = t.name;
