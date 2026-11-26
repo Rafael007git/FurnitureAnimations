@@ -102,6 +102,7 @@
     <Compile Include="FurnitureMultiSeatPatches.cs" />
     <Compile Include="FurniturePoseSlotsUI.cs" />
     <Compile Include="FurnitureSdkButtonController.cs" />
+    <Compile Include="LoveSceneDiagnostics.cs" />
     <Compile Include="LoveSensorCatalog.cs" />
     <Compile Include="Models.cs" />
     <Compile Include="Plugin.cs" />

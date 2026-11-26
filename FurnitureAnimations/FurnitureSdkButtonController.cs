@@ -1,9 +1,10 @@
-﻿using System;
-using System.IO;
+﻿using FurnitureAnimations;
+using RuntimeGizmos;
+using System;
 using System.Collections.Generic;
+using System.IO;
 using UnityEngine;
 using UnityEngine.UI;
-using RuntimeGizmos;
 
 namespace FurnitureAnimationsMod
 {
@@ -28,6 +29,9 @@ namespace FurnitureAnimationsMod
 
         private void Update()
         {
+            LoveKinematicTracker.TickFreePose();
+            LoveSceneDiagnostics.CheckHotkey();
+
             if (_uiInstance == null || _mainButton == null || _buttonText == null) return;
 
             // Оптимизация: опрашиваем движок 5 раз в секунду

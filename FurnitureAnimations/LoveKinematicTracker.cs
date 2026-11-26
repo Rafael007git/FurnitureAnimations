@@ -24,12 +24,9 @@ namespace FurnitureAnimations
     {
         private class CharacterRigCache
         {
-            public Transform TongueTip; // tongue03 — единый эпицентр для рта/языка
-            public Transform Head;      // резерв на случай нестандартного рига
-
+            public Transform TongueTip; // tongue03
             public Transform LeftHand, RightHand;
             public Transform LeftFoot, RightFoot;
-
             public Transform Vagina, Clitoris, Pelvis;
             public Transform LeftPectoral, RightPectoral;
             public Transform LeftThighBend, LeftShin, RightThighBend, RightShin;
@@ -41,15 +38,19 @@ namespace FurnitureAnimations
         private static readonly Dictionary<string, float> _prevDistances =
             new Dictionary<string, float>();
 
-        private static float _nextSampleTime;
+        private static readonly List<CharacterCustomization> _freePoseBuffer =
+            new List<CharacterCustomization>();
+
+        private static float _nextFurnitureSampleTime;
+        private static float _nextFreePoseSampleTime;
         private const float SampleInterval = 0.05f; // 20 Гц
         private const float MaxScanDistance = 0.40f;
 
         public static void Tick(Dictionary<Furniture, List<FurnitureMultiSeatManager.SeatSlot>> furnitureSlots)
         {
-            if (Time.time < _nextSampleTime) return;
-            float dt = Mathf.Max(0.01f, Time.time - (_nextSampleTime - SampleInterval));
-            _nextSampleTime = Time.time + SampleInterval;
+            if (Time.time < _nextFurnitureSampleTime) return;
+            float dt = Mathf.Max(0.01f, Time.time - (_nextFurnitureSampleTime - SampleInterval));
+            _nextFurnitureSampleTime = Time.time + SampleInterval;
 
             foreach (var kvp in furnitureSlots)
             {
@@ -71,6 +72,55 @@ namespace FurnitureAnimations
 
                         EvaluatePair(srcChar, srcRig, tgtChar, tgtRig, dt);
                     }
+                }
+            }
+        }
+
+        public static void TickFreePose()
+        {
+            if (Global.code == null || Global.code.uiFreePose == null || !Global.code.uiFreePose.gameObject.activeInHierarchy)
+                return;
+
+            if (Time.time < _nextFreePoseSampleTime) return;
+            float dt = Mathf.Max(0.01f, Time.time - (_nextFreePoseSampleTime - SampleInterval));
+            _nextFreePoseSampleTime = Time.time + SampleInterval;
+
+            _freePoseBuffer.Clear();
+            var uiFreePose = Global.code.uiFreePose;
+
+            if (uiFreePose.characters != null && uiFreePose.characters.items != null)
+            {
+                for (int i = 0; i < uiFreePose.characters.items.Count; i++)
+                {
+                    var tr = uiFreePose.characters.items[i] as Transform;
+                    if (tr == null || !tr.gameObject.activeInHierarchy) continue;
+                    var cc = tr.GetComponent<CharacterCustomization>();
+                    if (cc != null && !_freePoseBuffer.Contains(cc))
+                        _freePoseBuffer.Add(cc);
+                }
+            }
+
+            if (uiFreePose.selectedCharacter != null)
+            {
+                var selCc = uiFreePose.selectedCharacter.GetComponent<CharacterCustomization>();
+                if (selCc != null && !_freePoseBuffer.Contains(selCc))
+                    _freePoseBuffer.Add(selCc);
+            }
+
+            if (_freePoseBuffer.Count < 2) return;
+
+            for (int i = 0; i < _freePoseBuffer.Count; i++)
+            {
+                var srcChar = _freePoseBuffer[i];
+                var srcRig = GetOrBuildRig(srcChar);
+
+                for (int j = 0; j < _freePoseBuffer.Count; j++)
+                {
+                    if (i == j) continue;
+                    var tgtChar = _freePoseBuffer[j];
+                    var tgtRig = GetOrBuildRig(tgtChar);
+
+                    EvaluatePair(srcChar, srcRig, tgtChar, tgtRig, dt);
                 }
             }
         }
@@ -108,8 +158,7 @@ namespace FurnitureAnimations
             switch (zone)
             {
                 case "Mouth":
-                    if (r.TongueTip != null) return r.TongueTip.position;
-                    return r.Head != null ? (Vector3?)(r.Head.position + r.Head.forward * 0.09f - r.Head.up * 0.04f) : null;
+                    return r.TongueTip != null ? (Vector3?)r.TongueTip.position : null;
 
                 case "Hands":
                     return PickNearest(
@@ -133,12 +182,10 @@ namespace FurnitureAnimations
                     return GetNearestThighPoint(r, refPos);
 
                 case "Vagina":
-                    if (r.Vagina != null) return r.Vagina.position;
-                    return r.Pelvis != null ? (Vector3?)(r.Pelvis.position - r.Pelvis.up * 0.07f) : null;
+                    return r.Vagina != null ? (Vector3?)r.Vagina.position : null;
 
                 case "Clitoris":
-                    if (r.Clitoris != null) return r.Clitoris.position;
-                    goto case "Vagina";
+                    return r.Clitoris != null ? (Vector3?)r.Clitoris.position : null;
 
                 case "Pelvis":
                     return r.Pelvis != null ? (Vector3?)r.Pelvis.position : null;
@@ -157,8 +204,8 @@ namespace FurnitureAnimations
 
         private static Vector3? ClosestPointOnSegment(Transform a, Transform b, Vector3? p)
         {
-            if (a == null) return b != null ? (Vector3?)b.position : null;
-            if (b == null || !p.HasValue) return a.position;
+            if (a == null || b == null) return null;
+            if (!p.HasValue) return (a.position + b.position) * 0.5f;
 
             Vector3 ab = b.position - a.position;
             float sqrLen = ab.sqrMagnitude;
@@ -170,45 +217,52 @@ namespace FurnitureAnimations
 
         private static CharacterRigCache GetOrBuildRig(CharacterCustomization cc)
         {
-            if (_rigCache.TryGetValue(cc, out var cached) && (cached.TongueTip != null || cached.Head != null))
+            if (_rigCache.TryGetValue(cc, out var cached) && cached.Pelvis != null)
                 return cached;
 
             var rig = new CharacterRigCache();
-            foreach (var t in cc.GetComponentsInChildren<Transform>(true))
+            Transform liveHip = null;
+
+            // 1. Берём живые кости исключительно из нативного массива cc.bonesNeedSave
+            if (cc.bonesNeedSave != null)
             {
-                if (t == null) continue;
-                switch (t.name)
+                foreach (Transform t in cc.bonesNeedSave)
                 {
-                    case "tongue03": rig.TongueTip = t; break;
-                    case "head": rig.Head = t; break;
-
-                    case "lMid2":
-                    case "lHand": if (rig.LeftHand == null || t.name == "lMid2") rig.LeftHand = t; break;
-                    case "rMid2":
-                    case "rHand": if (rig.RightHand == null || t.name == "rMid2") rig.RightHand = t; break;
-
-                    case "lToe":
-                    case "lFoot": if (rig.LeftFoot == null || t.name == "lToe") rig.LeftFoot = t; break;
-                    case "rToe":
-                    case "rFoot": if (rig.RightFoot == null || t.name == "rToe") rig.RightFoot = t; break;
-
-                    case "Vagina": rig.Vagina = t; break;
-                    case "Clitoris": rig.Clitoris = t; break;
-                    case "pelvis": rig.Pelvis = t; break;
-                    case "lPectoral": rig.LeftPectoral = t; break;
-                    case "rPectoral": rig.RightPectoral = t; break;
-
-                    case "lThighBend": rig.LeftThighBend = t; break;
-                    case "lShin": rig.LeftShin = t; break;
-                    case "rThighBend": rig.RightThighBend = t; break;
-                    case "rShin": rig.RightShin = t; break;
+                    if (t == null) continue;
+                    string n = t.name;
+                    if (n.EndsWith("hip")) liveHip = t;
+                    else if (n.EndsWith("tongue03")) rig.TongueTip = t;
+                    else if (n.EndsWith("lMid2")) rig.LeftHand = t;
+                    else if (n.EndsWith("rMid2")) rig.RightHand = t;
+                    else if (n.EndsWith("lToe")) rig.LeftFoot = t;
+                    else if (n.EndsWith("rToe")) rig.RightFoot = t;
+                    else if (n.EndsWith("pelvis")) rig.Pelvis = t;
+                    else if (n.EndsWith("lPectoral")) rig.LeftPectoral = t;
+                    else if (n.EndsWith("rPectoral")) rig.RightPectoral = t;
+                    else if (n.EndsWith("lThighBend")) rig.LeftThighBend = t;
+                    else if (n.EndsWith("lShin")) rig.LeftShin = t;
+                    else if (n.EndsWith("rThighBend")) rig.RightThighBend = t;
+                    else if (n.EndsWith("rShin")) rig.RightShin = t;
                 }
             }
-
+            // 2. Интимные кости (Vagina / Clitoris) ищем строго внутри живого liveHip
+            Transform searchRoot = liveHip != null ? liveHip : (cc.transform.childCount > 0 ? cc.transform.GetChild(0) : cc.transform);
+            foreach (Transform t in searchRoot.GetComponentsInChildren<Transform>(true))
+            {
+                if (t == null) continue;
+                string n = t.name;
+                if (rig.TongueTip == null && n.EndsWith("tongue03")) rig.TongueTip = t;
+                else if (rig.Vagina == null && n.EndsWith("Vagina")) rig.Vagina = t;
+                else if (rig.Clitoris == null && n.EndsWith("Clitoris")) rig.Clitoris = t;
+                else if (rig.Pelvis == null && n.EndsWith("pelvis")) rig.Pelvis = t;
+                else if (rig.LeftHand == null && n.EndsWith("lMid2")) rig.LeftHand = t;
+                else if (rig.RightHand == null && n.EndsWith("rMid2")) rig.RightHand = t;
+                else if (rig.LeftPectoral == null && n.EndsWith("lPectoral")) rig.LeftPectoral = t;
+                else if (rig.RightPectoral == null && n.EndsWith("rPectoral")) rig.RightPectoral = t;
+            }
             _rigCache[cc] = rig;
             return rig;
         }
-
         private static Vector3? PickNearest(Vector3? a, Vector3? b, Vector3? refPos)
         {
             if (!a.HasValue) return b;

@@ -198,6 +198,12 @@ namespace FurnitureAnimations
         // Поддерживает корректную привязку всех сидящих персонажей (защита от срыва AI)
         public static void MaintainAllOccupants()
         {
+            LoveKinematicTracker.TickFreePose();
+            if (_furnitureSlots.Count > 0)
+            {
+                LoveKinematicTracker.Tick(_furnitureSlots);
+            }
+
             if (_furnitureSlots.Count == 0 || IsAnyCharacterScreenOpen()) return;
 
             List<Furniture> emptyFurnitures = null;
@@ -242,8 +248,6 @@ namespace FurnitureAnimations
                     _activeOccupants.Remove(f);
                 }
             }
-
-            LoveKinematicTracker.Tick(_furnitureSlots);
         }
 
         // Высаживает одного конкретного персонажа с мебели
